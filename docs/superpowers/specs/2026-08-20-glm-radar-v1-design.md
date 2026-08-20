@@ -233,7 +233,7 @@ dist/data/
 
 ### 7.2 `meta.json`
 
-保存最后检查时间、最后完整同步时间、最近发布时间、各仓库状态、数据 Schema 版本和当前最新日报日期。
+保存最后检查时间、最后完整同步时间、最近发布时间、各仓库状态、数据 Schema 版本、当前最新日报日期，以及当日 AI 摘要条数、输入/输出 Token、待处理数量、熔断原因和最近成功调用时间。公开元数据不包含 OpenAI 项目 ID、账单明细、密钥或令牌。
 
 ### 7.3 `manifest.json`
 
@@ -261,7 +261,9 @@ dist/data/
 
 保存自动发现的能力变更建议、来源条目、AI 理由、建议动作和生成时间。候选不会直接进入公开矩阵。
 
-## 8. 摘要与分类契约
+## 8. OpenAI 摘要、权限与费用控制
+
+### 8.1 摘要与分类契约
 
 OpenAI 响应必须通过严格 JSON Schema 校验。核心字段如下：
 
@@ -278,6 +280,64 @@ OpenAI 响应必须通过严格 JSON Schema 校验。核心字段如下：
 - `evidence`：仅包含输入内容中可定位的事实依据，不生成新 URL。
 
 提示词要求模型明确区分已确认事实、作者推测和 AI 推断。Schema 校验失败或模型拒答时，本次摘要标为待重试，不覆盖已有成功摘要。
+
+### 8.2 OpenAI 项目权限边界
+
+GLM Radar 使用独立的 OpenAI Project 和独立服务账号，不与其他应用共用项目、服务账号或 API Key。
+
+- 服务账号只授予 `api.responses.write`，不授予内置 `member`、`owner` 或任何 Admin API 权限。
+- API Key 使用相同的 `api.responses.write` 最小 Scope，不能管理项目、用户、密钥、模型权限或账单配置。
+- 项目模型权限使用 Allow List，首版只允许 `gpt-5.6-luna`。
+- 项目关闭 Web Search、File Search、MCP、Code Interpreter、Hosted Shell、图片生成和其他托管工具。
+- 摘要请求不传入 `tools`，只使用文本输入、文本输出和 Structured Outputs。
+- OpenAI 管理员密钥不得保存到 GitHub Actions；项目权限、硬消费上限和告警由 OpenAI 控制台或单独的受控管理流程配置。
+- `OPENAI_API_KEY` 只保存在 GitHub Actions Secret 中。后续账号条件允许时，使用 GitHub Actions OIDC 工作负载身份联合换取短期 OpenAI Token，并删除长期 API Key。
+
+### 8.3 模型与单次调用限制
+
+首版摘要调用采用以下固定边界：
+
+| 配置 | 首版值 |
+| --- | --- |
+| 模型 | `gpt-5.6-luna` |
+| 推理强度 | `none` |
+| 单条最大输入 | 8,000 Tokens |
+| 单条最大输出 | 800 Tokens |
+| 日报最大输入 | 12,000 Tokens |
+| 日报最大输出 | 1,200 Tokens |
+| Structured Outputs | 必须启用严格 JSON Schema |
+| Schema 失败重试 | 最多 1 次 |
+| 评论历史 | 默认不发送 |
+| API 存储 | `store: false` |
+
+输入超限时，优先保留标题、标签、环境信息、复现步骤、预期/实际行为和结论；正文中部按确定性规则截断。截断状态写入摘要元数据。输出达到上限或不符合 Schema 时不发布不完整摘要。
+
+### 8.4 项目级硬限制与告警
+
+OpenAI Project 配置以下生产保护：
+
+- 月度硬消费上限：10 美元。
+- 月度费用告警：5 美元、8 美元和 9.5 美元。
+- 速率限制：每分钟最多 30 次请求。
+- Token 速率限制：每分钟最多 150,000 Tokens。
+
+以上限制不得高于组织为该项目提供的实际额度。硬消费上限是最终费用保护；费用告警用于人工响应，不能替代硬上限。运行工作流只持有 Responses 写入权限，不能读取或修改这些管理设置。
+
+### 8.5 工作流日预算与熔断
+
+`Daily GLM Sync` 在平台硬限制之前执行第二层软件控制：
+
+- 每个北京时间自然日最多摘要 120 条新增或实质变化的记录。
+- 超出 120 条的记录按关注级别和更新时间排序后进入待处理队列，后续任务继续处理，不丢弃。
+- 每次请求前估算输入与最大输出 Tokens，并按当前价格配置计算预估费用，再增加 10% 安全余量。
+- 当日预估费用达到 0.35 美元时停止新的摘要请求；日报生成也必须计入同一预算。
+- 从每个成功响应的 `usage` 字段累计实际输入、输出和总 Tokens，写入私有工作流摘要与公开的聚合运行状态。
+- 网络错误、`5xx` 或明确可重试的限流响应最多重试一次，并遵守 `retry-after`。
+- 遇到余额不足、项目硬上限、权限错误、模型不在白名单或连续两次失败时立即打开熔断，不切换到更贵模型。
+- 熔断后继续保存和发布 GitHub 原始元数据，将未完成记录标记为“摘要待生成”。
+- 下一次定时或维护者手动运行时重新检查熔断条件；不存在自动绕过硬上限的机制。
+
+截至 2026-08-20，设计基准价格为 `gpt-5.6-luna` 每百万输入 Tokens 0.20 美元、每百万输出 Tokens 1.20 美元。120 条记录全部达到单条上限时，基础估算为每天 0.3072 美元；加入 10% 安全余量并计入一篇日报后仍受 0.35 美元日预算约束。价格只作为本地预估，OpenAI Project 的实际计费与 10 美元硬上限为最终依据。价格配置必须版本化，并在模型或价格调整前由维护者审核。
 
 ## 9. 查询设计
 
@@ -301,7 +361,9 @@ OpenAI 响应必须通过严格 JSON Schema 校验。核心字段如下：
 - 每个日期只有一篇日报，重复运行更新同一文件。
 - 内容哈希与摘要来源哈希一致时不重复调用 OpenAI。
 - GitHub 限流时遵守 `retry-after` 或 `x-ratelimit-reset`，不进行紧密重试。
-- OpenAI 临时失败采用有限指数退避；达到上限后记录待重试状态。
+- OpenAI 临时失败最多重试一次；达到上限后记录待重试状态并按第 8.5 节执行熔断。
+- 超过每日条目上限或费用预算时，不丢弃记录，而是写入待处理队列。
+- OpenAI 权限错误、模型白名单错误、余额不足或项目硬上限错误不会触发模型降级或更换密钥，而是立即停止当日摘要。
 - 摘要失败不阻止原始元数据发布，但页面明确标记“摘要待生成”。
 - 日报生成前计算四个仓库的同步完整度；不完整时显示缺失来源，不沿用旧日报冒充今日数据。
 - 数据 Schema、引用完整性或分片大小检查失败时，不提交数据分支，也不部署新页面。
@@ -310,7 +372,8 @@ OpenAI 响应必须通过严格 JSON Schema 校验。核心字段如下：
 
 ## 11. 安全设计
 
-- `OPENAI_API_KEY` 和可选的 `GH_SOURCE_TOKEN` 只保存在 GitHub Actions Secrets。
+- OpenAI 使用独立 Project、独立服务账号和仅含 `api.responses.write` 的最小权限凭证。
+- `OPENAI_API_KEY` 和可选的 `GH_SOURCE_TOKEN` 只保存在 GitHub Actions Secrets；`OPENAI_ADMIN_KEY` 禁止进入项目 Secrets。
 - 工作流令牌只授予执行任务所需的最小权限：读取源码、写数据分支、发布 Pages。
 - Pull Request 工作流不使用来自仓库的高权限秘密，避免外部贡献代码窃取密钥。
 - 包含秘密的采集步骤只在默认分支的定时任务或维护者手动任务中运行。
@@ -322,6 +385,8 @@ OpenAI 响应必须通过严格 JSON Schema 校验。核心字段如下：
 
 - 公开 GitHub 仓库的标准 Actions Runner 与 GitHub Pages 作为首版免费基础设施。
 - 仅对关键词命中的新记录和发生实质变化的记录调用 OpenAI。
+- OpenAI 项目只允许 `gpt-5.6-luna`，使用 10 美元月度硬上限和 0.35 美元工作流日预算双重控制。
+- 单日最多处理 120 条摘要，超量进入待处理队列。
 - GitHub 采用增量请求和条件请求，避免每次全量扫描。
 - OpenAI 只接收完成摘要所需的公开正文，默认不发送评论历史。
 - 日报预生成，不在访客请求过程中调用外部服务。
@@ -349,6 +414,10 @@ OpenAI 响应必须通过严格 JSON Schema 校验。核心字段如下：
 - GitHub Issue / PR 规范化与幂等更新测试。
 - 状态事件去重测试。
 - OpenAI 结构化输出合约测试，使用固定响应替身，不在测试中调用真实 API。
+- 模型白名单、无工具请求、推理强度和输入/输出 Token 上限测试。
+- 120 条每日上限、0.35 美元日预算、10% 估算余量和待处理队列测试。
+- Schema 失败只重试一次、可重试限流退避以及权限/余额/硬上限立即熔断测试。
+- 响应 `usage` 聚合、公开字段脱敏和价格配置版本测试。
 - 日报分组、日期边界和重复生成测试。
 - 能力候选生成与人工配置发布测试。
 - 搜索、组合筛选、URL 状态和空结果测试。
@@ -361,6 +430,9 @@ OpenAI 响应必须通过严格 JSON Schema 校验。核心字段如下：
 - 四个仓库均可完成真实增量采集。
 - 连续运行两次不会产生重复条目、事件或日报。
 - 结构化摘要字段完整，失败记录可在后续任务中安全重试。
+- 生产 OpenAI Project 只允许 `gpt-5.6-luna` 和 Responses 写入权限，全部无关托管工具关闭。
+- 10 美元月度硬上限、三档费用告警、速率限制和工作流日预算均已配置并通过受控测试验证。
+- 超过每日条目或费用预算时，任务停止调用 OpenAI，但继续发布原始数据并保留待处理记录。
 - 首页展示最新日报、重点变化和真实数据时间。
 - 动态库支持全部约定维度的组合筛选。
 - 能力矩阵能按硬件、场景和框架查询，并展示证据。
@@ -381,10 +453,10 @@ OpenAI 响应必须通过严格 JSON Schema 校验。核心字段如下：
 
 ### 15.2 Secrets
 
-- `OPENAI_API_KEY`：OpenAI 项目 API Key。
+- `OPENAI_API_KEY`：独立 OpenAI Project 中服务账号的 `api.responses.write` 最小权限 API Key；启用 OIDC 后删除。
 - `GH_SOURCE_TOKEN`：只读 Fine-grained PAT；当内置 `GITHUB_TOKEN` 对跨仓库公共 API 的限额不足时启用。
 
-站点不需要管理员口令、会话密钥、定时任务密钥或数据库凭据。
+`OPENAI_ADMIN_KEY` 不得配置为仓库、组织或 Environment Secret。站点不需要管理员口令、会话密钥、定时任务密钥或数据库凭据。
 
 ### 15.3 工作流
 
@@ -415,5 +487,8 @@ OpenAI 响应必须通过严格 JSON Schema 校验。核心字段如下：
 - [GitHub REST API 最佳实践](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api?apiVersion=2026-03-10)
 - [OpenAI API 快速开始](https://platform.openai.com/docs/quickstart/make-your-first-api-request)
 - [OpenAI Responses API 结构化输出](https://platform.openai.com/docs/api-reference/responses-streaming/response/refusal/delta?lang=curl)
+- [OpenAI GPT-5.6 Luna 模型与价格](https://developers.openai.com/api/docs/models/gpt-5.6-luna)
+- [OpenAI 项目模型、工具、速率与费用控制 API](https://developers.openai.com/api/reference/typescript/resources/admin/subresources/organization/subresources/projects)
+- [OpenAI 最小权限服务账号](https://developers.openai.com/api/docs/guides/terraform/service-accounts)
+- [OpenAI GitHub Actions 工作负载身份联合](https://developers.openai.com/api/docs/guides/workload-identity-federation/github-actions)
 - [Cloudflare D1 定价（后续迁移参考）](https://developers.cloudflare.com/d1/platform/pricing/)
-
