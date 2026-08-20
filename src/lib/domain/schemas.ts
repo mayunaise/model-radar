@@ -189,3 +189,54 @@ export const searchDocumentSchema = z.object({
 });
 
 export const searchIndexSchema = z.array(searchDocumentSchema);
+
+export const repositoryHealthSchema = z.object({
+  slug: repositorySlug,
+  status: z.enum(["ok", "degraded", "error"]),
+  checkedAt: isoDateTime,
+  message: z.string().max(500),
+});
+
+export const metaSchema = z.object({
+  schemaVersion: z.literal(1),
+  lastCheckedAt: isoDateTime,
+  lastSuccessfulSyncAt: isoDateTime,
+  lastPublishedAt: isoDateTime,
+  latestReportDate: isoDate,
+  repositories: z.array(repositoryHealthSchema),
+  ai: z.object({
+    itemsSummarized: z.number().int().nonnegative(),
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    backlogCount: z.number().int().nonnegative(),
+    stopReason: z.string().nullable(),
+    lastSuccessfulCallAt: isoDateTime.nullable(),
+  }),
+  sample: z.boolean().optional(),
+});
+
+export const eventSchema = z.object({
+  id: z.string().min(1),
+  itemId: z.string().min(1),
+  type: z.enum(["created", "state", "labels", "content", "summary"]),
+  oldValue: z.string().nullable(),
+  newValue: z.string().nullable(),
+  occurredAt: isoDateTime,
+});
+
+export const eventListSchema = z.array(eventSchema);
+
+export const capabilityCandidateSchema = z.object({
+  id: z.string().min(1),
+  itemId: z.string().min(1),
+  reasonZh: z.string().min(1).max(1000),
+  suggestedAction: z.enum(["review", "add", "update", "remove"]),
+  generatedAt: isoDateTime,
+});
+
+export const capabilityCandidateListSchema = z.array(capabilityCandidateSchema);
+
+export const schemaVersionSchema = z.object({
+  schemaVersion: z.literal(1),
+  generatedBy: z.string().min(1),
+});
