@@ -53,7 +53,17 @@ GLM Radar 是面向 GLM 系列模型使用者和框架维护者的中文信息�
 
 ### 3.2 仓库维护者
 
-首版权限直接复用 GitHub 仓库权限，不建立第二套管理员账号：
+首版权限直接复用 GitHub 组织和仓库权限，不建立第二套管理员账号，也不在站点中保存或校验管理员口令。生产仓库优先由专用 GitHub Organization 持有，避免依赖个人账号作为唯一控制面。
+
+维护者身份要求：
+
+- 每位维护者使用独立 GitHub 账号，禁止共享账号、共享密码或共享 PAT。
+- 组织强制启用安全的双因素认证方式；维护者至少配置 Passkey 或硬件安全密钥，并配置 TOTP、安全密钥或 GitHub Mobile 作为恢复路径，不使用 SMS 作为唯一第二因素。
+- 恢复代码离线保存，不提交到仓库、云盘公开目录或项目密码文件。
+- 组织 Owner 保持最小数量，普通运营人员只授予完成配置审核和工作流运行所需的仓库角色。
+- 每季度复核组织成员、外部协作者、PAT、SSH Key、Deploy Key、OAuth App、GitHub App 和 Actions Secrets，删除失效访问。
+
+运营操作如下：
 
 - 修改仓库或关键词：编辑 `config/*.json` 并合并到默认分支。
 - 手动补采：在 GitHub Actions 中运行 `Daily GLM Sync` 工作流。
@@ -372,11 +382,19 @@ OpenAI Project 配置以下生产保护：
 
 ## 11. 安全设计
 
+- 站点没有管理员登录页、管理员口令、会话 Cookie 或找回密码流程；全部写权限由 GitHub 身份与仓库授权控制。
+- 生产仓库使用 GitHub Organization 承载，组织要求安全 2FA，维护者使用 Passkey 或硬件安全密钥，并为账号恢复保留独立备用方式。
+- `main` 分支禁止直接推送、强制推送和删除；人工变更必须通过 Pull Request、必要状态检查和至少一名授权维护者审批。
+- `.github/workflows/**`、`config/**`、数据 Schema 和同步脚本由 `CODEOWNERS` 保护；相关变更必须获得指定安全负责人审批，并在新提交后撤销旧审批。
+- `data` 分支禁止强制推送和删除，只允许受控同步工作流写入；人工恢复通过审核后的恢复流程执行。
+- 仓库管理员不得允许 GitHub Actions 自动创建并批准自己的 Pull Request。
 - OpenAI 使用独立 Project、独立服务账号和仅含 `api.responses.write` 的最小权限凭证。
 - `OPENAI_API_KEY` 和可选的 `GH_SOURCE_TOKEN` 只保存在 GitHub Actions Secrets；`OPENAI_ADMIN_KEY` 禁止进入项目 Secrets。
 - 工作流令牌只授予执行任务所需的最小权限：读取源码、写数据分支、发布 Pages。
 - Pull Request 工作流不使用来自仓库的高权限秘密，避免外部贡献代码窃取密钥。
 - 包含秘密的采集步骤只在默认分支的定时任务或维护者手动任务中运行。
+- `pull_request_target` 不得用于签出或执行外部 Pull Request 代码；外部 PR 的测试令牌只读且不授予 Secrets 或 OIDC 权限。
+- 第三方 GitHub Actions 固定到完整 Commit SHA，并由 Dependabot 和人工审核维护更新。
 - AI 响应在写入前按 Schema 校验并进行长度限制，不直接渲染未经转义的 HTML。
 - GitHub 内容在页面中作为纯文本处理；外部链接添加安全属性。
 - 公开数据不包含访问令牌、邮箱、IP 地址或工作流环境变量。
@@ -410,6 +428,8 @@ OpenAI Project 配置以下生产保护：
 ### 14.1 自动测试
 
 - 配置文件与全部数据文件的 JSON Schema 测试。
+- 仓库规则、`CODEOWNERS` 覆盖范围、工作流最小权限和禁止 `pull_request_target` 的静态策略测试。
+- 第三方 Action 完整 Commit SHA 固定、Secret 引用边界和高权限 Job 触发条件测试。
 - 关键词规范化与相关性过滤单元测试。
 - GitHub Issue / PR 规范化与幂等更新测试。
 - 状态事件去重测试。
@@ -437,6 +457,8 @@ OpenAI Project 配置以下生产保护：
 - 动态库支持全部约定维度的组合筛选。
 - 能力矩阵能按硬件、场景和框架查询，并展示证据。
 - 维护者可以修改仓库、关键词和能力配置，手动补采并查看运行结果。
+- 站点不存在管理员口令；GitHub 组织安全 2FA、维护者 Passkey、分支保护、`CODEOWNERS` 和最小仓库权限均已启用。
+- 未经审批的账号不能修改配置、工作流、Schema、同步脚本或生产数据分支。
 - GitHub 或 OpenAI 单独故障时，Pages 仍能展示上一成功数据与准确同步状态。
 - GitHub Pages 自定义 Actions 工作流可完成构建和发布。
 - 桌面、平板和手机均可使用，核心浏览流程支持键盘完成。
@@ -445,11 +467,15 @@ OpenAI Project 配置以下生产保护：
 
 ### 15.1 仓库设置
 
-- 使用公开 GitHub 仓库以获得 GitHub Pages 和标准 Actions Runner 的免费额度。
+- 使用专用 GitHub Organization 持有公开仓库，以获得 GitHub Pages 和标准 Actions Runner 的免费额度，并避免个人账号成为唯一控制面。
+- Organization 要求所有成员和外部协作者使用安全的双因素认证方式；Owner 保持最小数量。
 - Pages 来源设置为 GitHub Actions。
-- 默认分支保护要求测试通过后才能合并人工变更。
-- `data` 分支只允许同步工作流和授权维护者写入。
+- `main` 规则集禁止直接推送、强制推送和删除，要求 Pull Request、状态检查、审批和会话解决后才能合并。
+- `.github/workflows/**`、`config/**`、`schemas/**` 和同步脚本通过 `CODEOWNERS` 要求指定负责人审批。
+- `data` 分支禁止强制推送和删除，只允许同步工作流身份写入；授权维护者只能通过受控恢复流程修改。
 - Actions 工作流显式声明最小 `permissions`。
+- 仓库设置禁止 GitHub Actions 创建并批准自己的 Pull Request。
+- 启用 Secret Scanning、Push Protection、Dependabot Alerts、Dependabot Updates 和 CodeQL 工作流扫描。
 
 ### 15.2 Secrets
 
@@ -485,6 +511,10 @@ OpenAI Project 配置以下生产保护：
 - [GitHub 定时工作流](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)
 - [GitHub REST API 限流](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10)
 - [GitHub REST API 最佳实践](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api?apiVersion=2026-03-10)
+- [GitHub 账号身份认证与 2FA](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github)
+- [GitHub Passkey](https://docs.github.com/en/authentication/authenticating-with-a-passkey)
+- [GitHub Organization 强制安全 2FA](https://docs.github.com/en/organizations/keeping-your-organization-secure/managing-two-factor-authentication-for-your-organization/requiring-two-factor-authentication-in-your-organization)
+- [GitHub Actions 安全使用](https://docs.github.com/en/actions/reference/security/secure-use)
 - [OpenAI API 快速开始](https://platform.openai.com/docs/quickstart/make-your-first-api-request)
 - [OpenAI Responses API 结构化输出](https://platform.openai.com/docs/api-reference/responses-streaming/response/refusal/delta?lang=curl)
 - [OpenAI GPT-5.6 Luna 模型与价格](https://developers.openai.com/api/docs/models/gpt-5.6-luna)
