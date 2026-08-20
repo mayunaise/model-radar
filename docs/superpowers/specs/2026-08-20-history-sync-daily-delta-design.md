@@ -7,6 +7,7 @@
 ## 数据范围
 
 - 完整集合：历史回填结果与后续每日增量的并集，按 GitHub `node_id` 去重，以较新的 `updated_at` 覆盖旧版本。
+- 记录按“仓库＋GitHub 原始创建月份”归档到 `items/{repositoryKey}/{YYYY}/{MM}.json`。年月取自 `createdAt`，不使用系统首次发现时间 `firstSeenAt`。
 - 当日增量：某个北京时间自然日内首次采集到，或内容、标签、状态发生变化的相关 Issue / PR。
 - 一天内重复执行同步时，当日日报对每次执行的增量取并集，不覆盖当天较早批次。
 - AI 摘要不是进入完整集合或日报的前置条件。预算不足的记录仍保存标题、状态和上游元数据，摘要进入待处理队列。
@@ -23,6 +24,27 @@
 
 GitHub Issues API 的 Issue 列表包含 PR 包装项；采集器继续对 PR 读取完整状态。相关性筛选发生在写入之前，页面不会保存与 GLM 无关的仓库全集。
 
+## 保存目录
+
+完整历史保存在独立 `data` 分支，目录结构为：
+
+```text
+items/
+├── llamafactory/YYYY/MM.json
+├── mindspeed-llm/YYYY/MM.json
+├── verl/YYYY/MM.json
+└── vllm/YYYY/MM.json
+events/YYYY/MM.json
+reports/YYYY/MM/DD.json
+candidates/capabilities.json
+manifest.json
+meta.json
+schemas-version.json
+search-index.json
+```
+
+`manifest.json` 按 GitHub `node_id` 记录条目分片路径、内容哈希、摘要哈希、更新时间、日常增量游标和历史回填状态。记录更新时重写其原始创建月份对应的分片，不把多年回填数据集中写入系统发现当天。
+
 ## 日报生成
 
 同步开始时读取当天已有日报，取出已有 `itemIds`。本次完成标准化并确认有变化的记录形成 `deltaItems`，与已有 ID 合并去重后从完整集合中解析最新记录，再生成当日日报。
@@ -35,6 +57,8 @@ GitHub Issues API 的 Issue 列表包含 PR 包装项；采集器继续对 PR �
 4. `id` 升序，保证构建结果确定。
 
 日报摘要只保留数量统计，不复述 Issue / PR 正文。页面中的日报列表每行只渲染标题、`Issue #编号` 或 `PR #编号`、状态。标题可以链接到已有站内详情页，但不在日报行中展示 AI 摘要、分类或影响说明。
+
+界面中指向 GitHub `item.url` 的字段统一命名为“原始链接”，替换当前卡片中的“上游”链接文案。叙述性文字中的“上游数据”“上游框架”和“上游证据”仍保留原意。
 
 ## 页面行为
 
@@ -63,4 +87,4 @@ GitHub Issues API 的 Issue 列表包含 PR 包装项；采集器继续对 PR �
 
 ## 首版迁移
 
-样例数据保留用于本地视觉验证，但正式 `data` 分支初始化时不把样例游标视为历史回填完成。首次部署创建四个仓库的回填状态，然后按批次逐步构建完整集合。OpenAI 每日条数与费用上限保持不变。
+样例数据保留用于本地视觉验证，但正式 `data` 分支初始化时不把样例游标视为历史回填完成。首次部署创建四个仓库的回填状态，然后按批次逐步构建完整集合。现有 `items/YYYY/MM.json` 迁移到按仓库分片的目录，并按每条记录的 `createdAt` 重新归档。OpenAI 每日条数与费用上限保持不变。
