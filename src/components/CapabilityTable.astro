@@ -1,0 +1,40 @@
+---
+import type { CapabilityEntry } from "../lib/domain/types";
+import StatusBadge from "./StatusBadge.astro";
+interface Props { entries: CapabilityEntry[]; }
+const { entries } = Astro.props;
+const statusLabels = { supported: "已支持", partial: "部分支持", experimental: "实验性", planned: "计划中", unsupported: "不支持", unknown: "待核实" };
+const scenarioLabels = { TRAINING: "训练", INFERENCE: "推理", RL: "RL" };
+---
+<div class="table-meta"><p data-capability-count aria-live="polite">{entries.length} 条能力记录</p><p>每条记录均保留证据与核实日期</p></div>
+<div class="table-shell panel">
+  <table>
+    <thead><tr><th>框架</th><th>GLM 型号</th><th>硬件</th><th>场景</th><th>能力</th><th>状态</th><th>版本与限制</th><th>证据</th></tr></thead>
+    <tbody>{entries.map((entry) => <tr data-capability-row data-framework={entry.framework} data-hardware={entry.hardware} data-scenario={entry.scenario} data-status={entry.status}><td data-label="框架"><strong>{entry.framework}</strong></td><td data-label="GLM 型号">{entry.model}</td><td data-label="硬件"><code>{entry.hardware}</code></td><td data-label="场景">{scenarioLabels[entry.scenario]}</td><td data-label="能力">{entry.capability}</td><td data-label="状态"><StatusBadge status={entry.status} label={statusLabels[entry.status]} /></td><td data-label="版本与限制"><span>{entry.minimumVersion ?? "—"}</span><small>{entry.limitations}</small></td><td data-label="证据"><a href={entry.evidence[0]} rel="noreferrer">证据 ↗</a><time datetime={entry.verifiedAt}>{entry.verifiedAt}</time></td></tr>)}</tbody>
+  </table>
+</div>
+<script>
+  import { enhanceCapabilityFilters } from "../scripts/capability-filter";
+  enhanceCapabilityFilters();
+</script>
+<style>
+  .table-meta { display: flex; justify-content: space-between; margin: 1rem 0; color: var(--ink-faint); font-size: 0.78rem; }
+  .table-shell { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 68rem; }
+  th, td { padding: 0.9rem 0.8rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; font-size: 0.78rem; }
+  th { color: var(--ink-faint); background: var(--paper-deep); font-size: 0.7rem; letter-spacing: 0.04em; }
+  tbody tr:last-child td { border-bottom: 0; }
+  code { color: var(--rust-deep); font-family: var(--mono); }
+  td span, td small, td time { display: block; }
+  td small, td time { margin-top: 0.3rem; color: var(--ink-faint); font-size: 0.68rem; }
+  td a { display: inline-flex; min-height: auto; color: var(--rust-deep); font-weight: 700; text-decoration: none; }
+  [hidden] { display: none; }
+  @media (max-width: 760px) {
+    .table-shell { border: 0; background: transparent; overflow: visible; }
+    table, tbody { display: block; min-width: 0; }
+    thead { display: none; }
+    tr { display: grid; gap: 0.55rem; margin-bottom: 0.8rem; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--paper-raised); }
+    td { display: grid; grid-template-columns: 7rem 1fr; padding: 0; border: 0; }
+    td::before { content: attr(data-label); color: var(--ink-faint); font-size: 0.68rem; }
+  }
+</style>
