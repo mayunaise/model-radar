@@ -23,13 +23,25 @@ export function estimateRequestCostUsd(
 
 type Reservation = { allowed: true; estimatedCostUsd: number } | { allowed: false; reason: "daily-item-limit" | "daily-budget"; estimatedCostUsd: number };
 
-export class BudgetLedger {
-  private itemCount = 0;
-  private estimatedCostUsd = 0;
-  private actualInputTokens = 0;
-  private actualOutputTokens = 0;
+export type BudgetState = {
+  itemCount: number;
+  estimatedCostUsd: number;
+  actualInputTokens: number;
+  actualOutputTokens: number;
+};
 
-  constructor(private readonly config: BudgetConfig) {}
+export class BudgetLedger {
+  private itemCount: number;
+  private estimatedCostUsd: number;
+  private actualInputTokens: number;
+  private actualOutputTokens: number;
+
+  constructor(private readonly config: BudgetConfig, initialState?: BudgetState) {
+    this.itemCount = initialState?.itemCount ?? 0;
+    this.estimatedCostUsd = initialState?.estimatedCostUsd ?? 0;
+    this.actualInputTokens = initialState?.actualInputTokens ?? 0;
+    this.actualOutputTokens = initialState?.actualOutputTokens ?? 0;
+  }
 
   private reserve(inputTokens: number, outputTokens: number, isItem: boolean): Reservation {
     const cost = estimateRequestCostUsd(inputTokens, outputTokens, this.config);
@@ -46,6 +58,13 @@ export class BudgetLedger {
 
   reserveItem(inputTokens: number, maxOutputTokens: number): Reservation {
     return this.reserve(inputTokens, maxOutputTokens, true);
+  }
+
+  reserveItemUnbounded(inputTokens: number, maxOutputTokens: number): Extract<Reservation, { allowed: true }> {
+    const estimatedCostUsd = estimateRequestCostUsd(inputTokens, maxOutputTokens, this.config);
+    this.estimatedCostUsd += estimatedCostUsd;
+    this.itemCount += 1;
+    return { allowed: true, estimatedCostUsd };
   }
 
   reserveReport(inputTokens: number, maxOutputTokens: number): Reservation {

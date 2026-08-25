@@ -32,9 +32,42 @@ describe("GitHub workflow security", () => {
     const ci = files.find((file) => file.name === "ci.yml")?.text ?? "";
 
     expect(daily).toContain("OPENAI_API_KEY");
+    expect(daily).toContain("GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}");
     expect(daily).not.toContain("deploy-pages");
     expect(pages).toContain("deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e");
     expect(pages).not.toContain("OPENAI_API_KEY");
     expect(ci).not.toMatch(/secrets\./);
+  });
+
+  test("restricts the secret-bearing sync job to reviewed main source", async () => {
+    const files = await workflows();
+    const dailyText = files.find((file) => file.name === "daily-sync.yml")?.text ?? "";
+    const daily = YAML.parse(dailyText) as {
+      jobs: {
+        collect: {
+          if?: string;
+          environment?: string;
+          steps: Array<{ uses?: string; with?: Record<string, string> }>;
+        };
+      };
+    };
+    const collect = daily.jobs.collect;
+    const sourceCheckout = collect.steps.find(
+      (step) => step.uses?.startsWith("actions/checkout@") && step.with?.path === "source",
+    );
+
+    expect(collect.if).toContain("github.ref == 'refs/heads/main'");
+    expect(collect.environment).toBe("production");
+    expect(sourceCheckout?.with?.ref).toBe("main");
+  });
+
+  test("runs the reproducible data quality audit before publishing the daily artifact", async () => {
+    const files = await workflows();
+    const dailyText = files.find((file) => file.name === "daily-sync.yml")?.text ?? "";
+
+    expect(dailyText).toContain("npm run audit:data -- ../data");
+    expect(dailyText).not.toContain("--full-source-backfill");
+    expect(dailyText).not.toContain("--full-summary-backfill");
+    expect(dailyText.indexOf("npm run audit:data -- ../data")).toBeLessThan(dailyText.indexOf("actions/upload-artifact@"));
   });
 });

@@ -1,6 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { z } from "zod";
+import { assertActivityCategories } from "../config/categories";
 import { loadProjectConfig } from "../config/load";
 import {
   activityItemSchema,
@@ -9,6 +10,7 @@ import {
   eventListSchema,
   manifestSchema,
   metaSchema,
+  qualityAuditReportSchema,
   schemaVersionSchema,
   searchIndexSchema,
 } from "../domain/schemas";
@@ -46,9 +48,18 @@ async function listJsonFiles(root: string, directory: string): Promise<string[]>
   return files.flat().sort();
 }
 
+async function listOptionalJsonFiles(root: string, directory: string): Promise<string[]> {
+  try {
+    return await listJsonFiles(root, directory);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
 export async function loadDataSnapshot(explicitRoot?: string) {
   const root = resolveDataRoot(explicitRoot);
-  const [meta, manifest, schemasVersion, itemFiles, reportFiles, eventFiles, candidates, searchIndex, projectConfig] =
+  const [meta, manifest, schemasVersion, itemFiles, reportFiles, eventFiles, qualityFiles, candidates, searchIndex, projectConfig] =
     await Promise.all([
       readJson(root, "meta.json", metaSchema),
       readJson(root, "manifest.json", manifestSchema),
@@ -56,6 +67,7 @@ export async function loadDataSnapshot(explicitRoot?: string) {
       listJsonFiles(root, "items"),
       listJsonFiles(root, "reports"),
       listJsonFiles(root, "events"),
+      listOptionalJsonFiles(root, "quality"),
       readJson(root, "candidates/capabilities.json", capabilityCandidateListSchema),
       readJson(root, "search-index.json", searchIndexSchema),
       loadProjectConfig(),
@@ -72,6 +84,10 @@ export async function loadDataSnapshot(explicitRoot?: string) {
   const events = (
     await Promise.all(eventFiles.map((file) => readJson(root, file, eventListSchema)))
   ).flat();
+  const qualityReports = await Promise.all(
+    qualityFiles.map((file) => readJson(root, file, qualityAuditReportSchema)),
+  );
+  assertActivityCategories(items, projectConfig.categories);
 
   return {
     root,
@@ -81,6 +97,7 @@ export async function loadDataSnapshot(explicitRoot?: string) {
     items,
     reports: reports.sort((a, b) => b.date.localeCompare(a.date)),
     events,
+    qualityReports: qualityReports.sort((a, b) => b.date.localeCompare(a.date)),
     candidates,
     searchIndex,
     capabilities: projectConfig.capabilities.entries,

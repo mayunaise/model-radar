@@ -1,7 +1,7 @@
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import type { ActivityItem } from "../../src/lib/domain/types";
+import type { ActivityItem, RepositoryConfig } from "../../src/lib/domain/types";
 import { dataPath } from "../../src/lib/data/paths";
 
 export async function writeJsonAtomic(root: string, path: string, value: unknown): Promise<void> {
@@ -23,15 +23,26 @@ export function mergeItems(existing: ActivityItem[], incoming: ActivityItem[]): 
   );
 }
 
-export function itemShard(item: ActivityItem): string {
-  const [year, month] = item.firstSeenAt.slice(0, 7).split("-");
-  return `items/${year}/${month}.json`;
+export function itemShard(
+  item: ActivityItem,
+  repositories: RepositoryConfig["repositories"],
+): string {
+  const repository = repositories.find((entry) => entry.slug === item.repository);
+  if (!repository) throw new Error(`Unknown repository: ${item.repository}`);
+  const [year, month] = item.createdAt.slice(0, 7).split("-");
+  return `items/${repository.dataKey}/${year}/${month}.json`;
 }
 
-export async function writeItemShards(root: string, items: ActivityItem[]): Promise<void> {
+export async function writeItemShards(
+  root: string,
+  items: ActivityItem[],
+  repositories: RepositoryConfig["repositories"],
+  previousItems: ActivityItem[] = [],
+): Promise<void> {
   const shards = new Map<string, ActivityItem[]>();
+  for (const item of previousItems) shards.set(itemShard(item, repositories), []);
   for (const item of items) {
-    const path = itemShard(item);
+    const path = itemShard(item, repositories);
     shards.set(path, [...(shards.get(path) ?? []), item]);
   }
   for (const [path, shardItems] of shards) await writeJsonAtomic(root, path, shardItems);

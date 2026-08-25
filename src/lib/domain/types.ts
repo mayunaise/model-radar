@@ -4,12 +4,14 @@ import type {
   capabilityCandidateSchema,
   capabilityConfigSchema,
   capabilityEntrySchema,
+  categoryConfigSchema,
   dailyReportSchema,
   eventSchema,
   keywordConfigSchema,
   manifestSchema,
   metaSchema,
   openAiConfigSchema,
+  qualityAuditReportSchema,
   repositoryConfigSchema,
   searchDocumentSchema,
   summarySchema,
@@ -19,12 +21,14 @@ export type ActivityItem = z.infer<typeof activityItemSchema>;
 export type CapabilityCandidate = z.infer<typeof capabilityCandidateSchema>;
 export type CapabilityConfig = z.infer<typeof capabilityConfigSchema>;
 export type CapabilityEntry = z.infer<typeof capabilityEntrySchema>;
+export type CategoryConfig = z.infer<typeof categoryConfigSchema>;
 export type DailyReport = z.infer<typeof dailyReportSchema>;
 export type DataEvent = z.infer<typeof eventSchema>;
 export type KeywordConfig = z.infer<typeof keywordConfigSchema>;
 export type Manifest = z.infer<typeof manifestSchema>;
 export type Meta = z.infer<typeof metaSchema>;
 export type OpenAiConfig = z.infer<typeof openAiConfigSchema>;
+export type QualityAuditReport = z.infer<typeof qualityAuditReportSchema>;
 export type RepositoryConfig = z.infer<typeof repositoryConfigSchema>;
 export type SearchDocument = z.infer<typeof searchDocumentSchema>;
 export type Summary = z.infer<typeof summarySchema>;

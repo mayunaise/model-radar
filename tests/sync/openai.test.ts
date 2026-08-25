@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { summarizeCandidate } from "../../scripts/sync/openai";
 import type { ResponsesClient } from "../../scripts/sync/openai";
 import type { NormalizedCandidate } from "../../scripts/sync/types";
+import type { CategoryConfig } from "../../src/lib/domain/types";
 
 const candidate: NormalizedCandidate = {
   id: "vllm-pr-1",
@@ -30,9 +31,27 @@ const config = {
   maxRetries: 1,
 };
 
+const categories: CategoryConfig = {
+  schemaVersion: 1,
+  categories: [
+    { code: "NEW_SUPPORT", appliesTo: ["issue", "pr"], labels: { issue: "支持诉求", pr: "新增支持" }, order: 10 },
+    { code: "BUG", appliesTo: ["issue"], labels: { issue: "Bug" }, order: 20 },
+    { code: "FIX", appliesTo: ["pr"], labels: { pr: "Bug 修复" }, order: 20 },
+    { code: "PERFORMANCE", appliesTo: ["issue", "pr"], labels: { issue: "性能问题", pr: "性能优化" }, order: 30 },
+    { code: "DOCS", appliesTo: ["issue", "pr"], labels: { issue: "文档问题", pr: "文档更新" }, order: 40 },
+    { code: "COMPATIBILITY", appliesTo: ["issue", "pr"], labels: { issue: "兼容性", pr: "兼容性适配" }, order: 50 },
+    { code: "OTHER", appliesTo: ["issue", "pr"], labels: { issue: "其他", pr: "其他" }, order: 60 },
+  ],
+};
+
 const output = JSON.stringify({
   headline_zh: "推理输出一致性修复已合并",
-  summary_zh: "该变更修复了 GLM 推理输出 token 对齐问题。",
+  kind: "change",
+  subject_zh: "GLM 推理输出",
+  problem_zh: "token 对齐错误",
+  request_zh: null,
+  change_zh: "修复 token 对齐逻辑",
+  impact_zh: null,
   models: ["GLM"],
   hardware: ["GPU"],
   scenarios: ["INFERENCE"],
@@ -41,7 +60,7 @@ const output = JSON.stringify({
   impact_scope_zh: "GPU 推理输出",
   attention: "WATCH",
   capability_candidate: true,
-  evidence: ["Correct output token alignment"],
+  evidence: [{ source: "body", text: "Correct output token alignment" }],
 });
 
 describe("constrained OpenAI summarization", () => {
@@ -54,7 +73,7 @@ describe("constrained OpenAI summarization", () => {
       },
     };
 
-    const result = await summarizeCandidate(client, candidate, config, "2026-08-20T02:00:00.000Z");
+    const result = await summarizeCandidate(client, candidate, config, "2026-08-20T02:00:00.000Z", categories);
 
     expect(request).toMatchObject({
       model: "gpt-5.6-luna",
@@ -62,10 +81,45 @@ describe("constrained OpenAI summarization", () => {
       tools: [],
       store: false,
       max_output_tokens: 800,
-      text: { format: { type: "json_schema", name: "glm_activity_summary", strict: true } },
+      text: { verbosity: "low", format: { type: "json_schema", name: "glm_activity_summary", strict: true } },
     });
-    expect(result.summary).toMatchObject({ headlineZh: "推理输出一致性修复已合并", category: "FIX" });
+    const categoryEnum = (((request?.text as { format: { schema: { properties: { category: { enum: string[] } } } } }).format.schema.properties.category.enum));
+    expect(categoryEnum).toEqual(["NEW_SUPPORT", "FIX", "PERFORMANCE", "DOCS", "COMPATIBILITY", "OTHER"]);
+    const schemaProperties = ((request?.text as { format: { schema: { properties: Record<string, unknown> } } }).format.schema.properties);
+    expect(schemaProperties).toHaveProperty("kind");
+    expect(schemaProperties).toHaveProperty("subject_zh");
+    expect(schemaProperties).toHaveProperty("problem_zh");
+    expect(schemaProperties).toHaveProperty("request_zh");
+    expect(schemaProperties).toHaveProperty("change_zh");
+    expect(schemaProperties).toHaveProperty("impact_zh");
+    expect(schemaProperties).not.toHaveProperty("summary_zh");
+    expect(result.summary).toMatchObject({
+      headlineZh: "推理输出一致性修复已合并",
+      summaryZh: "修复 token 对齐逻辑，解决token 对齐错误",
+      category: "FIX",
+      promptVersion: "activity-v4-complete-brief",
+    });
+    expect([...result.summary.summaryZh].length).toBeLessThanOrEqual(2000);
     expect(result.usage).toEqual({ inputTokens: 120, outputTokens: 80 });
+  });
+
+  test("drops secondary clauses instead of cutting a summary mid-sentence", async () => {
+    const verboseOutput = JSON.stringify({
+      ...JSON.parse(output),
+      problem_zh: "现".repeat(60),
+      change_zh: "解".repeat(60),
+    });
+    const client: ResponsesClient = {
+      async create() {
+        return { output_text: verboseOutput, usage: { input_tokens: 120, output_tokens: 80 } };
+      },
+    };
+
+    const result = await summarizeCandidate(client, candidate, config, "2026-08-20T02:00:00.000Z", categories);
+
+    expect(result.summary.summaryZh).toBe(`${"解".repeat(60)}，解决${"现".repeat(60)}`);
+    expect([...result.summary.summaryZh].length).toBeLessThanOrEqual(2000);
+    expect(result.summary.summaryZh.endsWith("…")).toBe(false);
   });
 
   test("retries malformed structured output once without changing models", async () => {
@@ -81,8 +135,52 @@ describe("constrained OpenAI summarization", () => {
     };
 
     await expect(
-      summarizeCandidate(client, candidate, config, "2026-08-20T02:00:00.000Z"),
+      summarizeCandidate(client, candidate, config, "2026-08-20T02:00:00.000Z", categories),
     ).resolves.toBeDefined();
     expect(models).toEqual(["gpt-5.6-luna", "gpt-5.6-luna"]);
+  });
+
+  test("removes dangling connective words instead of publishing a fragment", async () => {
+    let calls = 0;
+    const incompleteOutput = JSON.stringify({
+      ...JSON.parse(output),
+      change_zh: "新增查询复制选项，同时用于",
+    });
+    const client: ResponsesClient = {
+      async create() {
+        calls += 1;
+        return { output_text: incompleteOutput, usage: { input_tokens: 100, output_tokens: 60 } };
+      },
+    };
+
+    const result = await summarizeCandidate(client, candidate, config, "2026-08-20T02:00:00.000Z", categories);
+
+    expect(calls).toBe(1);
+    expect(result.summary.summaryZh).toBe("新增查询复制选项，解决token 对齐错误");
+  });
+
+  test("allows an issue to document a completed upstream change", async () => {
+    const issueOutput = JSON.stringify({
+      ...JSON.parse(output),
+      kind: "change",
+      category: "COMPATIBILITY",
+      change_zh: "新增 MLA 模型的流水线并行支持",
+      problem_zh: null,
+    });
+    const client: ResponsesClient = {
+      async create() {
+        return { output_text: issueOutput, usage: { input_tokens: 100, output_tokens: 60 } };
+      },
+    };
+
+    const result = await summarizeCandidate(
+      { ...client },
+      { ...candidate, type: "issue", id: "vllm-issue-2", url: "https://github.com/vllm-project/vllm/issues/2" },
+      config,
+      "2026-08-20T02:00:00.000Z",
+      categories,
+    );
+
+    expect(result.summary.summaryZh).toBe("新增 MLA 模型的流水线并行支持");
   });
 });

@@ -1,6 +1,8 @@
 import { pathToFileURL } from "node:url";
 import { loadDataSnapshot } from "../src/lib/data/load";
 import type { ActivityItem, SearchDocument } from "../src/lib/domain/types";
+import { modelNamesForItem } from "../src/lib/domain/models";
+import { categoryForItem } from "../src/lib/domain/classification";
 import { searchIndexSchema } from "../src/lib/domain/schemas";
 import { writeJsonAtomic } from "./sync/store";
 
@@ -15,10 +17,10 @@ export function buildSearchIndex(items: ActivityItem[]): SearchDocument[] {
         repository: item.repository,
         type: item.type,
         state: item.state,
-        category: item.summary?.category ?? "OTHER",
+        category: categoryForItem(item),
         updatedAt: item.updatedAt,
         url: item.url,
-        models: item.summary?.models ?? [],
+        models: modelNamesForItem(item),
       })),
   );
 }

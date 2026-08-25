@@ -20,8 +20,12 @@ describe("runtime data contracts", () => {
         ["Ascend/MindSpeed-LLM", "MindSpeed-LLM"],
         ["volcengine/verl", "verl"],
         ["vllm-project/vllm", "vLLM"],
-      ].map(([slug, framework]) => ({
+      ].map(([slug, framework], index) => ({
         slug,
+        source: { provider: index === 1 ? "gitcode" : "github", slug },
+        dataKey: ["llamafactory", "mindspeed-llm", "verl", "vllm"][index],
+        historyStartAt: "1970-01-01T00:00:00.000Z",
+        backfillPageLimit: 2,
         framework,
         enabled: true,
         defaultBranch: "main",
@@ -31,11 +35,21 @@ describe("runtime data contracts", () => {
     });
 
     expect(result.success).toBe(true);
+    expect(
+      repositoryConfigSchema.safeParse({
+        schemaVersion: 1,
+        repositories: result.data?.repositories.map((repository) => ({ ...repository, backfillPageLimit: 3 })) ?? [],
+      }).success,
+    ).toBe(false);
+    expect(result.data?.repositories[1]?.source?.provider).toBe("gitcode");
   });
 
   test("rejects duplicate repository slugs", () => {
     const repository = {
       slug: "hiyouga/LlamaFactory",
+      dataKey: "llamafactory",
+      historyStartAt: "1970-01-01T00:00:00.000Z",
+      backfillPageLimit: 2,
       framework: "LLaMA-Factory",
       enabled: true,
       defaultBranch: "main",
@@ -149,13 +163,20 @@ describe("runtime data contracts", () => {
         schemaVersion: 1,
         items: {
           PR_kwDOA123: {
-            shard: "items/2026/08.json",
+            shard: "items/vllm/2026/08.json",
             contentHash: "sha256:abc",
             summaryHash: null,
             updatedAt: timestamp,
           },
         },
         cursors: { "vllm-project/vllm": timestamp },
+        backfill: {
+          "vllm-project/vllm": {
+            status: "running",
+            nextPage: 2,
+            historyStartAt: timestamp,
+          },
+        },
       }).success,
     ).toBe(true);
 

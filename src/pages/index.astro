@@ -1,16 +1,13 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
-import { loadDataSnapshot } from "../lib/data/load";
-import { loadProjectConfig } from "../lib/config/load";
+import { loadPublicDataSnapshot } from "../lib/data/query";
 import DailyReport from "../components/DailyReport.astro";
 import HeroSummary from "../components/HeroSummary.astro";
 import MetricStrip from "../components/MetricStrip.astro";
-import { sitePath } from "../lib/site/base";
-const { meta, reports, items, capabilities } = await loadDataSnapshot();
+const { meta, reports, items, repositories } = await loadPublicDataSnapshot();
 const latestReport = reports[0];
-const config = await loadProjectConfig();
-const colors = Object.fromEntries(config.repositories.repositories.map((repo) => [repo.slug, repo.color]));
-const metrics = config.repositories.repositories.map((repo) => ({
+const frameworks = Object.fromEntries(repositories.map((repo) => [repo.slug, { name: repo.framework, color: repo.color }]));
+const metrics = repositories.map((repo) => ({
   label: repo.framework,
   value: items.filter((item) => item.repository === repo.slug).length,
   note: "今日相关动态",
@@ -19,14 +16,10 @@ const metrics = config.repositories.repositories.map((repo) => ({
 <BaseLayout>
   <div class="container">
     {latestReport ? <HeroSummary report={latestReport} /> : <p>日报尚未生成。</p>}
-    <div class="status-line panel"><span class="status-dot" aria-hidden="true"></span><strong>四个仓库运行正常</strong><span>最后检查 {new Date(meta.lastCheckedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</span></div>
+    <div class="status-line panel"><span class="status-dot" aria-hidden="true"></span><strong>{repositories.length} 个仓库正在跟踪</strong><span>最后检查 {new Date(meta.lastCheckedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</span></div>
     <MetricStrip metrics={metrics} />
     {latestReport?.sample && <p class="sample-note">当前为首版本地样例数据；所有条目均为样例，不对应真实 Issue 或 PR。</p>}
-    {latestReport && <DailyReport report={latestReport} items={items} colors={colors} />}
-    <section class="capability-preview panel">
-      <div><p class="eyebrow">Capability Evidence</p><h2>能力支持，以证据为准。</h2></div>
-      <div><strong>{capabilities.length}</strong><span> 条首版能力记录</span><p>未经维护者核实的条目统一显示为待核实，不把 AI 候选直接发布为支持结论。</p><a class="text-link" href={sitePath("capabilities/")}>查看能力矩阵</a></div>
-    </section>
+    {latestReport && <DailyReport report={latestReport} items={items} frameworks={frameworks} anchorDate={meta.latestReportDate} />}
   </div>
 </BaseLayout>
 <style>
@@ -34,8 +27,4 @@ const metrics = config.repositories.repositories.map((repo) => ({
   .status-line strong { color: var(--ink); }
   .status-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--sage); box-shadow: 0 0 0 4px rgb(88 112 100 / 12%); }
   .sample-note { margin-top: 2.5rem; }
-  .capability-preview { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 4rem; padding: 2rem; }
-  .capability-preview strong { font-family: var(--serif); font-size: 2.6rem; font-weight: 500; }
-  .capability-preview p { margin: 0.6rem 0 1rem; color: var(--ink-soft); }
-  @media (max-width: 720px) { .capability-preview { grid-template-columns: 1fr; } }
 </style>

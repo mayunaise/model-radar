@@ -1,24 +1,68 @@
 ---
 import ActivityFilters from "../../components/ActivityFilters.astro";
 import ActivityList from "../../components/ActivityList.astro";
+import DailyReport from "../../components/DailyReport.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import { loadProjectConfig } from "../../lib/config/load";
-import { loadDataSnapshot } from "../../lib/data/load";
-import { sortItemsNewestFirst } from "../../lib/data/query";
-const { items, meta } = await loadDataSnapshot();
-const config = await loadProjectConfig();
-const colors = Object.fromEntries(config.repositories.repositories.map((repo) => [repo.slug, repo.color]));
+import { loadPublicDataSnapshot, sortItemsNewestFirst } from "../../lib/data/query";
+import { modelOptionsForItems } from "../../lib/domain/models";
+import { sitePath } from "../../lib/site/base";
+const { items, meta, reports, repositories, categories } = await loadPublicDataSnapshot();
+const latestReport = reports[0];
+const colors = Object.fromEntries(repositories.map((repo) => [repo.slug, repo.color]));
+const frameworks = Object.fromEntries(repositories.map((repo) => [repo.slug, { name: repo.framework, color: repo.color }]));
+const modelOptions = modelOptionsForItems(items);
 ---
-<BaseLayout title="Issue / PR 动态库｜GLM Radar">
+<BaseLayout title="GLM 开源动态｜GLM Radar">
   <div class="container activity-page">
-    <header><p class="eyebrow">Activity Explorer</p><h1>Issue / PR 动态库</h1><p>搜索四个主流框架中与 GLM 相关的变更，查看结构化摘要后回到上游核验。</p><small>最后检查：{new Date(meta.lastCheckedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</small></header>
-    <ActivityFilters repositories={config.repositories.repositories} />
-    <ActivityList items={sortItemsNewestFirst(items)} colors={colors} />
+    <header class="page-intro">
+      <div class="intro-copy">
+        <h1>GLM 开源动态</h1>
+        <p>汇集 GLM 生态的每日摘要与完整动态，帮助你快速掌握重点变化，并按框架、模型与状态查找相关更新。</p>
+        <small>最后检查：{new Date(meta.lastCheckedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</small>
+      </div>
+      {latestReport && (
+        <aside class="daily-brief panel" aria-labelledby="daily-brief-title">
+          <div class="brief-meta">
+            <span id="daily-brief-title">{latestReport.date} 日报</span>
+            <small>AI 摘要，请回源核验</small>
+          </div>
+          <p>{latestReport.intro}</p>
+          <DailyReport report={latestReport} items={items} frameworks={frameworks} anchorDate={meta.latestReportDate} />
+          <div class="brief-actions">
+            <a href={sitePath("reports/")}>查看往期日报</a>
+          </div>
+        </aside>
+      )}
+    </header>
+    <section class="activity-explorer" data-activity-explorer aria-labelledby="all-activity-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">Activity Explorer</p><h2 id="all-activity-title">全部动态</h2></div>
+        <p>结构化摘要仅用于快速浏览，重要结论请回到上游核验。</p>
+      </div>
+      <ActivityFilters repositories={repositories} categories={categories} models={modelOptions} />
+      <ActivityList items={sortItemsNewestFirst(items)} colors={colors} categories={categories} anchorDate={meta.latestReportDate} />
+    </section>
   </div>
 </BaseLayout>
 <style>
-  .activity-page > header { margin-bottom: 2rem; }
+  .page-intro { display: grid; gap: 2rem; margin-bottom: 4rem; }
   h1 { font-size: clamp(2.7rem, 6vw, 4.8rem); }
-  header p:not(.eyebrow) { max-width: 44rem; margin-top: 1rem; color: var(--ink-soft); }
+  .intro-copy > p:not(.eyebrow) { max-width: 48rem; margin-top: 1rem; color: var(--ink-soft); }
   small { color: var(--ink-faint); }
+  .daily-brief { padding: 1.4rem; border-top: 3px solid var(--rust); }
+  .brief-meta, .brief-actions, .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  .brief-meta > span { color: var(--rust-deep); font-size: 0.78rem; font-weight: 750; letter-spacing: 0.05em; }
+  .daily-brief > p { margin: 1rem 0 1.2rem; color: var(--ink-soft); }
+  .brief-actions { justify-content: flex-start; margin-top: 1rem; }
+  .brief-actions a { color: var(--rust-deep); font-size: 0.82rem; font-weight: 700; text-decoration: none; }
+  .section-heading { align-items: end; margin-bottom: 1.25rem; }
+  .section-heading h2 { font-size: clamp(2rem, 4vw, 3rem); }
+  .section-heading > p { max-width: 28rem; color: var(--ink-faint); font-size: 0.84rem; text-align: right; }
+  @media (max-width: 820px) {
+    .section-heading { align-items: flex-start; flex-direction: column; }
+    .section-heading > p { text-align: left; }
+  }
+  @media (max-width: 480px) {
+    .brief-meta, .brief-actions { align-items: flex-start; flex-direction: column; }
+  }
 </style>

@@ -11,11 +11,15 @@ describe("project contract", () => {
     ) as { scripts?: Record<string, string> };
 
     expect(Object.keys(packageJson.scripts ?? {}).sort()).toEqual([
+      "audit:data",
       "build",
+      "build:local",
       "build:search",
       "check",
       "dev",
+      "dev:local",
       "sync",
+      "sync:local",
       "test",
       "test:watch",
       "validate:data",

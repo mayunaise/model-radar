@@ -7,7 +7,7 @@ describe("daily report pages", () => {
 
     expect(html).toContain("2026-08-20 日报");
     expect(html).toContain("所有条目均为样例");
-    expect(html).toContain("推理输出一致性修复已合并");
+    expect(html).toContain("样例：修复 GLM 推理输出一致性");
   });
 
   test("publishes a reverse chronological archive", async () => {
@@ -16,12 +16,14 @@ describe("daily report pages", () => {
     );
   });
 
-  test("publishes grouped report details and traceable source links", async () => {
+  test("publishes report details with summaries and traceable item links", async () => {
     const html = await readBuilt("reports/2026-08-20/index.html");
 
-    expect(html).toContain("值得关注");
-    expect(html).toContain("训练与兼容");
-    expect(html).toContain('rel="noreferrer"');
+    expect(html).toContain('class="daily-change-list"');
+    expect(html).toContain("样例：修复 GLM 推理输出一致性");
+    expect(html).toContain("PR #10004");
+    expect(html).toContain("修复 GLM 推理输出一致性问题");
+    expect(html).toContain('class="daily-item-summary"');
     expect(html).toContain("AI 摘要，请回源核验");
   });
 });

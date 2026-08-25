@@ -51,4 +51,37 @@ describe("OpenAI software budget", () => {
       actualOutputTokens: 120,
     });
   });
+
+  test("continues a persisted same-day budget instead of resetting on rerun", () => {
+    const ledger = new BudgetLedger(config, {
+      itemCount: 120,
+      estimatedCostUsd: 0.3,
+      actualInputTokens: 10_000,
+      actualOutputTokens: 2_000,
+    });
+
+    expect(ledger.reserveItem(1, 1)).toMatchObject({
+      allowed: false,
+      reason: "daily-item-limit",
+    });
+    expect(ledger.snapshot()).toMatchObject({
+      itemCount: 120,
+      estimatedCostUsd: 0.3,
+      actualInputTokens: 10_000,
+      actualOutputTokens: 2_000,
+    });
+  });
+
+  test("records explicitly authorized unbounded maintenance reservations", () => {
+    const ledger = new BudgetLedger(config, {
+      itemCount: 120,
+      estimatedCostUsd: 0.35,
+      actualInputTokens: 0,
+      actualOutputTokens: 0,
+    });
+
+    expect(ledger.reserveItemUnbounded(8000, 800)).toMatchObject({ allowed: true });
+    expect(ledger.snapshot()).toMatchObject({ itemCount: 121 });
+    expect(ledger.snapshot().estimatedCostUsd).toBeGreaterThan(0.35);
+  });
 });

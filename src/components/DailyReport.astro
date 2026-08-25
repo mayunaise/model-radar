@@ -1,21 +1,100 @@
 ---
 import type { ActivityItem, DailyReport as Report } from "../lib/domain/types";
-import ActivityCard from "./ActivityCard.astro";
-interface Props { report: Report; items: ActivityItem[]; colors?: Record<string, string>; }
-const { report, items, colors = {} } = Astro.props;
+import { sitePath } from "../lib/site/base";
+import { hybridItemPath } from "../lib/site/hybrid";
+import StatusBadge from "./StatusBadge.astro";
+
+interface Props {
+  report: Report;
+  items: ActivityItem[];
+  frameworks?: Record<string, { name: string; color: string }>;
+  anchorDate: string;
+}
+const { report, items, frameworks = {}, anchorDate } = Astro.props;
 const byId = new Map(items.map((item) => [item.id, item]));
+const seen = new Set<string>();
+const dailyItems = report.groups
+  .flatMap((group) => group.itemIds)
+  .filter((id) => !seen.has(id) && Boolean(byId.get(id)) && seen.add(id))
+  .map((id) => byId.get(id)!);
+const stateLabels = { open: "进行中", closed: "已关闭", merged: "已合并" };
+const typeGroups = [
+  { type: "issue" as const, label: "Issue", items: dailyItems.filter((item) => item.type === "issue") },
+  { type: "pr" as const, label: "PR", items: dailyItems.filter((item) => item.type === "pr") },
+];
+const frameworkFor = (item: ActivityItem) => frameworks[item.repository] ?? {
+  name: item.repository.split("/").at(-1) ?? item.repository,
+  color: "#A86845",
+};
 ---
-<div class="report-groups">
-  {report.groups.map((group) => (
-    <section>
-      <div class="section-heading"><h2>{group.title}</h2><span>{group.itemIds.length} 条</span></div>
-      <div class="card-grid">{group.itemIds.map((id) => byId.get(id)).filter(Boolean).map((item) => <ActivityCard item={item!} color={colors[item!.repository]} />)}</div>
-    </section>
-  ))}
-</div>
+<section class="daily-changes" aria-label={`${report.date} 当日关键信息`}>
+  <div class="daily-change-heading">
+    <h2>当日关键信息</h2>
+    <span>{dailyItems.length} 条</span>
+  </div>
+  <div class="daily-type-groups">
+    {typeGroups.map((group) => (
+      <section class="daily-type-group" aria-labelledby={`daily-${report.date}-${group.type}`}>
+        <div class="daily-type-heading">
+          <h3 id={`daily-${report.date}-${group.type}`}>{group.label}</h3>
+          <span>{group.items.length} 条</span>
+        </div>
+        <div class="daily-scroll-region" tabindex="0" aria-label={`${group.label} 当日动态，可独立滚动`}>
+          {group.items.length > 0 ? (
+            <ol class="daily-change-list">
+            {group.items.map((item) => {
+              const framework = frameworkFor(item);
+              return (
+                <li>
+                  <a href={sitePath(hybridItemPath(item, anchorDate))}>
+                    <span class="daily-item-meta">
+                      <span class="item-number">{group.label} #{item.number}</span>
+                    </span>
+                    <strong>{item.title}</strong>
+                    {item.summary?.summaryZh && <p class="daily-item-summary">{item.summary.summaryZh}</p>}
+                  </a>
+                  <div class="daily-item-badges">
+                    <span class="framework-tag" data-framework-tag={item.repository} style={`--repo-color:${framework.color}`}>
+                      <i aria-hidden="true"></i>{framework.name}
+                    </span>
+                    <StatusBadge status={item.state} label={stateLabels[item.state]} />
+                  </div>
+                </li>
+              );
+            })}
+            </ol>
+          ) : <p class="empty">今日暂无 {group.label}。</p>}
+        </div>
+      </section>
+    ))}
+  </div>
+</section>
 <style>
-  .report-groups { display: grid; gap: 3.5rem; }
-  .section-heading span { color: var(--ink-faint); font-size: 0.8rem; }
-  .card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-  @media (max-width: 760px) { .card-grid { grid-template-columns: 1fr; } }
+  .daily-changes { margin-top: 1.1rem; }
+  .daily-change-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.55rem; }
+  .daily-change-heading h2 { font-size: 0.82rem; letter-spacing: 0.03em; }
+  .daily-change-heading span, .daily-type-heading span, .empty { color: var(--ink-faint); font-size: 0.76rem; }
+  .daily-type-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2rem; }
+  .daily-type-group { min-width: 0; }
+  .daily-type-group + .daily-type-group { padding-left: 2rem; border-left: 1px solid var(--border); }
+  .daily-type-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-bottom: 0.42rem; }
+  .daily-type-heading h3 { color: var(--ink-soft); font-family: var(--sans); font-size: 0.74rem; font-weight: 760; letter-spacing: 0.05em; text-transform: uppercase; }
+  .daily-scroll-region { height: 20rem; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; border-top: 1px solid var(--border); }
+  .daily-scroll-region:focus-visible { outline: 2px solid var(--rust); outline-offset: 3px; border-radius: 0.2rem; }
+  .daily-change-list { display: grid; margin: 0; padding: 0; list-style: none; }
+  li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 0.8rem; padding: 0.72rem 0; border-bottom: 1px solid var(--border); }
+  li a { display: grid; min-width: 0; min-height: auto; gap: 0.16rem; text-decoration: none; }
+  .daily-item-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; }
+  .daily-item-badges { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 0.4rem; }
+  .framework-tag { display: inline-flex; align-items: center; gap: 0.3rem; width: fit-content; min-height: 1.65rem; padding: 0.1rem 0.52rem; border: 1px solid var(--border); border-radius: 999px; color: var(--ink-soft); background: var(--paper-raised); font-family: var(--sans); font-size: 0.72rem; font-weight: 750; letter-spacing: 0.02em; }
+  .framework-tag i { width: 0.38rem; height: 0.38rem; border-radius: 50%; background: var(--repo-color); }
+  .item-number { color: var(--rust-deep); font-family: var(--mono); font-size: 0.66rem; }
+  li strong { display: -webkit-box; overflow: hidden; font-size: 0.86rem; font-weight: 620; line-height: 1.4; text-wrap: pretty; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .daily-item-summary { display: -webkit-box; overflow: hidden; margin: 0.18rem 0 0; color: var(--ink-soft); font-size: 0.76rem; line-height: 1.5; text-wrap: pretty; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .empty { margin: 0; }
+  @media (max-width: 760px) {
+    .daily-type-groups { grid-template-columns: 1fr; gap: 1.25rem; }
+    .daily-type-group + .daily-type-group { padding-top: 1.25rem; padding-left: 0; border-top: 1px solid var(--border); border-left: 0; }
+    .daily-scroll-region { height: 17rem; }
+  }
 </style>

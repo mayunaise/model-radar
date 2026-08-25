@@ -3,12 +3,72 @@ import { z } from "zod";
 const isoDateTime = z.iso.datetime({ offset: true });
 const isoDate = z.iso.date();
 const repositorySlug = z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/);
-const githubUrl = z
+const upstreamUrl = z
   .url()
-  .refine((value) => new URL(value).hostname === "github.com", "Expected a GitHub URL");
+  .refine(
+    (value) => ["github.com", "gitcode.com"].includes(new URL(value).hostname),
+    "Expected a supported upstream URL",
+  );
+
+export const activityTypeSchema = z.enum(["issue", "pr"]);
+export const activityCategorySchema = z.enum([
+  "NEW_SUPPORT",
+  "BUG",
+  "FIX",
+  "PERFORMANCE",
+  "DOCS",
+  "COMPATIBILITY",
+  "OTHER",
+]);
+
+export const categoryConfigSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    categories: z.array(
+      z.object({
+        code: activityCategorySchema,
+        appliesTo: z.array(activityTypeSchema).min(1).max(2),
+        labels: z
+          .object({
+            issue: z.string().min(1).optional(),
+            pr: z.string().min(1).optional(),
+          })
+          .strict(),
+        order: z.number().int().nonnegative(),
+      }),
+    ),
+  })
+  .superRefine(({ categories }, context) => {
+    const seen = new Set<string>();
+    for (const [index, category] of categories.entries()) {
+      if (seen.has(category.code)) {
+        context.addIssue({ code: "custom", message: `Duplicate category code: ${category.code}`, path: ["categories", index, "code"] });
+      }
+      seen.add(category.code);
+      for (const type of activityTypeSchema.options) {
+        const applies = category.appliesTo.includes(type);
+        const hasLabel = Boolean(category.labels[type]);
+        if (applies !== hasLabel) {
+          context.addIssue({ code: "custom", message: `Category ${category.code} must define labels exactly for its applicable types`, path: ["categories", index, "labels", type] });
+        }
+      }
+    }
+    for (const code of activityCategorySchema.options) {
+      if (!seen.has(code)) {
+        context.addIssue({ code: "custom", message: `Missing category code: ${code}`, path: ["categories"] });
+      }
+    }
+  });
 
 export const repositorySchema = z.object({
   slug: repositorySlug,
+  source: z.object({
+    provider: z.enum(["github", "gitcode"]),
+    slug: repositorySlug,
+  }).optional(),
+  dataKey: z.string().regex(/^[a-z0-9-]+$/),
+  historyStartAt: isoDateTime,
+  backfillPageLimit: z.number().int().positive().max(2),
   canonicalSlug: repositorySlug.optional(),
   framework: z.string().min(1),
   enabled: z.boolean(),
@@ -24,6 +84,7 @@ export const repositoryConfigSchema = z
   })
   .superRefine(({ repositories }, context) => {
     const slugs = new Set<string>();
+    const dataKeys = new Set<string>();
     for (const repository of repositories) {
       if (slugs.has(repository.slug)) {
         context.addIssue({
@@ -33,6 +94,14 @@ export const repositoryConfigSchema = z
         });
       }
       slugs.add(repository.slug);
+      if (dataKeys.has(repository.dataKey)) {
+        context.addIssue({
+          code: "custom",
+          message: `Duplicate repository data key: ${repository.dataKey}`,
+          path: ["repositories"],
+        });
+      }
+      dataKeys.add(repository.dataKey);
     }
   });
 
@@ -57,7 +126,7 @@ export const openAiConfigSchema = z.object({
   dailyBudgetUsd: z.number().positive().max(0.35),
   safetyMarginPercent: z.number().min(0).max(50),
   itemMaxInputTokens: positiveInteger.max(8000),
-  itemMaxOutputTokens: positiveInteger.max(800),
+  itemMaxOutputTokens: positiveInteger.max(4096),
   reportMaxInputTokens: positiveInteger.max(12000),
   reportMaxOutputTokens: positiveInteger.max(1200),
   maxRetries: z.number().int().min(0).max(1),
@@ -77,15 +146,7 @@ export const summarySchema = z.object({
   scenarios: z.array(
     z.enum(["TRAINING", "INFERENCE", "RL", "EVALUATION", "OTHER"]),
   ),
-  category: z.enum([
-    "NEW_SUPPORT",
-    "BUG",
-    "FIX",
-    "PERFORMANCE",
-    "DOCS",
-    "COMPATIBILITY",
-    "OTHER",
-  ]),
+  category: activityCategorySchema,
   severity: z.enum(["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]),
   impactScopeZh: z.string().max(500),
   attention: z.enum(["IMMEDIATE", "WATCH", "ROUTINE"]),
@@ -102,18 +163,20 @@ export const activityItemSchema = z.object({
   nodeId: z.string().min(1),
   repository: repositorySlug,
   number: positiveInteger,
-  type: z.enum(["issue", "pr"]),
+  type: activityTypeSchema,
   title: z.string().min(1).max(500),
   bodyExcerpt: z.string().max(2000),
   author: z.string().min(1).max(100),
   state: z.enum(["open", "closed", "merged"]),
   labels: z.array(z.string().max(100)),
-  url: githubUrl,
+  url: upstreamUrl,
   createdAt: isoDateTime,
   updatedAt: isoDateTime,
   mergedAt: isoDateTime.nullable().optional(),
   firstSeenAt: isoDateTime,
   contentHash: z.string().min(1),
+  category: activityCategorySchema.optional(),
+  categorySource: z.enum(["rules", "ai"]).optional(),
   summary: summarySchema.nullable(),
 });
 
@@ -135,6 +198,48 @@ export const dailyReportSchema = z.object({
   sample: z.boolean().optional(),
 });
 
+export const qualityAuditItemSchema = z.object({
+  id: z.string().min(1),
+  repository: repositorySlug,
+  number: positiveInteger,
+  type: activityTypeSchema,
+  category: activityCategorySchema,
+  categoryValid: z.boolean(),
+  ruleCategory: activityCategorySchema.optional(),
+  classificationConsistent: z.boolean().optional(),
+  title: z.string().min(1).max(500),
+  bodyExcerpt: z.string().max(2000),
+  labels: z.array(z.string().max(100)),
+  filterDisposition: z.enum(["eligible", "review", "excluded"]),
+  relevanceScore: z.number().nonnegative(),
+  matchedTerms: z.array(z.string()),
+  scenarios: z.array(z.enum(["TRAINING", "INFERENCE", "RL"])),
+  sourceMatch: z.boolean().nullable(),
+  sourceMismatchFields: z.array(z.enum(["title", "state", "updatedAt", "url"])),
+  warnings: z.array(z.string().max(1000)),
+});
+
+export const qualityAuditReportSchema = z.object({
+  schemaVersion: z.literal(1),
+  scope: z.enum(["daily-incremental", "stratified-sample"]).default("stratified-sample"),
+  date: isoDate,
+  generatedAt: isoDateTime,
+  seed: z.string().min(1),
+  samplePerStratum: positiveInteger,
+  summary: z.object({
+    population: z.number().int().nonnegative(),
+    sampled: z.number().int().nonnegative(),
+    strata: z.number().int().nonnegative(),
+    structuralFailures: z.number().int().nonnegative(),
+    sourceMismatches: z.number().int().nonnegative(),
+    sourceChecksSkipped: z.number().int().nonnegative(),
+    classificationDrifts: z.number().int().nonnegative().default(0),
+    relevanceFailures: z.number().int().nonnegative().default(0),
+    reviewWarnings: z.number().int().nonnegative(),
+  }),
+  items: z.array(qualityAuditItemSchema),
+});
+
 export const capabilityEntrySchema = z.object({
   id: z.string().regex(/^[a-z0-9-]+$/),
   framework: z.string().min(1),
@@ -153,7 +258,7 @@ export const capabilityEntrySchema = z.object({
   minimumVersion: z.string().min(1).nullable(),
   limitations: z.string().max(1000),
   verifiedAt: isoDate,
-  evidence: z.array(githubUrl).min(1),
+  evidence: z.array(upstreamUrl).min(1),
 });
 
 export const capabilityConfigSchema = z.object({
@@ -166,13 +271,37 @@ export const manifestSchema = z.object({
   items: z.record(
     z.string(),
     z.object({
-      shard: z.string().regex(/^items\/\d{4}\/\d{2}\.json$/),
+      shard: z.string().regex(/^items\/[a-z0-9-]+\/\d{4}\/\d{2}\.json$/),
       contentHash: z.string().min(1),
       summaryHash: z.string().min(1).nullable(),
       updatedAt: isoDateTime,
     }),
   ),
   cursors: z.record(repositorySlug, isoDateTime),
+  backfill: z.record(
+    repositorySlug,
+    z.object({
+      status: z.enum(["pending", "running", "complete"]),
+      nextPage: positiveInteger,
+      historyStartAt: isoDateTime,
+    }),
+  ),
+  searchBackfill: z.record(
+    repositorySlug,
+    z.object({
+      status: z.enum(["pending", "running", "complete"]),
+      type: activityTypeSchema,
+      nextPage: positiveInteger,
+      queryVersion: z.literal("glm-title-v1"),
+    }),
+  ).default({}),
+  sources: z.record(
+    repositorySlug,
+    z.object({
+      provider: z.enum(["github", "gitcode"]),
+      slug: repositorySlug,
+    }),
+  ).default({}),
 });
 
 export const searchDocumentSchema = z.object({
@@ -180,11 +309,11 @@ export const searchDocumentSchema = z.object({
   title: z.string().min(1),
   summary: z.string(),
   repository: repositorySlug,
-  type: z.enum(["issue", "pr"]),
+  type: activityTypeSchema,
   state: z.enum(["open", "closed", "merged"]),
   category: summarySchema.shape.category,
   updatedAt: isoDateTime,
-  url: githubUrl,
+  url: upstreamUrl,
   models: z.array(z.string()),
 });
 
@@ -205,6 +334,8 @@ export const metaSchema = z.object({
   latestReportDate: isoDate,
   repositories: z.array(repositoryHealthSchema),
   ai: z.object({
+    budgetDate: isoDate.optional(),
+    estimatedCostUsd: z.number().nonnegative().optional(),
     itemsSummarized: z.number().int().nonnegative(),
     inputTokens: z.number().int().nonnegative(),
     outputTokens: z.number().int().nonnegative(),

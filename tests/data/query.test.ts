@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, test } from "vitest";
+import { loadProjectConfig } from "../../src/lib/config/load";
 import { loadDataSnapshot } from "../../src/lib/data/load";
 import {
+  createPublicDataView,
   filterItems,
   findReport,
   sortItemsNewestFirst,
@@ -40,5 +42,21 @@ describe("static data queries", () => {
 
     expect(findReport(reports, "2026-08-20")?.date).toBe("2026-08-20");
     expect(findReport(reports, "2026-08-19")).toBeUndefined();
+  });
+
+  test("builds a public view that hides disabled frameworks without deleting source data", async () => {
+    const snapshot = await loadDataSnapshot();
+    const config = await loadProjectConfig();
+    const repositories = config.repositories.repositories.map((repository) => (
+      repository.slug === "vllm-project/vllm" ? { ...repository, enabled: false } : repository
+    ));
+    const view = createPublicDataView(snapshot, repositories);
+
+    expect(snapshot.items.some((item) => item.repository === "vllm-project/vllm")).toBe(true);
+    expect(view.repositories.some((repository) => repository.slug === "vllm-project/vllm")).toBe(false);
+    expect(view.items.some((item) => item.repository === "vllm-project/vllm")).toBe(false);
+    expect(view.capabilities.some((entry) => entry.framework === "vLLM")).toBe(false);
+    expect(view.reports.flatMap((report) => report.groups.flatMap((group) => group.itemIds))).not.toContain("vllm-pr-10004");
+    expect(view.reports[0]?.intro).toContain("3 条");
   });
 });

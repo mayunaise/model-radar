@@ -1,25 +1,27 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import DailyReport from "../../components/DailyReport.astro";
-import { loadProjectConfig } from "../../lib/config/load";
-import { loadDataSnapshot } from "../../lib/data/load";
+import { loadPublicDataSnapshot } from "../../lib/data/query";
 import type { ActivityItem, DailyReport as Report } from "../../lib/domain/types";
+import { isRecentReport } from "../../lib/site/hybrid";
 
 export async function getStaticPaths() {
-  const { reports, items } = await loadDataSnapshot();
-  return reports.map((report) => ({ params: { date: report.date }, props: { report, items } }));
+  const { reports, items, meta } = await loadPublicDataSnapshot();
+  return reports
+    .filter((report) => isRecentReport(report.date, meta.latestReportDate))
+    .map((report) => ({ params: { date: report.date }, props: { report, items } }));
 }
 
 interface Props { report: Report; items: ActivityItem[]; }
 const { report, items } = Astro.props;
-const config = await loadProjectConfig();
-const colors = Object.fromEntries(config.repositories.repositories.map((repo) => [repo.slug, repo.color]));
+const { repositories, meta } = await loadPublicDataSnapshot();
+const frameworks = Object.fromEntries(repositories.map((repo) => [repo.slug, { name: repo.framework, color: repo.color }]));
 ---
 <BaseLayout title={`${report.date} 日报｜GLM Radar`}>
   <article class="container report-page">
     <header><p class="eyebrow">Daily Briefing</p><h1>{report.date} 日报</h1><p>{report.intro}</p><small>AI 摘要，请回源核验。能力结论以证据矩阵中的人工确认状态为准。</small></header>
     {report.sample && <p class="sample-note">当前为首版本地样例数据；所有条目均为样例，不对应真实 Issue 或 PR。</p>}
-    <DailyReport report={report} items={items} colors={colors} />
+    <DailyReport report={report} items={items} frameworks={frameworks} anchorDate={meta.latestReportDate} />
   </article>
 </BaseLayout>
 <style>
