@@ -1,0 +1,1364 @@
+[
+  {
+    "id": "vllm-issue-38006",
+    "nodeId": "I_kwDOI7xefs72CDUr",
+    "repository": "vllm-project/vllm",
+    "number": 38006,
+    "type": "issue",
+    "title": "[Feature]: Implement `TRITON_MLA_SPARSE` backend for sm80/120/121 support of Sparse MLA",
+    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\nFollow-up to https://github.com/vllm-project/vllm/issues/35021.\n\nRelevant PR to implementation (probably need to re-add when `TRITON_MLA_SPARSE` is implemented): https://github.com/vllm-project/vllm/pull/37968, https://github.com/vllm-project/vllm/pull/35271, https://github.com/vllm-project/vllm/pull/38076, https://github.com/vllm-project/vllm/pull/36519\n\nRequired for sm80 support of Sparse MLA, such as GLM-5 and DeepSeek V3.2.\n\n**Argument in support of implementing this**: More and more models are likely to be released with Sparse MLA, not just GLM-5.\n\nOne backwards compatibility implementation example was the Marlin FP8 E4M3 fallback for sm80, which allows FP8 models to run in Ampere (https://github.com/vllm-project/vllm/issues/17579, https://github.com/vllm-project/vllm/pull/18026, https://github.com/vllm-project/vllm/pull/19990, https://github.com/vllm-project/vllm/pull/24722). This is not supported in SGLang (https://github.com/sgl-project/sglang/issues/12887, https://github.com/sgl-project/sglang/pull/9754), where **all Ampere users of FP8 W8A8 MoE** are restricted to only vLLM.\n\nThus, `TRITON_MLA_SPARSE` should also be implemented, as this will redirect **all Ampere users of Sparse MLA models to vLLM. If vLLM doesn't do this, nobody can.**\n\nBy @qjxjy123 :\n\n> GLM-5 and other models using **DeepSeek Sparse Attention (DSA)** cannot run on **sm80 GPUs** (A100/A800). There are **multiple layers** of sm80 incompatibility, not just a single missing fallback.\n> \n> ### How to reproduce\n> python -m vllm.entrypoints.openai.api_server \\\n>   --model ZhipuAI/GLM-5-FP8 \\\n>   --tensor-parallel-size 8 \\\n>   --max-model-len 8192 \\\n>   --cpu-offload-gb 20 \\\n>   --gpu-memory-utilization 0.95 \\\n>   --trust-remote-code \\\n>   --enforce-eager \\\n>   --port 8000\n> ### Root cause analysis (updated)\n> > **Correction:** The original description oversimplified the problem as only a missing DeepGemm fallback in `sparse_attn_indexer.py`. After thoro",
+    "author": "ehfd",
+    "state": "open",
+    "labels": [
+      "feature request",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/38006",
+    "createdAt": "2026-03-24T13:01:10.000Z",
+    "updatedAt": "2026-08-22T08:38:33.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:8f850c767693ba4f059c4f5850fa62943946be11d882257fb0272a4974264e79",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "实现TRITON_MLA_SPARSE以支持sm80/120/121",
+      "summaryZh": "请求实现TRITON_MLA_SPARSE后端，支持sm80/120/121 GPU上的Sparse MLA模型，包括GLM-5和DeepSeek V3.2；当前GLM-5及其他使用DeepSeek Sparse Attention的模型无法在sm80 GPU（A100/A800）上运行；实现后可覆盖Ampere用户的Sparse MLA场景",
+      "models": [
+        "GLM-5",
+        "DeepSeek V3.2"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "HIGH",
+      "impactScopeZh": "影响使用sm80 GPU（A100/A800）的Sparse MLA模型推理。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】Implement `TRITON_MLA_SPARSE` backend for sm80/120/121 support of Sparse MLA",
+        "【正文】Required for sm80 support of Sparse MLA, such as GLM-5 and DeepSeek V3.2."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-36550",
+    "nodeId": "PR_kwDOI7xefs7JM4pz",
+    "repository": "vllm-project/vllm",
+    "number": 36550,
+    "type": "pr",
+    "title": "Add GlmOcrConfig with fixes, E2E test, and generic config registry validation",
+    "bodyExcerpt": "Summary:\nAdd custom `GlmOcrConfig` for the GLM-OCR model (zai-org/GLM-OCR) to vLLM's config registry, with fixes for correct model loading:\n\n1. **Dict mutation**: Copy `text_config` before `pop()` to avoid mutating the caller's dict\n2. **Correct default model type**: Use `\"glm4\"` (not `\"chatglm\"`) since GLM-OCR uses `Glm4ForCausalLM` as its text backbone\n3. **Model type mapping**: Map `\"glm_ocr_text\"` (used in model weights) to `\"glm4\"`\n4. **partial_rotary_factor**: Extract from `rope_parameters` and pass as top-level kwarg to prevent `standardize_rope_params()` from overwriting it with Glm4Config's default of 0.5 (GLM-OCR needs 1.0)\n\nAlso registers `GlmOcrForConditionalGeneration` in the FB model registry and adds an E2E GPU test.\n\nAdds a generic config/model registry validation test (`test_config_registry`) that covers all current and future config additions:\n- Validates all `_CONFIG_REGISTRY` entries lazily resolve to `PretrainedConfig` subclasses\n- Validates all `_CLASS_TO_MODULE` entries are importable\n- Validates `__all__` stays in sync with `_CLASS_TO_MODULE`\n- Validates all `META_MODELS` entries resolve to real model classes\n- Validates `_manual_register_models()` and `_register_transformers_utils_config()` run without errors\n\n\nSigned-off-by: Hujia Yu <hujia@meta.com>\n\nTest Plan:\n\ntested e2e and unit tested\n\n\n",
+    "author": "yhujia-8888",
+    "state": "open",
+    "labels": [
+      "needs-rebase",
+      "stale",
+      "meta-exported",
+      "fb-exported"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/36550",
+    "createdAt": "2026-03-09T21:50:59.000Z",
+    "updatedAt": "2026-08-22T02:00:45.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:53f4b60846ec05ba4b0171c59f03cdac475b2c3bb927badd741b95acb2a5d40e",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "新增 GLM-OCR 配置与注册校验",
+      "summaryZh": "新增 GlmOcrConfig，将 GLM-OCR 注册到 vLLM 配置注册表和 FB 模型注册表；修复 text_config 字典被修改、默认模型类型错误、glm_ocr_text 映射错误及 partial_rotary_factor 被覆盖的问题；新增 GPU E2E 测试和通用配置/模型注册表校验测试；支持 GLM-OCR 正确加载，并覆盖配置、模块、导出列表和模型注册项的有效性验证",
+      "models": [
+        "GLM-OCR",
+        "GlmOcrForConditionalGeneration",
+        "Glm4ForCausalLM"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE",
+        "EVALUATION"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "MEDIUM",
+      "impactScopeZh": "vLLM 的 GLM-OCR 加载、模型注册及注册表测试",
+      "attention": "ROUTINE",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】Add GlmOcrConfig with fixes, E2E test, and generic config registry validation",
+        "【正文】Add custom `GlmOcrConfig` for the GLM-OCR model (zai-org/GLM-OCR) to vLLM's config registry"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T10:27:08.865Z"
+    }
+  },
+  {
+    "id": "vllm-issue-38376",
+    "nodeId": "I_kwDOI7xefs73o0tC",
+    "repository": "vllm-project/vllm",
+    "number": 38376,
+    "type": "issue",
+    "title": "[Bug]: glm 4.7 fp8 crashes (Worker_TP3 pid=457501) ERROR 03-27 17:11:15 [multiproc_executor.py:852] AttributeError: '_OpNamespace' '_C' object has no attribute 'per_token_group_fp8_quant'",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 24.04.3 LTS (x86_64)\nGCC version                  : (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0\nClang version                : 18.1.3 (1ubuntu1)\nCMake version                : version 3.28.3\nLibc version                 : glibc-2.39\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.10.0+cu128\nIs debug build               : False\nCUDA used to build PyTorch   : 12.8\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0] (64-bit runtime)\nPython platform              : Linux-6.8.12-15-pve-x86_64-with-glibc2.39\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.9.86\nCUDA_MODULE_LOADING set to   : \nGPU models and configuration : \nGPU 0: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition\nGPU 1: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition\nGPU 2: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition\nGPU 3: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition\nGPU 4: NVIDIA RTX PRO 6000 Blackwell Workstation Edition\nGPU 5: NVIDIA RTX PRO 6000 Blackwell Workstation Edition\nGPU 6: NVIDIA RTX PRO 6000 Blackwell Workstation Edition\nGPU 7: NVIDIA RTX PRO 6000 Blackwell Workstation Edition\n\nNvidia driver version        : 575.57.08\ncuDNN version                : Probably one of the following:\n/usr/lib/x86_64-linux-gnu/libcudnn.so.9.17.1\n/usr/lib/x86_64-linux-gnu/libcudnn_adv.so.9.17.1\n/usr/lib/x86_64-linux-gnu/libcudnn_cnn.so.9.17.1\n/usr/lib/x86_64-linux-gnu/libcudnn_engines_precompil",
+    "author": "koush",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/38376",
+    "createdAt": "2026-03-27T17:33:29.000Z",
+    "updatedAt": "2026-07-27T02:18:20.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:f8a1be5cdefa56d45f346a4f4850b4cdc2da09515951bf1255686575ca47afce",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.7 FP8 缺少量化算子导致崩溃",
+      "summaryZh": "vLLM 中 GLM-4.7 FP8 多 GPU 推理：运行 GLM-4.7 FP8 时，Worker_TP3 进程因找不到 `'_C'` 对象的 `per_token_group_fp8_quant` 属性而崩溃；环境使用 8 张 NVIDIA RTX PRO 6000 Blackwell GPU、PyTorch 2.10.0+cu128 和 CUDA 12.9",
+      "models": [
+        "GLM-4.7"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 GLM-4.7 FP8 推理启动或运行。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】glm 4.7 fp8 crashes",
+        "【标题】AttributeError: '_OpNamespace' '_C' object has no attribute 'per_token_group_fp8_quant'"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-37113",
+    "nodeId": "I_kwDOI7xefs7zHhLc",
+    "repository": "vllm-project/vllm",
+    "number": 37113,
+    "type": "issue",
+    "title": "[SM120][GLM-5.1] NVFP4 DCP/MTP stack tracker",
+    "bodyExcerpt": "This issue tracks the PR stack and launch contract for the GLM-5.1 NVFP4 SM120 vLLM configuration we are validating.\n\nThe goal is that someone can rebuild the same runtime state from the PRs below, install the same external runtime dependencies, and launch vLLM with the same arguments.\n\n## Runtime Target\n\n- Model: `lukealonso/GLM-5.1-NVFP4`\n- Runtime: vLLM with the PR stack listed below\n- GPUs: 8x SM120\n- Tensor parallel: `8`\n- Decode context parallel: `4`\n- MTP draft tokens: `3`\n- Rejection sampling: `probabilistic`\n- KV cache dtype: `bfloat16`\n- Target MoE backend: `b12x`\n- Draft MoE backend: `flashinfer_cutlass`\n- External `b12x` package: `0.8.3`\n\n## PR Stack\n\n- #39550: model-side loading for appended GLM NextN/MTP draft layers.\n- #39632: MTP runtime metadata reuse and DCP-aware draft execution plumbing.\n- #39633: PCIe custom-allreduce eligibility for the explicit PCIe opt-in path.\n- #39634: optional SM120 `b12x` NVFP4 MoE and dense FP4 backend integration.\n- #39635: FlashInfer MLA decode/runtime handling for DCP + MTP target validation.\n\n## Current Launch\n\nThe model config is used directly for context length; current logs show `max_seq_len=202752`.\n\n```bash\nexport HF_HUB_OFFLINE=1\nexport VLLM_LOG_STATS_INTERVAL=1\nexport VLLM_ENABLE_PCIE_ALLREDUCE=1\nunset VLLM_NVFP4_GEMM_BACKEND\n\ncd /opt/vllm\npython3 -m vllm.entrypoints.openai.api_server \\\n  --model lukealonso/GLM-5.1-NVFP4 \\\n  --host 0.0.0.0 \\\n  --port 5248 \\\n  --served-model-name abtest \\\n  --trust-remote-code \\\n  --tensor-parallel-size 8 \\\n  --decode-context-parallel-size 4 \\\n  --gpu-memory-utilization 0.82 \\\n  --max-num-seqs 64 \\\n  --kv-cache-dtype bfloat16 \\\n  --enable-prefix-caching \\\n  --enable-chunked-prefill \\\n  --reasoning-parser glm45 \\\n  --moe-backend b12x \\\n  --speculative-config '{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"rejection_sample_method\":\"probabilistic\",\"moe_backend\":\"flashinfer_cutlass\"}'\n```\n\n## Validated Runtime Signals\n\n- Server starts without `--enforce-eager`.\n- vLLM uses model confi",
+    "author": "voipmonitor",
+    "state": "open",
+    "labels": [
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/37113",
+    "createdAt": "2026-03-15T17:40:41.000Z",
+    "updatedAt": "2026-07-25T02:18:09.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:57f994ed166d17f7c37b14f7a45a8e95b3630bce2fa52088e82b66c497e64a48",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.1 NVFP4 SM120 DCP/MTP运行栈",
+      "summaryZh": "请求支持并验证GLM-5.1 NVFP4在SM120平台上的DCP、MTP、NVFP4 MoE及PCIe custom-allreduce运行配置；目标配置使用8张SM120 GPU、张量并行8、解码上下文并行4、MTP草稿令牌3和bfloat16 KV缓存，最大上下文长度为202752",
+      "models": [
+        "GLM-5.1-NVFP4"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "INFO",
+      "impactScopeZh": "面向vLLM在SM120 GPU上的GLM-5.1 NVFP4推理部署。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】[SM120][GLM-5.1] NVFP4 DCP/MTP stack tracker",
+        "【正文】This issue tracks the PR stack and launch contract for the GLM-5.1 NVFP4 SM120 vLLM configuration we are validating."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-37846",
+    "nodeId": "I_kwDOI7xefs71dE8_",
+    "repository": "vllm-project/vllm",
+    "number": 37846,
+    "type": "issue",
+    "title": "[Bug]: 0.17.0rc1在A2部署GLM-4.7，开启MTP后工具调用异常",
+    "bodyExcerpt": "### Your current environment\n\n0.17.0rc1，A2 910B1到B3，GLM-4.7，HDK 25.2.3\n\n### 🐛 Describe the bug\n\n问题1：\n· 关闭 MTP 时，工具调用正常工作；开启 MTP3 时，工具调用必定出现 JSON 格式错误；错误信息：JSON 解析失败，提示缺少 }\n· 参考官方Issue尝试修复，经验证有效：GitHub Issue #34449: [[Bug]: GLM-5-FP8 malformed tool calls](https://github.com/vllm-project/vllm/issues/34449)\n· 原因分析：当 MTP (Multi-Token Prediction) 开启时，vLLM 会并行预测多个 token。但 GLM 系列的 tool parser 使用 partial_json_parser 进行 autocomplete（自动补全不完整的 JSON），这导致：autocomplete 结果与实际输出不匹配 - MTP 并行生成时，token 边界可能错乱；计算 remaining_call 时出错 - 用 autocomplete 后的完整 JSON 减去已发送的内容，结果可能是重复的、截断的或畸形的 JSON；最终发送到客户端的 JSON 是错误的 - 客户端解析失败\n\n问题2：\n· 修复问题1后，发现工具调用仍出现概率性错误，错误表现仍为JSON 解析失败，提示缺少 }\n· 根据用户反馈（用户规模1000+，周一早上3小时内就有约10个用户反馈问题，比较严重了），开启MTP前基本没有出现此问题，开启后此问题才开始出现\n· 是概率性错误，可以通过重试来绕过，但是非常影响使用体验\n· 当前使用的是GLM-4.7基于最新msmodelslim官方工具W8A8量化模型，手动拼接Float MTP权重；部署方案是mooncake V1 PD分离\n· 原因分析：感觉更像是模型精度问题？\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "samsuzhang",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/37846",
+    "createdAt": "2026-03-23T03:53:02.000Z",
+    "updatedAt": "2026-07-23T02:19:25.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:540223bf5f7c3902720458e33c9a64a4bd03070a945a82172e7db9fefb668245",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.7开启MTP后工具调用JSON解析失败",
+      "summaryZh": "vLLM 0.17.0rc1在A2上部署GLM-4.7并开启MTP3的工具调用：关闭MTP时工具调用正常；开启MTP3后必定或概率性出现JSON格式错误，客户端解析失败并提示缺少“}”。修复partial_json_parser相关问题后，仍存在概率性错误，可通过重试绕过但严重影响使用体验；问题在开启MTP后出现，影响使用工具调用的用户；反馈涉及1000多名用户",
+      "models": [
+        "GLM-4.7"
+      ],
+      "hardware": [
+        "NPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响A2 910B1到B3、HDK 25.2.3环境中使用MTP3工具调用的部署场景。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】0.17.0rc1在A2部署GLM-4.7，开启MTP后工具调用异常",
+        "【正文】开启 MTP3 时，工具调用必定出现 JSON 格式错误；错误信息：JSON 解析失败，提示缺少 }"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-37587",
+    "nodeId": "I_kwDOI7xefs70lfAr",
+    "repository": "vllm-project/vllm",
+    "number": 37587,
+    "type": "issue",
+    "title": "[Bug]: cudaErrorIllegalAddress crash when enabling `--performance-mode throughput` for zai-org/GLM-4.7-FP8 under load",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Amazon Linux 2023.10.20260216 (x86_64)\nGCC version                  : (GCC) 11.5.0 20240719 (Red Hat 11.5.0-5)\nClang version                : Could not collect\nCMake version                : version 3.22.2\nLibc version                 : glibc-2.34\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.9.1+cu130\nIs debug build               : False\nCUDA used to build PyTorch   : 13.0\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.13 (main, Mar 10 2026, 18:17:25) [Clang 21.1.4 ] (64-bit runtime)\nPython platform              : Linux-6.1.161-183.298.amzn2023.x86_64-x86_64-with-glibc2.34\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 13.0.88\nCUDA_MODULE_LOADING set to   : \nGPU models and configuration : \nGPU 0: NVIDIA H200\nGPU 1: NVIDIA H200\nGPU 2: NVIDIA H200\nGPU 3: NVIDIA H200\nGPU 4: NVIDIA H200\nGPU 5: NVIDIA H200\nGPU 6: NVIDIA H200\nGPU 7: NVIDIA H200\n\nNvidia driver version        : 580.126.09\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           48 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  192\nOn-line CPU(s) list:             ",
+    "author": "Xarbirus",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/37587",
+    "createdAt": "2026-03-19T18:31:07.000Z",
+    "updatedAt": "2026-07-21T02:19:33.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:50c667bb06d5f80b667a34e4552a943cea4e6d31b8cfc9ee36f52afa4ba665ae",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.7-FP8吞吐模式触发CUDA非法地址崩溃",
+      "summaryZh": "vLLM在负载下以吞吐性能模式运行GLM-4.7-FP8：为 zai-org/GLM-4.7-FP8 启用 `--performance-mode throughput` 并承受负载时发生 `cudaErrorIllegalAddress` 崩溃",
+      "models": [
+        "zai-org/GLM-4.7-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响在 NVIDIA H200 GPU 上运行该模型的吞吐性能模式推理。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】cudaErrorIllegalAddress crash when enabling `--performance-mode throughput` for zai-org/GLM-4.7-FP8 under load",
+        "【正文】GPU models and configuration: GPU 0: NVIDIA H200"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-37599",
+    "nodeId": "I_kwDOI7xefs70oE2n",
+    "repository": "vllm-project/vllm",
+    "number": 37599,
+    "type": "issue",
+    "title": "[Bug]: cudaErrorIllegalAddress crash when running zai-org/GLM-4.7-FP8 with `--max-num-batched-tokens` < default (e.g. 4K) under",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Amazon Linux 2023.10.20260216 (x86_64)\nGCC version                  : (GCC) 11.5.0 20240719 (Red Hat 11.5.0-5)\nClang version                : Could not collect\nCMake version                : version 3.22.2\nLibc version                 : glibc-2.34\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.9.1+cu130\nIs debug build               : False\nCUDA used to build PyTorch   : 13.0\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.13 (main, Mar 10 2026, 18:17:25) [Clang 21.1.4 ] (64-bit runtime)\nPython platform              : Linux-6.1.161-183.298.amzn2023.x86_64-x86_64-with-glibc2.34\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 13.0.88\nCUDA_MODULE_LOADING set to   : \nGPU models and configuration : \nGPU 0: NVIDIA H200\nGPU 1: NVIDIA H200\nGPU 2: NVIDIA H200\nGPU 3: NVIDIA H200\nGPU 4: NVIDIA H200\nGPU 5: NVIDIA H200\nGPU 6: NVIDIA H200\nGPU 7: NVIDIA H200\n\nNvidia driver version        : 580.126.09\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           48 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  192\nOn-line CPU(s) list:             ",
+    "author": "Xarbirus",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/37599",
+    "createdAt": "2026-03-19T20:47:54.000Z",
+    "updatedAt": "2026-07-21T02:19:31.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:49eb81109f897d64df4757eadde4bb64287896087ba2911f15e131f5c7162e34",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.7-FP8低批处理令牌数触发CUDA非法地址",
+      "summaryZh": "vLLM运行 zai-org/GLM-4.7-FP8 时将 --max-num-batched-tokens 设置为低于默认值（例如4K）：在 --max-num-batched-tokens 低于默认值时运行 zai-org/GLM-4.7-FP8 会发生 cudaErrorIllegalAddress 崩溃",
+      "models": [
+        "zai-org/GLM-4.7-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响使用NVIDIA H200运行该模型并降低最大批处理令牌数的场景。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】cudaErrorIllegalAddress crash when running zai-org/GLM-4.7-FP8 with --max-num-batched-tokens < default (e.g. 4K)"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-36855",
+    "nodeId": "PR_kwDOI7xefs7J7EBk",
+    "repository": "vllm-project/vllm",
+    "number": 36855,
+    "type": "pr",
+    "title": "[ROCm] Fix AITER sparse MLA crash for num_heads < 16 (e.g. GLM-5 TP=8)",
+    "bodyExcerpt": "## Summary\n\n- Fix `RuntimeError: get_heuristic_kernel_mla: cannot get heuristic kernel! gqa:8` when running sparse MLA models (e.g. GLM-5) with AITER enabled on ROCm at TP sizes that yield `num_heads < 16` per GPU\n- Add head repeat padding logic to `ROCMAiterMLASparseImpl` (matching the existing workaround in `AiterMLAImpl`)\n- Add validation in sparse backend selection so `VLLM_ROCM_USE_AITER_MLA=0` gives a clear error instead of silently failing\n- Fix `ZeroDivisionError` in FP8 paged MQA logits indexer for small head counts (`heads < 64`)\n\n## Root Cause\n\n### Issue 1: MLA decode kernel crash (gqa=8)\n\nThe AITER MLA decode kernel (`mla_decode_stage1_asm_fwd`) only supports `num_heads >= 16`. GLM-5 has 64 attention heads; with TP=8, each GPU gets 8 heads, triggering the unsupported `gqa=8` code path.\n\nThe non-sparse `AiterMLAImpl` already handles this by repeating query heads from 8 to 16 before the kernel call and slicing every other head from the output. The sparse `ROCMAiterMLASparseImpl` was missing this logic.\n\nAdditionally, the sparse backend selection path (`_get_backend_priorities` in `rocm.py`) was hardcoded to `ROCM_AITER_MLA_SPARSE` without checking `is_mla_enabled()`, so `VLLM_ROCM_USE_AITER_MLA=0` had no effect for sparse models.\n\n### Issue 2: FP8 indexer ZeroDivisionError\n\nThe sparse attention indexer calls `deepgemm_fp8_paged_mqa_logits_stage1` with default `ChunkQ=64`. When `heads < 64` (e.g. 8 with GLM-5 TP=8), the computation `heads // ChunkQ = 0` leads to `TileQCount = 0` and a `ZeroDivisionError`. Fixed by passing `ChunkQ=heads` explicitly, matching how the main `deepgemm_fp8_paged_mqa_logits` function handles it.\n\nRelated: https://github.com/ROCm/aiter/issues/726 (upstream feature request for native nhead=8 support)\n\n## Test plan\n- [x] Run GLM-5 FP8 with AITER enabled on ROCm TP=8 — verify no `gqa:8` crash and no ZeroDivisionError\n- [x] Run DeepSeek-V3.2 (sparse MLA) at TP sizes yielding num_heads=8 — verify correctness\n- [x] Verify existing sparse",
+    "author": "ChuanLi1101",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "ready",
+      "v1"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/36855",
+    "createdAt": "2026-03-12T06:14:44.000Z",
+    "updatedAt": "2026-07-15T06:30:24.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:4001b6874070cabc0fc45a8bce6334dcf5f561407e1ed441f959a2b98e79bfb9",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 ROCm AITER 稀疏 MLA 小头数崩溃",
+      "summaryZh": "新增稀疏 MLA 查询头重复填充并在输出中切取对应头，修复小头数下的 AITER 解码崩溃；调整稀疏后端选择以校验 `VLLM_ROCM_USE_AITER_MLA=0`；调整 FP8 分页 MQA logits 索引器显式传入 `ChunkQ=heads`，修复小头数除零错误，解决AITER MLA 解码内核要求每 GPU 至少 16 个头；GLM-5 在 TP=8 时每 GPU 仅 8 个头，触发 `RuntimeError: get_heuristic_kernel_mla: cannot get heuristic kernel! gqa:8`。FP8 分页 MQA logits 索引器在 heads 小于 64 时还会因 `heads // ChunkQ = 0` 触发 `ZeroDivisionError`；GLM-5 FP8 ROCm TP=8 及每 GPU 头数为 8 的稀疏 MLA 场景可避免上述崩溃，并支持验证禁用 AITER MLA 的配置",
+      "models": [
+        "GLM-5",
+        "DeepSeek-V3.2"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE",
+        "EVALUATION"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 ROCm 上启用 AITER 的稀疏 MLA 推理，尤其是张量并行后每 GPU 头数小于 16 的配置。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Fix AITER sparse MLA crash for num_heads < 16 (e.g. GLM-5 TP=8)",
+        "【正文】Fix RuntimeError ... gqa:8 ... and ZeroDivisionError ... heads < 64"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-36833",
+    "nodeId": "I_kwDOI7xefs7yFSsf",
+    "repository": "vllm-project/vllm",
+    "number": 36833,
+    "type": "issue",
+    "title": "[Bug]: GLM-4.7-Flash does not return tool_calls field in vLLM 0.16.0 even with --tool-call-parser glm47",
+    "bodyExcerpt": "### Your current environment\n\nHi,\n\nI am trying to deploy GLM-4.7-Flash using vLLM 0.16.0 and enable tool calling.  \nHowever, the response does not include the `tool_calls` field even though the tool parser is configured.\n\nEnvironment:\n- vLLM version: 0.16.0\n- Model: GLM-4.7-Flash\n- GPU: NVIDIA RTX A6000\n- CUDA version: 12.4\n\nStartup command:\n\nvllm serve /path/to/GLM-4.7-Flash \\\n  --port 8000 \\\n  --tool-call-parser glm47 \\\n  --enable-auto-tool-choice\n\nRequest example:\n\nPOST /v1/chat/completions\n\n```\n{\n  \"model\": \"GLM-4.7-Flash\",\n  \"messages\": [\n    {\"role\": \"user\", \"content\": \"What is the weather in Beijing today?\"}\n  ],\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"get_weather\",\n        \"description\": \"Get the current weather\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"location\": {\"type\": \"string\"}\n          },\n          \"required\": [\"location\"]\n        }\n      }\n    }\n  ]\n}\n```\n\nExpected behavior:\nThe response should include a `tool_calls` field indicating that the model wants to call the function.\n\nActual behavior:\nThe response only returns normal text and does not contain the `tool_calls` field.\n\nIs there any additional configuration required for GLM-4.7-Flash to enable tool calling in vLLM?\n\nThanks!",
+    "author": "CodeofGame",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/36833",
+    "createdAt": "2026-03-12T00:56:59.000Z",
+    "updatedAt": "2026-07-11T02:19:52.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:6b822114fd4676526e8501b2f9f3a1a135cce97b08cec0b8dd62aef53bef5177",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.7-Flash未返回tool_calls字段",
+      "summaryZh": "vLLM 0.16.0中使用glm47解析器部署GLM-4.7-Flash的工具调用：即使配置--tool-call-parser glm47和--enable-auto-tool-choice，GLM-4.7-Flash的响应仍仅返回普通文本，不包含tool_calls字段；影响GLM-4.7-Flash在NVIDIA RTX A6000、CUDA 12.4环境中的工具调用使用",
+      "models": [
+        "GLM-4.7-Flash"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "MEDIUM",
+      "impactScopeZh": "vLLM 0.16.0的GLM-4.7-Flash工具调用响应。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】GLM-4.7-Flash does not return tool_calls field in vLLM 0.16.0 even with --tool-call-parser glm47",
+        "【正文】The response only returns normal text and does not contain the `tool_calls` field."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-36620",
+    "nodeId": "I_kwDOI7xefs7xbDxx",
+    "repository": "vllm-project/vllm",
+    "number": 36620,
+    "type": "issue",
+    "title": "[Bug]:  Does vllm support deploying glm-5 on A800 or A100, or are there any plans to support it?",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nYour output of `python collect_env.py` here\n```\n\n</details>\n\n\n### 🐛 Describe the bug\n\nDoes vllm support deploying glm-5 on A800 or A100, or are there any plans to support it?\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "yangzhipeng1108",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/36620",
+    "createdAt": "2026-03-10T09:04:18.000Z",
+    "updatedAt": "2026-07-09T02:19:04.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:51589658e7921ba04f02dd0f68364e88316853223bcc2ebeac6a22261a5cbc1c",
+    "category": "COMPATIBILITY",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5 在 A800/A100 上的部署支持",
+      "summaryZh": "请求确认 vLLM 是否支持在 A800 或 A100 上部署 GLM-5，以及未来是否计划支持",
+      "models": [
+        "GLM-5"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "COMPATIBILITY",
+      "severity": "MEDIUM",
+      "impactScopeZh": "涉及 GLM-5 在 A800 和 A100 GPU 上的部署兼容性。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】Does vllm support deploying glm-5 on A800 or A100, or are there any plans to support it?",
+        "【正文】Does vllm support deploying glm-5 on A800 or A100, or are there any plans to support it?"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-37159",
+    "nodeId": "I_kwDOI7xefs7zQDbu",
+    "repository": "vllm-project/vllm",
+    "number": 37159,
+    "type": "issue",
+    "title": "[Bug]: vLLM crashed with V100 by running zai-org/GLM-OCR",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nClang version                : Could not collect\nCMake version                : Could not collect\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.10.0+cu129\nIs debug build               : False\nCUDA used to build PyTorch   : 12.9\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.13 (main, Mar  4 2026, 09:23:07) [GCC 11.4.0] (64-bit runtime)\nPython platform              : Linux-3.10.0-1160.6.1.el7.x86_64-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.9.86\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration : GPU 0: Tesla V100-PCIE-16GB\nNvidia driver version        : 535.86.10\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                    x86_64\nCPU op-mode(s):                  32-bit, 64-bit\nAddress sizes:                   46 bits physical, 48 bits virtual\nByte Order:                      Little Endian\nCPU(s):                          32\nOn-line CPU(s) list:             0-31\nVendor ID:                       GenuineIntel\nModel name:                      Intel(R) Xeon(R) Silver 4215R CPU @ 3.20GHz\nCPU family:                      6\nModel:                ",
+    "author": "snailwei",
+    "state": "open",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/37159",
+    "createdAt": "2026-03-16T08:46:08.000Z",
+    "updatedAt": "2026-07-08T14:46:20.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:2abf639703e30df9252310e3254199c9bb4d4ef1877eeb4d802ae66a637c47cd",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "V100 运行 GLM-OCR 时 vLLM 崩溃",
+      "summaryZh": "在 NVIDIA Tesla V100-PCIE-16GB 上使用 vLLM 运行 zai-org/GLM-OCR：vLLM 在 V100 GPU 上运行 zai-org/GLM-OCR 时发生崩溃；影响配备 Tesla V100-PCIE-16GB GPU 的 GLM-OCR 运行场景",
+      "models": [
+        "zai-org/GLM-OCR"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "V100 GPU 上的 GLM-OCR 推理。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Bug]: vLLM crashed with V100 by running zai-org/GLM-OCR",
+        "【正文】GPU models and configuration : GPU 0: Tesla V100-PCIE-16GB"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-36220",
+    "nodeId": "I_kwDOI7xefs7wXCuS",
+    "repository": "vllm-project/vllm",
+    "number": 36220,
+    "type": "issue",
+    "title": "[Bug]: vllm serve quantized GLM-5 failed",
+    "bodyExcerpt": "### Your current environment\n\n1. vllm serve指令\n```\nvllm serve /mnt/nvme/liaotj/zhujy/llm-compressor/examples/awq/glm5_bf16-W4A16-SYM-AWQ-cuda-compressed-tensors \\\n    --tensor-parallel-size 8 \\\n    --host <ip> \\\n    --port <port> \\\n    --no-enable-prefix-caching \\\n    --max_num_seqs 32 \\\n```\n\n2. 使用llm-compressor量化工具quantized GLM-5(awq+int4)‘s config.json\n\n ```\n \"architectures\": [\n    \"GlmMoeDsaForCausalLM\"\n  ],\n  \"attention_bias\": false,\n  \"attention_dropout\": 0.0,\n  \"bos_token_id\": 0,\n  \"dtype\": \"bfloat16\",\n  \"eos_token_id\": [\n    154820,\n    154827,\n    154829\n  ],\n  \"ep_size\": 1,\n  \"first_k_dense_replace\": 3,\n  \"head_dim\": 64,\n  \"hidden_act\": \"silu\",\n  \"hidden_size\": 6144,\n  \"index_head_dim\": 128,\n  \"index_n_heads\": 32,\n  \"index_topk\": 2048,\n  \"indexer_rope_interleave\": true,\n  \"initializer_range\": 0.02,\n  \"intermediate_size\": 12288,\n  \"kv_lora_rank\": 512,\n  \"max_position_embeddings\": 202752,\n  \"mlp_layer_types\": [\n    \"dense\",\n    \"dense\",\n    \"dense\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"sparse\",\n    \"spa",
+    "author": "artificialzjy",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/36220",
+    "createdAt": "2026-03-06T06:45:56.000Z",
+    "updatedAt": "2026-07-05T02:18:54.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:85e15e02901e2adc955b785bf98c3fc967991cd520da493e6c2d21f4eb5ca2e1",
+    "category": "COMPATIBILITY",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "vLLM serve 量化 GLM-5 失败",
+      "summaryZh": "使用 llm-compressor AWQ+INT4 量化的 GLM-5 模型通过 vLLM serve 部署：使用 vLLM serve 启动 AWQ+INT4 量化的 GLM-5（GlmMoeDsaForCausalLM）模型失败；影响量化 GLM-5 模型在 vLLM 上的服务部署",
+      "models": [
+        "GLM-5",
+        "GlmMoeDsaForCausalLM"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "COMPATIBILITY",
+      "severity": "MEDIUM",
+      "impactScopeZh": "vLLM 服务部署场景，使用 8 路张量并行及 llm-compressor AWQ+INT4 量化模型。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】vllm serve quantized GLM-5 failed",
+        "【正文】使用 llm-compressor 量化工具 quantized GLM-5(awq+int4)，并通过 vllm serve 启动"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-37934",
+    "nodeId": "I_kwDOI7xefs71zngz",
+    "repository": "vllm-project/vllm",
+    "number": 37934,
+    "type": "issue",
+    "title": "[Bug]: Inflight bitsandbytes quanitzation error in GLM-4.6V-Flash",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nClang version                : Could not collect\nCMake version                : Could not collect\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.10.0+cu129\nIs debug build               : False\nCUDA used to build PyTorch   : 12.9\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.13 (main, Mar  4 2026, 09:23:07) [GCC 11.4.0] (64-bit runtime)\nPython platform              : Linux-5.15.0-164-generic-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.9.86\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration :\nGPU 0: NVIDIA GeForce RTX 3090\nGPU 1: NVIDIA GeForce RTX 3090\n\nNvidia driver version        : 580.95.05\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           43 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  48\nOn-line CPU(s) list:                     0-47\nVendor ID:                               AuthenticAMD\nModel name:                              AMD Ryzen ",
+    "author": "akowalsk",
+    "state": "closed",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/37934",
+    "createdAt": "2026-03-23T21:57:44.000Z",
+    "updatedAt": "2026-06-09T17:01:01.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:93a30756259fa63e421cf6fda7ab6a42d2ad1e66f4ceed57f1430883fee192d1",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.6V-Flash inflight bitsandbytes 量化报错",
+      "summaryZh": "GLM-4.6V-Flash 的 inflight bitsandbytes 量化：GLM-4.6V-Flash 使用 inflight bitsandbytes 量化时出现错误",
+      "models": [
+        "GLM-4.6V-Flash"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响在 NVIDIA GeForce RTX 3090 GPU 环境中使用该量化配置的场景。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Bug]: Inflight bitsandbytes quanitzation error in GLM-4.6V-Flash",
+        "【正文】GPU models and configuration: GPU 0: NVIDIA GeForce RTX 3090; GPU 1: NVIDIA GeForce RTX 3090"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-37962",
+    "nodeId": "PR_kwDOI7xefs7M4yss",
+    "repository": "vllm-project/vllm",
+    "number": 37962,
+    "type": "pr",
+    "title": "[bug-fix] GLM OCR Patch Merger context_dim",
+    "bodyExcerpt": "\r\n\r\n\r\n## Purpose\r\nModified the reading logic in GLM-OCR, the original algorithm implementation error, although the numbers just want to wait, but in fact, it should be text_config intermediate_size is the correct design intention, and not modifying it will affect subsequent model iterations.\r\nChange from `vision_config.out_hidden_size * vision_config.in_channels` to `context_dim=text_config.intermediate_size`\r\n## Test Plan\r\n\r\n## Test Result\r\n\r\n---\r\n<details>\r\n<summary> Essential Elements of an Effective PR Description Checklist </summary>\r\n\r\n- [ ] The purpose of the PR, such as \"Fix some issue (link existing issues this PR will resolve)\".\r\n- [ ] The test plan, such as providing test command.\r\n- [ ] The test results, such as pasting the results comparison before and after, or e2e results\r\n- [ ] (Optional) The necessary documentation update, such as updating `supported_models.md` and `examples` for a new model.\r\n- [ ] (Optional) Release notes update. If your change is user facing, please update the release notes draft in the [Google Doc](https://docs.google.com/document/d/1YyVqrgX4gHTtrstbq8oWUImOyPCKSGnJ7xtTpmXzlRs/edit?tab=t.0).\r\n</details>\r\n\r\n",
+    "author": "JaredforReal",
+    "state": "merged",
+    "labels": [
+      "bug",
+      "ready"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/37962",
+    "createdAt": "2026-03-24T05:29:49.000Z",
+    "updatedAt": "2026-06-05T03:53:25.000Z",
+    "mergedAt": "2026-03-26T12:11:22.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:11499d6e9779ddfd75ab39231ad4e496a8c256d8bc705798b164a02b94498ae8",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM-OCR Patch Merger 的 context_dim",
+      "summaryZh": "修复 GLM-OCR 的读取逻辑，将 `context_dim` 从 `vision_config.out_hidden_size * vision_config.in_channels` 调整为 `text_config.intermediate_size`，解决原有实现将 `context_dim` 计算为 `vision_config.out_hidden_size * vision_config.in_channels`，与设计意图不符，可能影响后续模型迭代；使实现符合设计意图，并避免影响后续模型迭代",
+      "models": [
+        "GLM-OCR"
+      ],
+      "hardware": [],
+      "scenarios": [],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "GLM-OCR 的 Patch Merger 实现及后续模型迭代。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[bug-fix] GLM OCR Patch Merger context_dim",
+        "【正文】Change from `vision_config.out_hidden_size * vision_config.in_channels` to `context_dim=text_config.intermediate_size`"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-38377",
+    "nodeId": "PR_kwDOI7xefs7OHdWf",
+    "repository": "vllm-project/vllm",
+    "number": 38377,
+    "type": "pr",
+    "title": "[Bugfix]: fix blind access to per_token_group_fp8_quant causing GLM 4.7 crash on RTX 6000 pro",
+    "bodyExcerpt": "## Purpose\r\nFix https://github.com/vllm-project/vllm/issues/38376\r\n\r\n## Test Plan\r\nApply patch and load GLM 4.7 fp8 on RTX 6000 Pro x8\r\n\r\nhttps://huggingface.co/zai-org/GLM-4.7-FP8\r\n \r\n## Test Result\r\n\r\n\r\nModel loads and performs inference correctly.\r\n\r\n---\r\n<details>\r\n<summary> Essential Elements of an Effective PR Description Checklist </summary>\r\n\r\n- [X] The purpose of the PR, such as \"Fix some issue (link existing issues this PR will resolve)\".\r\n- [X] The test plan, such as providing test command.\r\n- [X] The test results, such as pasting the results comparison before and after, or e2e results\r\n- [ ] (Optional) The necessary documentation update, such as updating `supported_models.md` and `examples` for a new model.\r\n- [ ] (Optional) Release notes update. If your change is user facing, please update the release notes draft in the [Google Doc](https://docs.google.com/document/d/1YyVqrgX4gHTtrstbq8oWUImOyPCKSGnJ7xtTpmXzlRs/edit?tab=t.0).\r\n</details>\r\n\r\n",
+    "author": "koush",
+    "state": "open",
+    "labels": [
+      "bug",
+      "needs-rebase"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/38377",
+    "createdAt": "2026-03-27T17:34:54.000Z",
+    "updatedAt": "2026-06-03T15:46:05.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:2a2a96ffb8d496b221da2c2a6b09ee8793d6788adff20c6d9f7c63b24e2335a0",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM 4.7 在 RTX 6000 Pro 上崩溃",
+      "summaryZh": "修复对 per_token_group_fp8_quant 的盲目访问，使 GLM 4.7 FP8 能在 RTX 6000 Pro x8 上正常加载并执行推理，解决盲目访问 per_token_group_fp8_quant 导致 GLM 4.7 在 RTX 6000 Pro 上崩溃；测试结果显示模型加载和推理均正常",
+      "models": [
+        "GLM 4.7"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 GLM 4.7 FP8 在 RTX 6000 Pro 上的加载与推理。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】fix blind access to per_token_group_fp8_quant causing GLM 4.7 crash on RTX 6000 pro",
+        "【正文】Apply patch and load GLM 4.7 fp8 on RTX 6000 Pro x8；Model loads and performs inference correctly."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-37845",
+    "nodeId": "PR_kwDOI7xefs7MjyWF",
+    "repository": "vllm-project/vllm",
+    "number": 37845,
+    "type": "pr",
+    "title": "[Bugfix] Fix GLM tool-call finish chunk suffix alignment in streaming",
+    "bodyExcerpt": "## Summary\n\nFix the streaming finish-chunk logic for GLM tool calls when the parser's streamed JSON prefix does not exactly match `json.dumps(...)` formatting.\n\nCurrent `OpenAIServingChat` computes the final tool-argument delta by serializing the parser state and calling `replace()` against the streamed prefix. That is brittle for GLM parsers because the streamed prefix is not always serialized in a single stable style:\n\n- some runs are compact, e.g. `{\"a\":1}`\n- some are default-spaced, e.g. `{\"a\": 1}`\n- some GLM outputs are mixed, e.g. the outer object is compact but nested objects keep default whitespace\n\nWhen `replace()` cannot align the prefix, the finish chunk either re-emits the full object (duplicated-value malformed JSON) or fails to backfill the missing suffix.\n\nThis PR fixes the suffix computation centrally in `OpenAIServingChat` by:\n\n1. trying exact prefix matches against string-backed, default `json.dumps`, and compact `json.dumps(..., separators=(\",\", \":\"))` candidates;\n2. falling back to whitespace-minified prefix comparison for mixed-whitespace GLM fragments;\n3. returning an empty suffix if nothing aligns, instead of re-emitting the whole object.\n\nThis keeps the existing GLM parser contract unchanged and fixes the finish-chunk backfill in the serving layer rather than mutating parser state.\n\nRebased on latest `upstream/main` at `1c8e9c039` on 2026-05-17. The issue still exists on that commit: the upstream `expected_call.replace(actual_call, \"\", 1)` path still re-emits the full expected object for a mixed-whitespace GLM prefix.\n\nFixes #36857\n\n## Duplicate-work check\n\nCommands run on 2026-05-17:\n\n```bash\ngh issue view 36857 --repo vllm-project/vllm --comments\ngh pr list --repo vllm-project/vllm --state open --search \"36857 in:body\"\ngh pr list --repo vllm-project/vllm --state open --search \"GLM tool finish suffix alignment\"\n```\n\nResults: the open-PR searches returned only this PR, #37845. Issue comments mention earlier parser-side PRs and later GLM5.1 re",
+    "author": "QwertyJack",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "frontend"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/37845",
+    "createdAt": "2026-03-23T03:33:42.000Z",
+    "updatedAt": "2026-05-31T07:29:27.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:82c045c68fb19e0f1fe6d676f9e53d2fc904ff48e9299838d0fb6ca87cd6194e",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM 工具调用流式结束块后缀对齐",
+      "summaryZh": "修复 OpenAIServingChat 中的后缀计算：尝试字符串、默认 json.dumps 和紧凑 json.dumps 的精确前缀匹配，并对混合空白片段使用去空白比较；无法对齐时返回空后缀，避免重复发送完整对象，同时保持现有 GLM 解析器契约不变，解决GLM 解析器输出的流式 JSON 前缀可能采用紧凑、默认空格或混合空白格式，导致现有 replace 对齐失败，结束块可能重复发送完整对象形成畸形 JSON，或无法补回缺失后缀；修复 GLM 工具调用流式响应的结束块回填，变更集中在服务层，无需修改解析器状态",
+      "models": [
+        "GLM"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 vLLM OpenAIServingChat 中 GLM 工具调用的流式结束块处理。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Fix GLM tool-call finish chunk suffix alignment in streaming",
+        "【正文】When replace() cannot align the prefix, the finish chunk either re-emits the full object ... or fails to backfill the z缺"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-38665",
+    "nodeId": "PR_kwDOI7xefs7PFrUC",
+    "repository": "vllm-project/vllm",
+    "number": 38665,
+    "type": "pr",
+    "title": "[ROCm] Enable dual-stream MoE shared experts, AITER sparse MLA workaround, and GLM-5-FP8 weight loading fix",
+    "bodyExcerpt": "## Summary\r\n\r\nTargeted changes to improve GLM-5 MXFP4/FP8 inference on ROCm (AMD MI355X):\r\n\r\n- **Enable dual-stream MoE shared expert overlap on ROCm**: The shared experts stream guard in `SharedExpertsLogic` used `current_platform.is_cuda()`, restricting dual-stream execution to NVIDIA only. Changed to `is_cuda_alike()` so ROCm/HIP streams are used as well.\r\n\r\n- **Add GLM-5 to Quark dynamic MXFP4 model types**: GLM-5 (`glm_moe_dsa`) shares the same DSA-MoE architecture as DeepSeek-V3 and uses the same OCP MX fp4 Quark quantization scheme. Added it to `_DEEPSEEK_V3_FAMILY_MODEL_TYPES` so its attention projections use dynamic MXFP4 re-quantization.\r\n\r\n- **Work around AITER sparse MLA ZeroDivisionError for < 16 heads**: AITER's `deepgemm_fp8_paged_mqa_logits_stage1` kernel computes TileQCount from num_heads; when heads < 16 (e.g. GLM-5 with TP=8 giving 8 heads per GPU), TileQCount becomes 0. Guard both `rocm_fp8_paged_mqa_logits` and `rocm_fp8_mqa_logits` to fall back to PyTorch reference when heads < 16. Tracked upstream: ROCm/aiter#2563\r\n\r\n- **Fix GLM-5-FP8 weight loading for fused indexer wk_weights_proj**: GLM-5-FP8 checkpoints quantize the fused `wk_weights_proj` tensor with FP8 block quantization (`weight` + `weight_scale_inv`). The `Indexer`'s `MergedColumnParallelLinear` was created with `quant_config=None`, causing `KeyError: '...indexer.wk_weights_proj.weight_scale_inv'` at load time. Pass `quant_config` through so the quantized parameter structure is created. For unquantized checkpoints `quant_config` is already `None`, so this is a no-op.\r\n\r\n### Context\r\n\r\nReference: [amd/GLM-5-MXFP4](https://huggingface.co/amd/GLM-5-MXFP4), [zai-org/GLM-5-FP8](https://huggingface.co/zai-org/GLM-5-FP8)\r\n\r\nThe ATOM project (ROCm/atom) achieves high performance on GLM-5 MXFP4 on MI355X partly through dual-stream shared expert execution. This PR ports that optimization to vLLM and fixes GLM-5-FP8 weight loading.\r\n\r\nAI assistance (Claude) was used. The submitting human has rev",
+    "author": "ChuanLi1101",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "ready",
+      "needs-rebase",
+      "v1",
+      "deepseek"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/38665",
+    "createdAt": "2026-03-31T23:00:28.000Z",
+    "updatedAt": "2026-05-29T17:02:52.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:53511b771d26080da921d7b05e61008c1eccf5f849abc483f1ee049a2f2e50dc",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "ROCm 支持 GLM-5 双流与 FP8 修复",
+      "summaryZh": "新增 ROCm 双流 MoE 共享专家重叠执行，支持 GLM-5 Quark 动态 MXFP4；为 AITER 稀疏 MLA 在每卡头数小于 16 时增加 PyTorch 回退，并修复 GLM-5-FP8 fused indexer wk_weights_proj 权重加载；改善 GLM-5 在 ROCm/AMD MI355X 上的 MXFP4/FP8 推理；避免特定头数配置下的 AITER ZeroDivisionError，并解决 FP8 权重加载 KeyError",
+      "models": [
+        "GLM-5",
+        "GLM-5-FP8",
+        "DeepSeek-V3"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "ROCm/AMD MI355X 上的 GLM-5 MXFP4/FP8 推理及 TP=8 等每卡头数小于 16 的配置。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】[ROCm] Enable dual-stream MoE shared experts, AITER sparse MLA workaround, and GLM-5-FP8 weight loading fix",
+        "【正文】Targeted changes to improve GLM-5 MXFP4/FP8 inference on ROCm (AMD MI355X)"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-37551",
+    "nodeId": "I_kwDOI7xefs70bt2a",
+    "repository": "vllm-project/vllm",
+    "number": 37551,
+    "type": "issue",
+    "title": "[Bug] vLLM 0.17.1: `zai-org/GLM-OCR` has `mtp_graph < no_mtp_graph` despite high acceptance",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nClang version                : Could not collect\nCMake version                : Could not collect\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.10.0+cu128\nIs debug build               : False\nCUDA used to build PyTorch   : 12.8\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.11.14 (main, Dec 17 2025, 21:07:37) [Clang 21.1.4 ] (64-bit runtime)\nPython platform              : Linux-6.8.0-1052-gcp-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.8.61\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration :\nGPU 0: NVIDIA A100-SXM4-40GB\nGPU 1: NVIDIA A100-SXM4-40GB\n\nNvidia driver version        : 570.211.01\n\n==============================\nVersions of relevant libraries\n==============================\n[pip3] flashinfer-python==0.6.4\n[pip3] torch==2.10.0\n[pip3] transformers==5.3.0\n[pip3] triton==3.6.0\n\n==============================\n         vLLM Info\n==============================\nvLLM Version                 : 0.17.1\n```\n\n</details>\n\n\n### 🐛 Describe the bug\n\n\nFor `zai-org/GLM-OCR`, I observe:\n\n- `mtp_eager > no_mtp_eager` (expected)\n- but `mtp_graph < no_mtp_graph` (unexpected to me), even with relatively high MTP acceptance.\n\nThis is a fairness-matched comparison (`graph` vs `graph`) with the same prompt, image set, `max_tokens`, and TP.\n\n## Minimal reproducible e",
+    "author": "AlejandroBaron",
+    "state": "open",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/37551",
+    "createdAt": "2026-03-19T10:56:52.000Z",
+    "updatedAt": "2026-05-28T12:49:41.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:c61739259a53ee6c3fface6ae8f49e08163e3a8cb071eb61ef27ba892d67eaf7",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-OCR 出现 mtp_graph 低于 no_mtp_graph",
+      "summaryZh": "vLLM 0.17.1 中 zai-org/GLM-OCR 的 MTP graph 与 no-MTP graph 性能比较：在相同提示词、图像集、max_tokens 和张量并行配置的公平对比中，GLM-OCR 的 mtp_eager 高于 no_mtp_eager，但 mtp_graph 低于 no_mtp_graph；即使 MTP 接受率相对较高，仍观察到 graph 模式表现异常；影响 vLLM 0.17.1 使用 NVIDIA A100 GPU 运行 GLM-OCR 的 MTP graph 场景",
+      "models": [
+        "zai-org/GLM-OCR"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "GLM-OCR 的 MTP graph 推理性能比较",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】vLLM 0.17.1: `zai-org/GLM-OCR` has `mtp_graph < no_mtp_graph` despite high acceptance",
+        "【正文】`mtp_eager > no_mtp_eager` (expected)；but `mtp_graph < no_mtp_graph` (unexpected to me)"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-36857",
+    "nodeId": "I_kwDOI7xefs7yJhM7",
+    "repository": "vllm-project/vllm",
+    "number": 36857,
+    "type": "issue",
+    "title": "[Bug]: The arguments invoked by the tool in the GLM-5 streaming output cannot be parsed into the JSON format.",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nYour output of `python collect_env.py` here\n```\n\n</details>\n\n\n### 🐛 Describe the bug\n\nI deployed and tested GLM-5-w4a8-mtp in the Function Call streaming output scenario on vLLM 0.16.0. The relevant configuration and test result are provided at the end.\n\nStreaming output result of the GLM-5 model:\n```\ndata: {\"id\":\"chatcmpl-\",\"object\":\"chat.completion.chunk\",\"created\":xx,\"model\":\"glm-5\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"iz\"}}]},\"logprobs\":null,\"finish_reason\":null,\"token_ids\":null}]}\n\ndata: {\"id\":\"chatcmpl-\",\"object\":\"chat.completion.chunk\",\"created\":xx,\"model\":\"glm-5\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"hu.js\"}}]},\"logprobs\":null,\"finish_reason\":null,\"token_ids\":null}]}\n\ndata: {\"id\":\"chatcmpl-\",\"object\":\"chat.completion.chunk\",\"created\":xx,\"model\":\"glm-5\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"\"}}]},\"logprobs\":null,\"finish_reason\":null,\"token_ids\":null}]}\n\ndata: {\"id\":\"chatcmpl-\",\"object\":\"chat.completion.chunk\",\"created\":xx,\"model\":\"glm-5\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"id\":null,\"type\":null,\"index\":0,\"function\":{\"name\":null,\"arguments\":\"{\\\"content\\\": \\\"//Dou Dizhu\\\\nlet cards=[...'34567890JQKA2'].flatMap(v=>[v,v,v,v]).concat('X','D');\\\\nconsole.log('The game of Dou Dizhu has begun！Card group:',cards);\\\", \\\"filePath\\\": \\\"/home/Code/doudizhu.js\\\"}\"}}]},\"logprobs\":null,\"finish_reason\":\"tool_calls\",\"stop_reason\":154829,\"token_ids\":null}]}\n\ndata: [DONE]\n\n```\nDuring the phase of generating the \"tool_calls\" content, the model returns the complete \"tool_calls\" arguments content in the final chunk, instead of incrementally appending the content back into the \"}\" format, which ultimately leads to a JSON parsing failure. We found that the logic in the code is located in vllm\\entrypoints\\openai\\chat_completion\\s",
+    "author": "lililcode9527",
+    "state": "closed",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/36857",
+    "createdAt": "2026-03-12T06:46:24.000Z",
+    "updatedAt": "2026-05-21T01:34:46.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:8549d60100e0dc92cdb797c58ac1edffe9f67f0fe2814a96b3d6fe983ad2ca2a",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5流式工具调用参数无法解析JSON",
+      "summaryZh": "vLLM 0.16.0中GLM-5-w4a8-mtp的Function Call流式输出：生成tool_calls内容时，GLM-5将完整arguments集中返回在最后一个chunk，而不是逐步追加并形成JSON，导致工具调用参数JSON解析失败；影响GLM-5在Function Call流式输出场景中的工具调用",
+      "models": [
+        "GLM-5-w4a8-mtp"
+      ],
+      "hardware": [
+        "UNKNOWN"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "vLLM 0.16.0的GLM-5 Function Call流式输出。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】The arguments invoked by the tool in the GLM-5 streaming output cannot be parsed into the JSON format.",
+        "【正文】the model returns the complete \"tool_calls\" arguments content in the final chunk, instead of incrementally appending the"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-37385",
+    "nodeId": "PR_kwDOI7xefs7Lavlk",
+    "repository": "vllm-project/vllm",
+    "number": 37385,
+    "type": "pr",
+    "title": "[Bugfix] Fix GLM-4 tool parser double serialization in streaming",
+    "bodyExcerpt": "## Summary\n\nFix double serialization bug in GLM-4 tool parser streaming where `prev_tool_call_arr` stored arguments as a parsed dict instead of a JSON string, causing malformed final delta chunks in streaming tool call responses.\n\n## Root Cause\n\nIn `glm4_moe_tool_parser.py`, the streaming finalization code stored `arguments` as a dict:\n```python\nargs_dict = json.loads(full_args_str)\nself.prev_tool_call_arr[self.current_tool_id] = {\n    \"arguments\": args_dict,  # stored as dict -- BUG\n}\n```\n\nThe serving layer (`chat_completion/serving.py`) then called `json.dumps(args)` on this dict, which could produce different JSON formatting than `streamed_args_for_tool`, causing the `replace()` logic to fail and emit a spurious cumulative final delta.\n\n## Fix\n\nStore arguments as the raw JSON string (matching other tool parsers like Qwen3Coder, DeepSeek-V3.2, Seed-OSS):\n```python\njson.loads(full_args_str)  # validate only\nself.prev_tool_call_arr[self.current_tool_id] = {\n    \"arguments\": full_args_str,  # stored as string\n}\n```\n\nThe serving layer already handles both `str` and `dict` types at lines 1143-1146:\n```python\nif isinstance(args, str):\n    expected_call = args  # use directly, no double serialization\nelse:\n    expected_call = json.dumps(args, ensure_ascii=False)\n```\n\n## Test Plan\n\n```bash\npytest tests/tool_parsers/test_glm4_moe_tool_parser.py -v\npytest tests/tool_parsers/test_glm47_moe_tool_parser.py -v\n```\n\nFixes #36833",
+    "author": "karanb192",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "documentation",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/37385",
+    "createdAt": "2026-03-18T04:31:18.000Z",
+    "updatedAt": "2026-05-21T01:19:37.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:cb01747a153a4dbc64c41a8226b3dbe5a607f733883a75337c48e9d9f1536cfb",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM-4 流式工具解析器重复序列化",
+      "summaryZh": "修复 GLM-4 工具解析器流式终结逻辑，将 arguments 保存为原始 JSON 字符串；同时通过 JSON 解析进行校验，避免服务层重复序列化，解决GLM-4 工具解析器将 arguments 保存为解析后的字典，服务层再次序列化时可能产生不同 JSON 格式，导致替换逻辑失败并输出错误的累计最终增量块；修复流式工具调用响应中的格式异常，覆盖 GLM-4 工具解析器相关测试",
+      "models": [
+        "GLM-4"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 GLM-4 流式工具调用响应的最终增量块生成。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Fix GLM-4 tool parser double serialization in streaming",
+        "【正文】Store arguments as the raw JSON string ... avoiding double serialization"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-38652",
+    "nodeId": "I_kwDOI7xefs75N8KK",
+    "repository": "vllm-project/vllm",
+    "number": 38652,
+    "type": "issue",
+    "title": "[Bug]: --kv-cache-dtype fp8 produces garbage output on MLA models (GLM-4.7-Flash) at multi-turn",
+    "bodyExcerpt": "### Your current environment\n\n- vLLM 0.18.1\n- H100 80GB SXM5, CUDA 12.8\n- Ubuntu 24.04\n- Model: zai-org/GLM-4.7-Flash (MLA architecture, `glm4_moe_lite`)\n- Backend selected: FLASHMLA\n\n### Description\n\nFP8 KV cache produces corrupted output on MLA models when the conversation exceeds a single turn. Single-turn responses are coherent, multi-turn with system prompts degrades to garbage.\n\n### Reproduction\n\n```bash\nvllm serve zai-org/GLM-4.7-Flash --kv-cache-dtype fp8 --trust-remote-code --max-model-len 8192\n```\n\nSingle turn (works fine):\n```json\n{\"messages\": [{\"role\": \"user\", \"content\": \"Say hello in Finnish\"}]}\n→ coherent response about \"Hei\" / \"Terve\"\n```\n\nMulti-turn with system prompt (broken):\n```json\n{\"messages\": [\n  {\"role\": \"system\", \"content\": \"You are a helpful sales assistant for a SaaS product.\"},\n  {\"role\": \"user\", \"content\": \"What pricing plans do you offer?\"}\n]}\n→ \"...a S componentes_obs Worce!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\"\n```\n\n### Benchmark data\n\nTested across 20 multi-turn conversation scenarios with Llama-3.3-70B judge (score 1-5):\n\n| Model | KV Cache | Avg Score |\n|-------|----------|-----------|\n| GLM-4.7-Flash BF16 | FP16 (baseline) | 4.61 |\n| GLM-4.7-Flash BF16 | **FP8** | **1.07** |\n| Qwen3-235B AWQ | FP16 (baseline) | 4.74 |\n| Qwen3-235B AWQ | FP8 | 4.71 |\n\nFP8 works fine on standard FlashAttention models (Qwen3-235B). Only MLA models are affected.\n\n### Analysis\n\nThe vLLM log shows: `\"Using fp8 data type to store kv cache. It reduces the GPU memory footprint and boosts the performance. Meanwhile, it may cause accuracy drop without a proper scaling factor.\"`\n\nThe FLASHMLA backend appears to apply FP8 quantization to MLA's latent vectors (`kv_c_normed`) without calibrated per-tensor scaling. As the KV cache grows with conversation turns, quantization error compounds.\n\nFor comparison, TurboQuant+ (PolarQuant) compression on the same model scores 4.63/5 across the same scenarios, because it normalizes each vector independently before quan",
+    "author": "varjoranta",
+    "state": "closed",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/issues/38652",
+    "createdAt": "2026-03-31T17:50:26.000Z",
+    "updatedAt": "2026-05-15T21:37:37.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:257637b7fc8a1495cf32d1c76fd7ee34a3b1c5c5634f27e3a213e34866e9382a",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.7-Flash 使用 FP8 KV 缓存输出乱码",
+      "summaryZh": "vLLM FLASHMLA 后端的 GLM-4.7-Flash 多轮对话推理：在 GLM-4.7-Flash（MLA 架构）上启用 --kv-cache-dtype fp8 后，单轮输出正常，但包含系统提示的多轮对话会产生严重乱码；测试平均得分从 FP16 基线的 4.61 降至 1.07；问题仅在 MLA 模型上复现；标准 FlashAttention 模型 Qwen3-235B 的 FP8 KV 缓存未受影响",
+      "models": [
+        "GLM-4.7-Flash",
+        "Qwen3-235B AWQ"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE",
+        "EVALUATION"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响使用 FLASHMLA 后端和 FP8 KV 缓存的 GLM-4.7-Flash 多轮推理，尤其是带系统提示的对话。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】--kv-cache-dtype fp8 produces garbage output on MLA models (GLM-4.7-Flash) at multi-turn",
+        "【正文】FP8 KV cache produces corrupted output on MLA models when the conversation exceeds a single turn."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-37119",
+    "nodeId": "PR_kwDOI7xefs7Kv2oE",
+    "repository": "vllm-project/vllm",
+    "number": 37119,
+    "type": "pr",
+    "title": "[Superseded] Experimental GLM MTP hidden-state normalization change",
+    "bodyExcerpt": "Superseded by #37113.\n\nThis exploratory model-side performance idea is not part of the final PR stack.",
+    "author": "voipmonitor",
+    "state": "closed",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/pull/37119",
+    "createdAt": "2026-03-15T18:38:38.000Z",
+    "updatedAt": "2026-04-12T16:00:15.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:737a742abb04fbb90a3c57ef2ef92dc4ea12e1e8bf0f0779110ec3d0b0ecf94a",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM MTP 隐状态归一化变更被替代",
+      "summaryZh": "调整 GLM MTP 的隐状态归一化方案，但该探索性性能改动已被 #37113 替代，未纳入最终 PR 堆栈；该变更不属于最终 PR 堆栈",
+      "models": [
+        "GLM"
+      ],
+      "hardware": [],
+      "scenarios": [],
+      "category": "PERFORMANCE",
+      "severity": "INFO",
+      "impactScopeZh": "GLM MTP 模型侧性能探索变更。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Experimental GLM MTP hidden-state normalization change",
+        "【正文】Superseded by #37113. This exploratory model-side performance idea is not part of the final PR stack."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-38010",
+    "nodeId": "PR_kwDOI7xefs7NBMk9",
+    "repository": "vllm-project/vllm",
+    "number": 38010,
+    "type": "pr",
+    "title": "[Model] Fix BitsAndBytes quantization for GLM-4.1V/4.6V-Flash vision encoder",
+    "bodyExcerpt": "Fix BitsAndBytes quantization crash for GLM-4.1V / GLM-4.6V-Flash models when loading with 4-bit (NF4/FP4) quantization. The server raises an `AssertionError` immediately at model load time. It affects `GLM-4.1V-9B-Flash` and `GLM-4.6V-Flash` whenever `--quantization bitsandbytes` is passed.\r\n\r\n- The vision encoder stores its FFN weights split on disk as `gate_proj` / `up_proj` and its attention weights split as `attn.q` / `attn.k` / `attn.v`.\r\n- An unquantized (full-precision) tensor was then handed to a BNB 4-bit parameter's `weight_loader`, which asserts shape equality — and crashes because the shapes differ.\r\n\r\nFixes #37934\r\n\r\n## Purpose\r\n\r\nFix `AssertionError: assert param_data.shape == loaded_weight.shape` crash when loading GLM-4.1V / GLM-4.6V-Flash with BitsAndBytes 4-bit quantization (`--quantization bitsandbytes`).\r\n\r\nRoot cause: `packed_modules_mapping` used by the BNB loader listed wrong or missing sub-module names for the vision encoder's FFN (`gate_up_proj`) and attention (`attn.qkv`) layers, so those weights were never quantized before being passed to a BNB 4-bit parameter — causing a shape mismatch assertion.\r\n\r\n## Test Plan\r\n\r\n### Reproduce the bug\r\n\r\n```bash\r\n# Before fix — crashes immediately at load with AssertionError\r\nvllm serve zai-org/GLM-4.6V-Flash \\ \r\n  --max-model-len 16384 \\\r\n  --tensor-parallel-size 2 \\\r\n  --quantization bitsandbytes\r\n```\r\n\r\n### Existing tests\r\n\r\n```bash\r\npytest tests/models/multimodal/processing/test_glm4_1v.py -v -s\r\npytest tests/models/quantization/test_bitsandbytes.py -v -s\r\n```\r\n\r\n## Test Result\r\n\r\n| | Before fix | After fix |\r\n|---|---|---|\r\n| Load `GLM-4.6V-Flash` with `--quantization bitsandbytes` | Crash at load (`AssertionError`) | Model loads successfully |\r\n| `test_glm4_1v.py` | Pass | Pass |\r\n| `test_bitsandbytes.py` | Pass | Pass |\r\n\r\n---\r\n<details>\r\n<summary> Essential Elements of an Effective PR Description Checklist </summary>\r\n\r\n- [x] The purpose of the PR, such as \"Fix some issue (link existing issues ",
+    "author": "yanghui1-arch",
+    "state": "closed",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/38010",
+    "createdAt": "2026-03-24T13:57:14.000Z",
+    "updatedAt": "2026-03-31T12:08:53.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:d72429d09461807bf9b9b0cb1fb15ebef140e80d035f248b412240a06b9a73e0",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM-4.1V/4.6V-Flash BNB 量化崩溃",
+      "summaryZh": "修复视觉编码器 FFN 和注意力层的 `packed_modules_mapping`，使拆分的权重在传入 BitsAndBytes 4-bit 参数前正确量化，避免加载时形状断言失败，解决使用 `--quantization bitsandbytes` 加载模型时，视觉编码器权重未正确量化，导致 BNB 4-bit 参数权重形状不匹配并立即触发 `AssertionError`；使用 BitsAndBytes 4-bit 量化时，GLM-4.1V-9B-Flash 和 GLM-4.6V-Flash 可成功加载",
+      "models": [
+        "GLM-4.1V-9B-Flash",
+        "GLM-4.6V-Flash"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响通过 BitsAndBytes 4-bit 量化加载上述视觉模型的服务启动流程。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Fix BitsAndBytes quantization for GLM-4.1V/4.6V-Flash vision encoder",
+        "【正文】The server raises an `AssertionError` immediately at model load time."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:38:12.714Z"
+    }
+  },
+  {
+    "id": "vllm-issue-37570",
+    "nodeId": "I_kwDOI7xefs70hM7p",
+    "repository": "vllm-project/vllm",
+    "number": 37570,
+    "type": "issue",
+    "title": "[Bug]: CUDA ILM (Illegal Memory Access) crash when enabling MTP num_speculative_tokens with >1 for zai-org/GLM-4.7-FP8 under load",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\n==============================\n        System Info\n==============================\nOS                           : Amazon Linux 2023.10.20260216 (x86_64)\nGCC version                  : (GCC) 11.5.0 20240719 (Red Hat 11.5.0-5)\nClang version                : Could not collect\nCMake version                : version 3.22.2\nLibc version                 : glibc-2.34\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.10.0+cu128\nIs debug build               : False\nCUDA used to build PyTorch   : 12.8\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.13 (main, Mar 10 2026, 18:17:25) [Clang 21.1.4 ] (64-bit runtime)\nPython platform              : Linux-6.1.161-183.298.amzn2023.x86_64-x86_64-with-glibc2.34\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 13.0.88\nCUDA_MODULE_LOADING set to   : \nGPU models and configuration : \nGPU 0: NVIDIA H200\nGPU 1: NVIDIA H200\nGPU 2: NVIDIA H200\nGPU 3: NVIDIA H200\nGPU 4: NVIDIA H200\nGPU 5: NVIDIA H200\nGPU 6: NVIDIA H200\nGPU 7: NVIDIA H200\n\nNvidia driver version        : 580.126.09\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           48 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  192\nOn-line CPU(s) list:                     0-191\nVendor ID:             ",
+    "author": "Xarbirus",
+    "state": "closed",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/37570",
+    "createdAt": "2026-03-19T15:08:16.000Z",
+    "updatedAt": "2026-03-30T19:40:15.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:619cd90a1d7671720936148d93e25b9e024964f273882970834f752ad3218878",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.7-FP8 MTP 多 token 触发 CUDA 非法内存访问",
+      "summaryZh": "zai-org/GLM-4.7-FP8 启用 MTP 且 num_speculative_tokens>1 时的高负载推理：在高负载下，为 zai-org/GLM-4.7-FP8 启用 MTP 并将 num_speculative_tokens 设置为大于 1 时发生 CUDA Illegal Memory Access 崩溃；影响使用 NVIDIA H200、CUDA 13.0 运行时和 PyTorch 2.10.0+cu128 的环境",
+      "models": [
+        "zai-org/GLM-4.7-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "高负载推理场景下，MTP 多于 1 个推测 token 的配置会导致进程崩溃。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】CUDA ILM (Illegal Memory Access) crash when enabling MTP num_speculative_tokens with >1 for zai-org/GLM-4.7-FP8 under l…",
+        "【正文】GPU models and configuration : NVIDIA H200"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-37404",
+    "nodeId": "I_kwDOI7xefs70A20d",
+    "repository": "vllm-project/vllm",
+    "number": 37404,
+    "type": "issue",
+    "title": "[Bug]: AssertionError: assert num_kv_heads == 1 with CPU KV Offloading + GLM-5-FP8",
+    "bodyExcerpt": "### Your current environment\n\n<details>\nusing vllm-openai: nightly-54a62a79f70982742a227c845b96148e6401d0e7\n\n<summary>The output of <code>python collect_env.py</code></summary>\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nClang version                : Could not collect\nCMake version                : Could not collect\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.10.0+cu129\nIs debug build               : False\nCUDA used to build PyTorch   : 12.9\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.13 (main, Mar  4 2026, 09:23:07) [GCC 11.4.0] (64-bit runtime)\nPython platform              : Linux-5.15.0-141-generic-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.9.86\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration :\nGPU 0: NVIDIA H200\nGPU 1: NVIDIA H200\nGPU 2: NVIDIA H200\nGPU 3: NVIDIA H200\nGPU 4: NVIDIA H200\nGPU 5: NVIDIA H200\nGPU 6: NVIDIA H200\nGPU 7: NVIDIA H200\n\nNvidia driver version        : 560.35.03\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                         x86_64\nCPU op-mode(s):                       32-bit, 64-bit\nAddress sizes:                        46 bits physical, 57 bits virtual\nByte Order:                           Little Endian\nCPU(s):                               224\nOn-line CPU(s) list:                  0-223\nVendor ID",
+    "author": "yz342",
+    "state": "closed",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/37404",
+    "createdAt": "2026-03-18T09:25:44.000Z",
+    "updatedAt": "2026-03-23T04:13:04.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:fdecf3d7a189f9382ce3c73adcf0779db566e744e0e8de6a04eeef4dc48bb2a2",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5-FP8 CPU KV Offloading 触发断言",
+      "summaryZh": "GLM-5-FP8 在 CPU KV Offloading 场景下的推理：启用 CPU KV Offloading 运行 GLM-5-FP8 时触发 AssertionError：assert num_kv_heads == 1；影响使用 vLLM nightly 版本、NVIDIA H200 GPU 和 CPU KV Offloading 的运行环境",
+      "models": [
+        "GLM-5-FP8"
+      ],
+      "hardware": [
+        "GPU",
+        "CPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "CPU KV Offloading 与 GLM-5-FP8 的组合配置无法正常运行。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】AssertionError: assert num_kv_heads == 1 with CPU KV Offloading + GLM-5-FP8",
+        "【正文】GPU models and configuration: GPU 0: NVIDIA H200"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-37598",
+    "nodeId": "I_kwDOI7xefs70n_GI",
+    "repository": "vllm-project/vllm",
+    "number": 37598,
+    "type": "issue",
+    "title": "[Bug]: cudaErrorIllegalAddress crash when running zai-org/GLM-4.7-FP8 with `--max-num-batched-tokens` > default (e.g. 16K) under load",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Amazon Linux 2023.10.20260216 (x86_64)\nGCC version                  : (GCC) 11.5.0 20240719 (Red Hat 11.5.0-5)\nClang version                : Could not collect\nCMake version                : version 3.22.2\nLibc version                 : glibc-2.34\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.9.1+cu130\nIs debug build               : False\nCUDA used to build PyTorch   : 13.0\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.13 (main, Mar 10 2026, 18:17:25) [Clang 21.1.4 ] (64-bit runtime)\nPython platform              : Linux-6.1.161-183.298.amzn2023.x86_64-x86_64-with-glibc2.34\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 13.0.88\nCUDA_MODULE_LOADING set to   : \nGPU models and configuration : \nGPU 0: NVIDIA H200\nGPU 1: NVIDIA H200\nGPU 2: NVIDIA H200\nGPU 3: NVIDIA H200\nGPU 4: NVIDIA H200\nGPU 5: NVIDIA H200\nGPU 6: NVIDIA H200\nGPU 7: NVIDIA H200\n\nNvidia driver version        : 580.126.09\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           48 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  192\nOn-line CPU(s) list:             ",
+    "author": "Xarbirus",
+    "state": "closed",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/37598",
+    "createdAt": "2026-03-19T20:42:29.000Z",
+    "updatedAt": "2026-03-20T16:58:20.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:81dcb718df3bfac57d460f02a51614930f9ab387add5a836537c1bdf4020400e",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.7-FP8 大批量令牌触发 CUDA 非法地址崩溃",
+      "summaryZh": "vLLM 在 NVIDIA H200 上运行 zai-org/GLM-4.7-FP8：在负载运行期间，将 --max-num-batched-tokens 设置为高于默认值（例如 16K）时发生 cudaErrorIllegalAddress 崩溃；影响使用 PyTorch 2.9.1、CUDA 13.0 和 NVIDIA H200 的多 GPU 环境",
+      "models": [
+        "zai-org/GLM-4.7-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "高批量令牌配置下的 GLM-4.7-FP8 推理运行。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】cudaErrorIllegalAddress crash when running zai-org/GLM-4.7-FP8 with `--max-num-batched-tokens` > default (e.g. 16K) dưới"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-37178",
+    "nodeId": "PR_kwDOI7xefs7K4WMv",
+    "repository": "vllm-project/vllm",
+    "number": 37178,
+    "type": "pr",
+    "title": "Bugfix for offloading+prefetch for GLM-4.7-FP8",
+    "bodyExcerpt": "\n## Purpose\nThis fixes a bug when using offload+prefetch feature with GLM-4.7-FP8 on RTX PRO 6000 hardware, see #37176 .\n\n## Test Plan\n```\nvllm serve \"zai-org/GLM-4.7-FP8\" \\\n\t--served-model-name \"zai-org/GLM-4.7-FP8\" \\\n\t--tensor-parallel-size 8 \\\n\t--enable-expert-parallel \\\n\t--offload-group-size 2 \\\n\t--offload-num-in-group 1 \\\n\t--offload-prefetch-step 1 \\\n```\n\n## Test Result\n\nWithout the bugfix, startup fails with \"AttributeError: 'Attention' object has no attribute 'k_scale'. Did you mean: '_k_scale'?\"\n\n<details>\n<summary> Full error logs </summary>\n<code>\nWorkerProc failed to start.\nTraceback (most recent call last):\n  File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py\", line 771, in worker_main\n    worker = WorkerProc(*args, **kwargs)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py\", line 178, in sync_wrapper\n    return func(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py\", line 597, in __init__\n    self.worker.load_model()\n  File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_worker.py\", line 337, in load_model\n    self.model_runner.load_model(load_dummy_weights=dummy_weights)\n  File \"/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py\", line 178, in sync_wrapper\n    return func(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_model_runner.py\", line 4428, in load_model\n    get_offloader().post_init()\n  File \"/usr/local/lib/python3.12/dist-packages/vllm/model_executor/offloader/prefetch.py\", line 323, in post_init\n    offloader.sync_cpu_storage()\n  File \"/usr/local/lib/python3.12/dist-packages/vllm/model_executor/offloader/prefetch.py\", line 436, in sync_cpu_storage\n    param_offloader.sync_cpu_storage()\n  File \"/usr/local/lib/python3.12/dist-packages/vllm/model_executor/offloader/prefetch.py\"",
+    "author": "sfbemerk",
+    "state": "merged",
+    "labels": [
+      "bug",
+      "ready"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/37178",
+    "createdAt": "2026-03-16T10:42:03.000Z",
+    "updatedAt": "2026-03-17T13:22:09.000Z",
+    "mergedAt": "2026-03-17T13:22:09.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:47bf028af3e83269d043ae578dea5286a7dd6acbfa627bf0e28bdd7dfb0109d6",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM-4.7-FP8 预取卸载启动错误",
+      "summaryZh": "修复 GLM-4.7-FP8 在 RTX PRO 6000 硬件上使用 offload+prefetch 功能时的启动错误，解决启用 offload+prefetch 时，GLM-4.7-FP8 启动失败，并报错“AttributeError: 'Attention' object has no attribute 'k_scale'”；修复前服务启动失败；测试配置使用 8 路张量并行、专家并行及指定卸载预取参数",
+      "models": [
+        "GLM-4.7-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响在 RTX PRO 6000 上以 offload+prefetch 部署 GLM-4.7-FP8 的服务启动。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Bugfix for offloading+prefetch for GLM-4.7-FP8",
+        "【正文】Without the bugfix, startup fails with \"AttributeError: 'Attention' object has no attribute 'k_scale'. Did you mean: '_k"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-37032",
+    "nodeId": "I_kwDOI7xefs7y2wpk",
+    "repository": "vllm-project/vllm",
+    "number": 37032,
+    "type": "issue",
+    "title": "[Bug]: GLM 4.7-flash returns gibberish when native KV cache offloading is on",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nClang version                : Could not collect\nCMake version                : Could not collect\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.10.0+cu129\nIs debug build               : False\nCUDA used to build PyTorch   : 12.9\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.13 (main, Mar  4 2026, 09:23:07) [GCC 11.4.0] (64-bit runtime)\nPython platform              : Linux-6.8.0-57-generic-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.9.86\nCUDA_MODULE_LOADING set to   : \nGPU models and configuration : \nGPU 0: NVIDIA A100-SXM4-80GB\nGPU 1: NVIDIA A100-SXM4-80GB\n\nNvidia driver version        : 570.124.06\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                         x86_64\nCPU op-mode(s):                       32-bit, 64-bit\nAddress sizes:                        48 bits physical, 48 bits virtual\nByte Order:                           Little Endian\nCPU(s):                               256\nOn-line CPU(s) list:                  0-255\nVendor ID:                            AuthenticAMD\nModel name:                           AMD EPYC 7763 64-Core Processor\nCPU fam",
+    "author": "yz342",
+    "state": "closed",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/37032",
+    "createdAt": "2026-03-14T02:55:00.000Z",
+    "updatedAt": "2026-03-16T17:03:12.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:896fb80fdc9b06de097238b01cbce51236445ab2ec6334037cf7022d2fe97b4f",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM 4.7-flash KV 缓存卸载返回乱码",
+      "summaryZh": "启用原生 KV cache offloading 时的 GLM 4.7-flash 推理输出：启用原生 KV cache offloading 后，GLM 4.7-flash 返回乱码输出；问题出现在 NVIDIA A100-SXM4-80GB GPU、CUDA 12.9 环境",
+      "models": [
+        "GLM 4.7-flash"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响启用原生 KV 缓存卸载的 GLM 4.7-flash 推理。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】GLM 4.7-flash returns gibberish when native KV cache offloading is on",
+        "【正文】GPU 0: NVIDIA A100-SXM4-80GB"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  }
+]

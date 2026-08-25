@@ -1,0 +1,97 @@
+[
+  {
+    "id": "verl-issue-6814",
+    "nodeId": "I_kwDONIZfbs8AAAABGR-uJA",
+    "repository": "volcengine/verl",
+    "number": 6814,
+    "type": "issue",
+    "title": "使用verl v0.8.0训练GLM-4.1V-9B-Thinking报错",
+    "bodyExcerpt": "### System Info\n\n使用verl v0.8.0训练GLM-4.1V-9B-Thinking报错\n\n\n\n\n### Information\n\n- [x] The official example scripts\n- [ ] My own modified scripts\n\n### Tasks\n\n- [x] An officially supported task in the `examples` folder (such as GLUE/SQuAD, ...)\n- [ ] My own task or dataset (give details below)\n\n### Reproduction\n\n1、第一个报错是在https://github.com/verl-project/verl/blob/v0.8.0/verl/utils/tokenizer.py 的hf_processor函数中，processor.__class__.__name__这里获取到的应该是Glm4vProcessor，如果不修改会导致后续processor为None报错\n```python\nmatch processor.__class__.__name__:\n    case \"Qwen2VLProcessor\":\n        from transformers.models.qwen2_vl import Qwen2VLModel\n\n        model_class = Qwen2VLModel\n    case \"Qwen2_5_VLProcessor\":\n        from transformers.models.qwen2_5_vl import Qwen2_5_VLModel\n\n        model_class = Qwen2_5_VLModel\n    case \"Qwen3VLProcessor\":\n        from transformers.models.qwen3_vl import Qwen3VLModel\n\n        model_class = Qwen3VLModel\n    case \"Glm4vImageProcessor\":\n        from transformers.models.glm4v import Glm4vModel\n\n        model_class = Glm4vModel\n    case \"MllamaProcessor\":\n        pass  # MllamaProcessor and MllamaModel doesn't have get_rope_index property\n    case _:\n        raise ValueError(f\"Unsupported processor type: {processor.__class__.__name__}\")\n```\n2、上述修改后会有另外一个错误\n```python\nFile \"/verl/verl/models/transformers/glm4v.py\", line 465, in forward_with_normal_backend\n    outputs = glm4v_forward(self, input_ids, **kwargs)\nFile \"/verl/verl/models/transformers/glm4v.py\", line 446, in glm4v_forward\n    return self.model(\nFile \"/usr/local/lib/python3.10/dist-packages/torch/nn/modules/module.py\", line 1776, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\nFile \"/usr/local/lib/python3.10/dist-packages/torch/nn/modules/module.py\", line 1787, in _call_impl\n    return forward_call(*args, **kwargs)\nFile \"/verl/verl/models/transformers/glm4v.py\", line 426, in glm4v_base_forward\n    kwargs[\"inputs_embeds\"], kwargs[\"attention_mask\"] = _get_input_embeds(\nFile \"/verl/verl/mod",
+    "author": "xingjinliang",
+    "state": "closed",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/verl-project/verl/issues/6814",
+    "createdAt": "2026-06-22T12:14:20.000Z",
+    "updatedAt": "2026-06-29T07:39:46.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:d8d0b6d78f08bf021e024f5a7ea0a1e04bdfa17f6ce82b4482d066c810a064b9",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "verl v0.8.0 训练 GLM-4.1V-9B-Thinking 报错",
+      "summaryZh": "使用 verl v0.8.0 训练 GLM-4.1V-9B-Thinking：训练过程中，hf_processor 获取到 Glm4vProcessor 后未被正确支持，导致 processor 为 None 并报错；加入对应处理后，在 verl/models/transformers/glm4v.py 的 forward 流程中仍出现后续错误；官方示例和官方支持任务均可复现该问题",
+      "models": [
+        "GLM-4.1V-9B-Thinking"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "TRAINING"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响使用 verl v0.8.0 训练 GLM-4.1V-9B-Thinking 的场景。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】使用verl v0.8.0训练GLM-4.1V-9B-Thinking报错",
+        "【正文】processor.__class__.__name__这里获取到的应该是Glm4vProcessor，如果不修改会导致后续processor为None报错"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "verl-pr-6873",
+    "nodeId": "PR_kwDONIZfbs7rgORR",
+    "repository": "volcengine/verl",
+    "number": 6873,
+    "type": "pr",
+    "title": "[model] fix: tokenizer.hf_processor: GLM-4V arm uses wrong processor class name (#6814)",
+    "bodyExcerpt": "## Motivation\n\nTraining GLM-4.1V / GLM-4V multimodal models fails in `hf_processor`, reported in #6814. This PR fixes the first error (the processor-type match); the issue's second error in `verl/models/transformers/glm4v.py` is a separate downstream concern.\n\n## Root cause\n\n`verl/utils/tokenizer/tokenizer.py` dispatches on `processor.__class__.__name__`:\n\n```python\nmatch processor.__class__.__name__:\n    case \"Qwen2VLProcessor\":   ...\n    case \"Qwen2_5_VLProcessor\": ...\n    case \"Qwen3VLProcessor\":   ...\n    case \"Glm4vImageProcessor\":          # never matches\n        from transformers.models.glm4v import Glm4vModel\n        model_class = Glm4vModel\n```\n\nFor GLM-4.1V / GLM-4V, `AutoProcessor` returns a `Glm4vProcessor` — `Glm4vImageProcessor` is the image-processor sub-component, not the processor class. Every other arm uses the `*Processor` class name. So this arm never fires, `model_class` for `Glm4vModel` is never bound, and the GLM-4V branch falls through.\n\n## Modifications\n\n`verl/utils/tokenizer/tokenizer.py`: change `case \"Glm4vImageProcessor\":` to `case \"Glm4vProcessor\":` so it matches the actual processor class name, consistent with the other VL arms. The import and `model_class` assignment inside the arm are already correct.\n\n## Duplicate-check\n\n- Track A — the GitHub search API returned HTTP 422 for this token on this repo, so per fail-closed I enumerated all open PRs via the core API (`repos/verl-project/verl/pulls?state=open --paginate`) and grepped bodies for `6814` → no references.\n- Track B — issue #6814 (state OPEN) has a single analysis comment; no \"opened a PR / working on this / taking this\" claim.\n",
+    "author": "yushuosun",
+    "state": "merged",
+    "labels": [],
+    "url": "https://github.com/verl-project/verl/pull/6873",
+    "createdAt": "2026-06-28T15:09:21.000Z",
+    "updatedAt": "2026-06-29T07:39:41.000Z",
+    "mergedAt": "2026-06-29T07:39:41.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:a7aa210e27a594780943d0de6cf6bfa777654608b733105a5dfd8105e8d50e43",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM-4V 处理器类名匹配",
+      "summaryZh": "修复 verl/utils/tokenizer/tokenizer.py 中的处理器类型匹配，将 Glm4vImageProcessor 改为 Glm4vProcessor，使 GLM-4V 分支能够正确导入并绑定 Glm4vModel，解决AutoProcessor 返回 Glm4vProcessor，但代码匹配的是不会出现的 Glm4vImageProcessor，导致 GLM-4V 分支无法命中，Glm4vModel 未绑定；训练多模态模型在 hf_processor 中失败；修复 GLM-4.1V/GLM-4V 多模态模型在 hf_processor 中的首个错误；verl/models/transformers/glm4v.py 中的第二个错误不在本次变更范围内",
+      "models": [
+        "GLM-4.1V",
+        "GLM-4V"
+      ],
+      "hardware": [
+        "UNKNOWN"
+      ],
+      "scenarios": [
+        "TRAINING"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 GLM-4.1V/GLM-4V 多模态模型的 hf_processor 处理器分发。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】tokenizer.hf_processor: GLM-4V arm uses wrong processor class name",
+        "【正文】AutoProcessor returns a Glm4vProcessor — Glm4vImageProcessor is the image-processor sub-component, not the processor"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  }
+]

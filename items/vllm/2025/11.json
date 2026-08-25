@@ -1,0 +1,246 @@
+[
+  {
+    "id": "vllm-pr-27970",
+    "nodeId": "PR_kwDOI7xefs6xIw38",
+    "repository": "vllm-project/vllm",
+    "number": 27970,
+    "type": "pr",
+    "title": "[Bugfix] Handle escaped characters in GLM tool parser to prevent double serialization",
+    "bodyExcerpt": "## Purpose\n\nThis PR fixes a bug where the tool call parser fails when the model's output contains literal escaped characters, such as `\\n`, `\\\"`.\n\n**The Problem:**\nWhen GLM-4 outputs tool calls, the XML may contain '\\n' literal characters and the JSON content within `<arg_value>` tags may contain escaped characters like `\\\"`, causing regex matching and json parsing both failed. For example:\n\n```\n<tool_call>todo_write\\n<arg_key>todos</arg_key>\\n<arg_value>[{\\\"id\\\": \\\"1\\\", \\\"task\\\": \\\"检查后端代码中的硬编码问题\\\", \\\"status\\\": \\\"in_progress\\\"}, {\\\"id\\\": \\\"2\\\", \\\"task\\\": \\\"检查前端代码中的硬编码问题\\\", \\\"status\\\": \\\"pending\\\"}, {\\\"id\\\": \\\"3\\\", \\\"task\\\": \\\"检查违反单一职责的代码\\\", \\\"status\\\": \\\"pending\\\"}, {\\\"id\\\": \\\"4\\\", \\\"task\\\": \\\"创建整改建议报告\\\", \\\"status\\\": \\\"pending\\\"}]</arg_value>\n</tool_call>\n```\n\nThe current regex fails to match the literal \\n. Besides, even if the regex extracts the content within <arg_value>, it is not valid JSON. Attempting json.loads() on this string fails with JSONDecodeError.\n\nWhen parsing failed, the argument value was treated as a plain string. This led to incorrect behavior in `BaseFormatDetector` to incorrectly perform another layer of JSON serialization on the arguments. The result is a double-escaped string (e.g., `\\\\\"` instead of `\\\"`), breaking the tool call functionality.\n\n**Example of problematic tool output:**\n```json\n[\n  {\n    \"function\": {\n      \"name\": \"todo_write\",\n      \"arguments\": \"{\\\"todos\\\": \\\"[{\\\\\\\"id\\\\\\\": \\\\\\\"1\\\\\\\", \\\\\\\"task\\\\\\\": \\\\\\\"检查后端代码的硬编码问题\\\\\\\", \\\\\\\"status\\\\\\\": \\\\\\\"in_progress\\\\\\\"}, {\\\\\\\"id\\\\\\\": \\\\\\\"2\\\\\\\", \\\\\\\"task\\\\\\\": \\\\\\\"检查前端代码的硬编码问题\\\\\\\", \\\\\\\"status\\\\\\\": \\\\\\\"pending\\\\\\\"}, {\\\\\\\"id\\\\\\\": \\\\\\\"3\\\\\\\", \\\\\\\"task\\\\\\\": \\\\\\\"检查违反单一职责原则的代码\\\\\\\", \\\\\\\"status\\\\\\\": \\\\\\\"pending\\\\\\\"}, {\\\\\\\"id\\\\\\\": \\\\\\\"4\\\\\\\", \\\\\\\"4\\\\\\\", \\\\\\\"task\\\\\\\": \\\\\\\"制定整改方案\\\\\\\", \\\\\\\"status\\\\\\\": \\\\\\\"pending\\\\\\\"}, {\\\\\\\"id\\\\\\\": \\\\\\\"5\\\\\\\", \\\\\\\"5\\\\\\\", \\\\\\\"task\\\\\\\": \\\\\\\"实施整改\\\\\\\", \\\\\\\"status\\\\\\\": \\\\\\\"pending\\\\\\\"}]\\\"}\"\n    },\n    \"index\": 0,\n    \"id\": \"call_eb99d2a2c7fd44328776fb9c\",\n    \"type\": \"function\"\n",
+    "author": "soaringk",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "frontend",
+      "needs-rebase",
+      "ci/build",
+      "stale",
+      "v1",
+      "tool-calling",
+      "gpt-oss"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/27970",
+    "createdAt": "2025-11-03T08:37:00.000Z",
+    "updatedAt": "2026-05-15T02:22:38.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:03ca722b8d7bff42d1653b750e4c20f26dcaaa06d71857f89750deff4d1a90d3",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM-4 工具解析双重序列化",
+      "summaryZh": "修复 GLM 工具调用解析器对字面转义字符和转义 JSON 内容的处理，避免参数解析失败及双重序列化，解决GLM-4 输出工具调用时，XML 中的字面量 \\n 可能导致正则匹配失败，<arg_value> 中含有转义引号的 JSON 也无法解析，进而被当作普通字符串并发生双重 JSON 序列化，破坏工具调用功能；支持正确解析包含字面量换行符和转义字符的 GLM-4 工具调用输出",
+      "models": [
+        "GLM-4"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 GLM-4 工具调用输出的解析与参数序列化。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Handle escaped characters in GLM tool parser to prevent double serialization",
+        "【正文】The tool call parser fails when the model's output contains literal escaped characters, such as \\n, \\\"."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-28278",
+    "nodeId": "I_kwDOI7xefs7Wh0zJ",
+    "repository": "vllm-project/vllm",
+    "number": 28278,
+    "type": "issue",
+    "title": "[Bug]: vLLM v0.11.0 container in k8s pod Fails to Load GLM-4.6-FP8 Model During CUDA Graph Capture， But v0.10.2 is OK.",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>\nThe output of <code>python collect_env.py</code></summary>\n\n```text\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0\nClang version                : Could not collect\nCMake version                : version 4.1.0\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.8.0+cu128\nIs debug build               : False\nCUDA used to build PyTorch   : 12.8\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.11 (main, Jun  4 2025, 08:56:18) [GCC 11.4.0] (64-bit runtime)\nPython platform              : Linux-5.14.0-503.14.1.el9_5.x86_64-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.8.93\nCUDA_MODULE_LOADING set to   : LAZY\nGPU models and configuration : \nGPU 0: NVIDIA H20-3e\nGPU 1: NVIDIA H20-3e\nGPU 2: NVIDIA H20-3e\nGPU 3: NVIDIA H20-3e\n\nNvidia driver version        : 570.86.15\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                         x86_64\nCPU op-mode(s):                       32-bit, 64-bit\nAddress sizes:                        52 bits physical, 57 bits virtual\nByte Order:                           Little Endian\nCPU(s):                               96\nOn-line CPU(s) list:                  0-95\nVendor ID:                            GenuineIntel\nModel name:                           IN",
+    "author": "AndrewTsao",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/28278",
+    "createdAt": "2025-11-07T08:06:08.000Z",
+    "updatedAt": "2026-02-11T04:49:48.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:41b30bf578121a3fcfb3d93ce7be08a533da31b3daceaa52ecd3c4627ba94203",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "vLLM v0.11.0 CUDA Graph 无法加载 GLM-4.6-FP8",
+      "summaryZh": "vLLM v0.11.0 容器在 Kubernetes Pod 中加载 GLM-4.6-FP8 模型：在 Kubernetes Pod 中使用 vLLM v0.11.0 容器时，GLM-4.6-FP8 模型在 CUDA Graph Capture 阶段加载失败；v0.10.2 可正常加载；影响搭载 NVIDIA H20-3e GPU、CUDA 12.8 环境中的该模型加载",
+      "models": [
+        "GLM-4.6-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "Kubernetes Pod 中使用 vLLM v0.11.0 加载 GLM-4.6-FP8 的场景。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】vLLM v0.11.0 container in k8s pod Fails to Load GLM-4.6-FP8 Model During CUDA Graph Capture",
+        "【标题】v0.10.2 is OK"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-28941",
+    "nodeId": "PR_kwDOI7xefs60GxFE",
+    "repository": "vllm-project/vllm",
+    "number": 28941,
+    "type": "pr",
+    "title": "GLM-V video segmentation solution adjustment",
+    "bodyExcerpt": "Related to #28936, this adds support for a new video cutting solution based on this work.",
+    "author": "zRzRzRzRzRzRzR",
+    "state": "merged",
+    "labels": [
+      "ready"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/28941",
+    "createdAt": "2025-11-18T12:52:11.000Z",
+    "updatedAt": "2025-11-19T17:32:55.000Z",
+    "mergedAt": "2025-11-19T17:32:55.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:06997256be9e326be1265f00cd1ea8f1ccb044e36a49dbb7426cc8a8c7dcd9b9",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "调整 GLM-V 视频分割方案",
+      "summaryZh": "新增基于相关工作的 GLM-V 视频切分方案支持；影响 GLM-V 的视频处理方案",
+      "models": [
+        "GLM-V"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "INFO",
+      "impactScopeZh": "GLM-V 视频处理功能",
+      "attention": "ROUTINE",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】GLM-V video segmentation solution adjustment",
+        "【正文】adds support for a new video cutting solution"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-28809",
+    "nodeId": "I_kwDOI7xefs7YZf6R",
+    "repository": "vllm-project/vllm",
+    "number": 28809,
+    "type": "issue",
+    "title": "[Bug]: GLM-4.5V-FP8 with 2x NVIDIA A100 Fails",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0\nClang version                : Could not collect\nCMake version                : version 4.1.2\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.9.0+cu129\nIs debug build               : False\nCUDA used to build PyTorch   : 12.9\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.12 (main, Oct 10 2025, 08:52:57) [GCC 11.4.0] (64-bit runtime)\nPython platform              : Linux-5.15.134+release+2.10.0r8-amd64-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.9.86\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration :\nGPU 0: NVIDIA A100-SXM4-80GB\nGPU 1: NVIDIA A100-SXM4-80GB\n\nNvidia driver version        : 580.95.05\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                       x86_64\nCPU op-mode(s):                     32-bit, 64-bit\nAddress sizes:                      43 bits physical, 48 bits virtual\nByte Order:                         Little Endian\nCPU(s):                             128\nOn-line CPU(s) list:                0-127\nVendor ID:                          AuthenticAMD\nModel name:                         AMD EPYC 7742 64-Core Processor\nCPU family:   ",
+    "author": "ehfd",
+    "state": "closed",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/28809",
+    "createdAt": "2025-11-16T13:34:17.000Z",
+    "updatedAt": "2025-11-16T13:59:29.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:db5ac2b89e3559ba7ae06c786ab31f01569c2d8d434d6102d432686d0a910553",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.5V-FP8 在双 A100 上失败",
+      "summaryZh": "vLLM 中 GLM-4.5V-FP8 在 2 张 NVIDIA A100-SXM4-80GB GPU 上的运行：GLM-4.5V-FP8 在 2 张 NVIDIA A100-SXM4-80GB GPU 上运行失败",
+      "models": [
+        "GLM-4.5V-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响使用双 NVIDIA A100-SXM4-80GB GPU 运行该模型的场景。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Bug]: GLM-4.5V-FP8 with 2x NVIDIA A100 Fails",
+        "【正文】GPU 0: NVIDIA A100-SXM4-80GB；GPU 1: NVIDIA A100-SXM4-80GB"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-28363",
+    "nodeId": "I_kwDOI7xefs7W3LqU",
+    "repository": "vllm-project/vllm",
+    "number": 28363,
+    "type": "issue",
+    "title": "[Bug]: GLM-4.5V-FP8 error on NVIDIA A100 with Marlin",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0\nClang version                : Could not collect\nCMake version                : version 4.1.0\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.7.1+cu128\nIs debug build               : False\nCUDA used to build PyTorch   : 12.8\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.11 (main, Jun  4 2025, 08:56:18) [GCC 11.4.0] (64-bit runtime)\nPython platform              : Linux-5.15.0-153-generic-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.8.93\nCUDA_MODULE_LOADING set to   : LAZY\nGPU models and configuration :\nGPU 0: NVIDIA A100-SXM4-80GB\nGPU 1: NVIDIA A100-SXM4-80GB\n\nNvidia driver version        : 575.57.08\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           48 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  256\nOn-line CPU(s) list:                     0-255\nVendor ID:                               AuthenticAMD\nModel name:                              AMD EPYC 7713 ",
+    "author": "ehfd",
+    "state": "closed",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/28363",
+    "createdAt": "2025-11-09T10:51:27.000Z",
+    "updatedAt": "2025-11-16T13:59:15.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:c85a1ae03f65b03f242f0724f13570ce91db2a87a9654014d2eeee616d462dd3",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.5V-FP8在A100上触发Marlin错误",
+      "summaryZh": "NVIDIA A100上的GLM-4.5V-FP8 Marlin运行场景：GLM-4.5V-FP8在启用Marlin时于NVIDIA A100上报错",
+      "models": [
+        "GLM-4.5V-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响NVIDIA A100-SXM4-80GB环境。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Bug]: GLM-4.5V-FP8 error on NVIDIA A100 with Marlin",
+        "【正文】GPU 0: NVIDIA A100-SXM4-80GB"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  }
+]

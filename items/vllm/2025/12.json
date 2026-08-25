@@ -1,0 +1,1213 @@
+[
+  {
+    "id": "vllm-issue-31475",
+    "nodeId": "I_kwDOI7xefs7gfyhm",
+    "repository": "vllm-project/vllm",
+    "number": 31475,
+    "type": "issue",
+    "title": "[Bug]: FP8 inference much slower than BF16 on MI300X for GLM-4.7 and MiniMax-M2.1",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>env</summary>\n\n8x mi300x\n\nrocm/vllm-dev:nightly (e81bd5b674e5)\n\n</details>\n\n\n### 🐛 Describe the bug\n\n## FP8 inference is significantly slower than BF16 on MI300X for MoE models (GLM-4.7, MiniMax-M2.1)\n\n### Summary\n\nOn AMD MI300X, FP8 inference in vLLM is consistently **slower than BF16** in steady-state decoding for large MoE models. This contradicts expected FP8 performance characteristics and suggests inefficiencies or regressions in the FP8 execution path on ROCm.\n\nThis issue is reproducible across both GLM-4.7 and MiniMax-M2.1 and persists after warm-up, compilation, and cache amortization. Load time is not a factor; all numbers below reflect sustained inference throughput (TPS).\n\n---\n\n### Environment\n\n- Hardware: **8× AMD MI300X**\n- Backend: ROCm\n- vLLM: `rocm/vllm-dev:nightly` (recent nightly at time of testing)\n- Serving mode: `vllm serve` (OpenAI-compatible API)\n- Tensor parallelism: TP=8\n- Identical batching, prompts, output lengths, and server settings across runs\n- Measurements taken after warm-up (steady state)\n\n---\n\n### Models Tested\n\n1. **GLM-4.7** (160-expert MoE)  \n2. **MiniMax-M2.1** (256 local experts, 8 experts per token)\n\nFor MiniMax-M2.1, both:\n- the original FP8 / mixed-precision checkpoint, and\n- a (**manually converted pure BF16 checkpoint**)[https://huggingface.co/QuixiAI/MiniMax-M2.1-bf16] (FP8 weights dequantized to BF16, FP8 scale tensors removed, FP8 metadata removed from `config.json`)\n\nwere tested to ensure a clean A/B comparison.\n\n---\n\n### Results (Tokens Per Second)\n\n| Model | Precision | TPS |\n|------|----------|-----|\n| GLM-4.7 | FP8 | ~30 |\n| GLM-4.7 | BF16 | ~60 |\n| MiniMax-M2.1 | FP8 / mixed | ~45 |\n| MiniMax-M2.1 | BF16 | ~58 |\n\n**Key observation:**  \nFP8 is slower than BF16 in all cases. In one case (GLM-4.7), FP8 is approximately **2× slower** than BF16.\n\n---\n\n### Why this is unexpected\n\nFP8 inference is generally expected to:\n- reduce memory bandwidth pressure\n- increase arit",
+    "author": "ehartford",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "rocm",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/31475",
+    "createdAt": "2025-12-29T05:11:55.000Z",
+    "updatedAt": "2026-06-09T02:21:22.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:59e9eaecdd4b4da9941d5d19e9a520832db2a1577990cf8a7d98bd9b83576dc0",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "MI300X 上 FP8 推理慢于 BF16",
+      "summaryZh": "ROCm vLLM 在 8× MI300X 上运行 GLM-4.7 和 MiniMax-M2.1 的 FP8 推理：在相同批处理、提示词、输出长度和服务设置下，经过预热并进入稳态解码后，GLM-4.7 与 MiniMax-M2.1 的 FP8 或混合精度推理吞吐均低于 BF16。GLM-4.7 的 FP8 约为 30 TPS，BF16 约为 60 TPS；MiniMax-M2.1 分别约为 45 TPS 和 58 TPS；FP8 执行路径在 ROCm 上可能存在效率问题或回归，导致大规模 MoE 模型推理性能下降",
+      "models": [
+        "GLM-4.7",
+        "MiniMax-M2.1"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 AMD MI300X 上使用 vLLM ROCm 后端进行大规模 MoE 模型稳态解码的 FP8 推理吞吐。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】FP8 inference much slower than BF16 on MI300X for GLM-4.7 and MiniMax-M2.1",
+        "【正文】On AMD MI300X, FP8 inference in vLLM is consistently slower than BF16 in steady-state decoding for large MoE models"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-30828",
+    "nodeId": "I_kwDOI7xefs7evhc4",
+    "repository": "vllm-project/vllm",
+    "number": 30828,
+    "type": "issue",
+    "title": "[Bug]: The tokenizer you are loading from '/models/GLM-4.6V-Flash' with an incorrect regex pattern: https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e. This will lead to incorrect tokenization.",
+    "bodyExcerpt": "### Your current environment\n\n`\nroot@node37:/disk1/GLM-4.6V-Flash# vi docker-compose.yml \nservices:\n  # vllm\n  vllm-openai:\n    image: vllm/vllm-openai:v0.12.0\n    container_name: GLM-4.6V-Flash\n    restart: unless-stopped\n    runtime: nvidia\n    ports:\n      - 8035:8000\n    volumes:\n      - /disk1/:/models\n    command: >\n      --model /models/GLM-4.6V-Flash\n      --tokenizer_mode=\"auto\"\n      --dtype=bfloat16\n      --tensor_parallel_size=1\n      --gpu-memory-utilization=0.8\n      --max-model-len=32768\n      --max_num_seqs=256\n      --served-model-name=GLM-4.6V-Flash\n    deploy:\n      resources:\n        reservations:\n          devices:\n            - driver: nvidia\n              capabilities: [gpu]\n              device_ids: [ \"0\" ]\n    ipc: host\nnetworks:\n        vllm:\n\n\n~\n\"docker-compose.yml\" [dos] 30L, 722C written                                                                                                                     \nroot@node37:/disk1/GLM-4.6V-Flash# docker compose down\nroot@node37:/disk1/GLM-4.6V-Flash# docker compose up -d\n[+] Running 2/2\n ✔ Network glm-46v-flash_default  Created                                                                                                                                               0.1s \n ✔ Container GLM-4.6V-Flash       Started                                                                                                                                               3.1s \nroot@node37:/disk1/GLM-4.6V-Flash# docker logs -f GLM-4.6V-Flash \nWARNING 12-16 17:41:09 [argparse_utils.py:195] With `vllm serve`, you should provide the model as a positional argument or in a config file instead of via the `--model` option. The `--model` option will be removed in v0.13.\n(APIServer pid=1) INFO 12-16 17:41:09 [api_server.py:1772] vLLM API server version 0.12.0\n(APIServer pid=1) INFO 12-16 17:41:09 [utils.py:253] non-default args: {'model_tag': '/models/GLM-4.6V-Flash', 'model': '/models/GLM-4.6V-Flash', 'dtype': 'bfloat16', '",
+    "author": "jieguolove",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/30828",
+    "createdAt": "2025-12-17T01:51:51.000Z",
+    "updatedAt": "2026-06-05T02:21:48.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:7bb52c955d337bae211547b6d9cede5ae361b921b8e84a9bfa57d34640ba014c",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.6V-Flash tokenizer 正则表达式错误",
+      "summaryZh": "vLLM 加载 /models/GLM-4.6V-Flash 的 tokenizer：vLLM 0.12.0 加载 GLM-4.6V-Flash tokenizer 时报告其正则表达式模式不正确，并提示这会导致错误分词；错误分词可能影响模型服务的输入处理",
+      "models": [
+        "GLM-4.6V-Flash"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响使用 vLLM 0.12.0 进行 GLM-4.6V-Flash 推理服务的场景。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】The tokenizer you are loading from '/models/GLM-4.6V-Flash' with an incorrect regex pattern",
+        "【标题】This will lead to incorrect tokenization."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-31220",
+    "nodeId": "PR_kwDOI7xefs66VG6Z",
+    "repository": "vllm-project/vllm",
+    "number": 31220,
+    "type": "pr",
+    "title": "fixed glm 4.7 tool call and parser",
+    "bodyExcerpt": "",
+    "author": "PratikNarola1",
+    "state": "closed",
+    "labels": [
+      "frontend",
+      "needs-rebase",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/31220",
+    "createdAt": "2025-12-23T13:27:38.000Z",
+    "updatedAt": "2026-05-21T01:43:15.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:d23d7d341a1aba84b6277a520adbbe6dd39851dc238a6c0c137f05cf91151d1d",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM 4.7 工具调用解析器",
+      "summaryZh": "修复 GLM 4.7 的工具调用和解析器",
+      "models": [
+        "GLM 4.7"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "涉及前端工具调用功能。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】fixed glm 4.7 tool call and parser",
+        "【正文】tool-calling"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-31486",
+    "nodeId": "I_kwDOI7xefs7ghmqQ",
+    "repository": "vllm-project/vllm",
+    "number": 31486,
+    "type": "issue",
+    "title": "[Feature]: GLM 4.7 vocab padding feature",
+    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\nThe number of attention heads in GLM-4.7 is 96, so I’m trying to run the FP8 version with 6× H20 GPUs using tensor parallelism (tp=6).\n\nHowever, vllm serve fails and due to `151552 cannot be divided by 6`.\n\nThis seems to be caused by the vocab size 151552 not being divisible by the TP size. In my understanding, this could be solvable by padding the vocab size up. \n\nAlternatively, is there any simpler workaround or recommended solution for this case? Thanks!\n\n### Alternatives\n\n_No response_\n\n### Additional context\n\n_No response_\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "H100-H200-B200",
+    "state": "closed",
+    "labels": [
+      "feature request",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/31486",
+    "createdAt": "2025-12-29T09:30:35.000Z",
+    "updatedAt": "2026-05-07T02:19:59.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:2b1bf51422e2a7396db0af372d9d8c557525781acda2746c33ad9d323cc40df7",
+    "category": "COMPATIBILITY",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.7 词表填充以支持 TP=6",
+      "summaryZh": "GLM-4.7 FP8 在 6×H20 张量并行场景下的词表划分：使用 vLLM 运行 GLM-4.7 FP8、TP=6 时服务启动失败，报错 `151552 cannot be divided by 6`，原因是词表大小 151552 不能被张量并行规模整除；影响 GLM-4.7 FP8 在 6×H20 GPU 上使用张量并行部署",
+      "models": [
+        "GLM-4.7"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "COMPATIBILITY",
+      "severity": "HIGH",
+      "impactScopeZh": "GLM-4.7 FP8 的 TP=6 推理部署无法启动。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】GLM 4.7 vocab padding feature",
+        "【正文】vllm serve fails and due to `151552 cannot be divided by 6`"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-30638",
+    "nodeId": "I_kwDOI7xefs7eJm_r",
+    "repository": "vllm-project/vllm",
+    "number": 30638,
+    "type": "issue",
+    "title": "[Bug]: GLM-4.1V dummy video input generation fails with ValueError (num_frames=1 < temporal_factor=2)",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nvllm==0.11.0\n```\n\n</details>\n\n### 🐛 Describe the bug\nWhen initializing GLM-4.1V with vLLM (even for text-only/image-only inference), the engine core fails to start due to a **constraint mismatch in dummy video input generation**:\n\n1. vLLM automatically generates dummy video inputs during encoder budget calculation (even when no video is provided by the user).\n2. The fallback logic in `get_num_frames_with_most_features` sets `num_frames=1` (minimum value) when video token allocation is insufficient.\n3. GLM-4.1V's `smart_resize` function enforces a strict constraint: `num_frames > temporal_factor=2` (not `>=`), triggering a ValueError.\n4. This leads to fatal engine core initialization failure, blocking all inference for GLM-4.1V.\n\n#### Key Context\n- The error occurs **before any user prompts are processed** (during engine initialization).\n- No explicit video input is provided—this is an internal vLLM dummy input generation issue.\n\n#### Minimal reproducible example\n```python3\nfrom vllm import LLM, SamplingParams\nimport os\n\n\n\n# Initialize GLM-4.1V (triggers dummy video input generation)\nllm = LLM(\n    model=\"THUDM/glm-4.1v\",  \n    tensor_parallel_size=2,\n    dtype=\"bfloat16\",\n    enforce_eager=True,\n    max_model_len=4096,\n    disable_custom_all_reduce=True,  # NPU-specific\n)\n\nsampling_params = SamplingParams(\n    temperature=0.0,\n    max_tokens=32,\n)\n\n# Text-only prompt (error occurs during llm.generate call)\noutputs = llm.generate(\n    [\"Describe the image.\"],\n    sampling_params,\n)\n\nfor output in outputs:\n    print(output.outputs[0].text)\n```\n\n#### Observed behavior\nThe engine core crashes during initialization with the following critical error:\n```\nRuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {'EngineCore_DP0': 1}\n```\n\n#### Full critical error traceback\n```\nERROR 12-14 18:32:20 [core.py:708] Traceback (m",
+    "author": "Silas-11",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/30638",
+    "createdAt": "2025-12-14T09:45:03.000Z",
+    "updatedAt": "2026-04-14T02:17:33.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:b8492f2ddd6ec09a4aa9ed8b703ecc7ed5fb7bd8ec6e53aac5b56e6d1445927f",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.1V dummy video 输入生成失败",
+      "summaryZh": "vLLM 初始化 GLM-4.1V 时的 dummy video 输入生成：即使执行纯文本或纯图像推理，vLLM 在引擎初始化的编码器预算计算中仍生成 dummy video 输入。当视频 token 分配不足时，回退逻辑将 num_frames 设为 1，而 GLM-4.1V 的 smart_resize 要求 num_frames > temporal_factor=2，导致 ValueError，进而引发 Engine core initialization failed 并阻塞推理；错误发生在处理用户提示之前；未提供显式视频输入时也会触发，导致 GLM-4.1V 无法进行推理",
+      "models": [
+        "GLM-4.1V"
+      ],
+      "hardware": [
+        "NPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 vLLM 0.11.0 中 GLM-4.1V 的引擎初始化及所有推理场景。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】GLM-4.1V dummy video input generation fails with ValueError (num_frames=1 < temporal_factor=2)",
+        "【正文】When initializing GLM-4.1V with vLLM (even for text-only/image-only inference), the engine core fails to start due to a\t"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-30165",
+    "nodeId": "I_kwDOI7xefs7clXni",
+    "repository": "vllm-project/vllm",
+    "number": 30165,
+    "type": "issue",
+    "title": "[Bug]: GLM-4.6-AWQ model outputs garbled text on vllm/vllm-openai:v0.10.2-x86_64",
+    "bodyExcerpt": "### Your current environment\n\nGPU: H800\n\nDocker image:     vllm/vllm-openai:v0.10.2-x86_64 with\n\nvllm=0.10.2, transformers=4.56.1, torch=2.8.0+cu128\n\nand \n\nautoawq=0.2.9 (manually installed)\n\n\n### 🐛 Describe the bug\n\nHello VLLM developers,\n\nI am using your vllm/vllm-openai:v0.10.2-x86_64 Docker image, deployed on a Linux server with 6 H800 GPUs. The model I am trying to serve is: [GLM-4.6-AWQ](https://modelscope.cn/models/tclf90/GLM-4.6-AWQ), the model's config.json file contains following content:\n```\n\"quantization_config\": {\n    \"quant_method\": \"awq_marlin\",\n    \"bits\": 4,\n    \"group_size\": 128,\n    \"version\": \"gemm\",\n    \"zero_point\": true,\n    \"modules_to_not_convert\": [\"embed_tokens\", \"shared_experts\", \"shared_head\", \"lm_head\"]\n}\n\n\n```\n\nAfter entering the Docker container, I ran the following command:：\n```\nvllm serve \\\n    /data \\\n    --served-model-name glm46 \\\n    --enable-auto-tool-choice \\\n    --tool-call-parser glm45 \\\n    --reasoning-parser glm45 \\\n    --swap-space 16 \\\n    --max-num-seqs 32 \\\n    --max-model-len 8192 \\\n    --gpu-memory-utilization 0.9 \\\n    --tensor-parallel-size 4 \\\n    --trust-remote-code \\\n    --host 0.0.0.0 \\\n    --port 8000\n```\nThe server starts successfully:\n\n<img width=\"1499\" height=\"654\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/cac06772-c21a-4086-ae70-23c076e09049\" />\n\n(Apologies for the photo format, as our computers are offline.)\n\nHowever, the output text is garbled:\n\n<img width=\"1624\" height=\"217\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/b0709b99-7492-4702-8e7b-07cdf5bfdfe7\" />\n\nI also tried loading the model in code using:\n```\nmodel = LLM('/data', tensor_parallel_size=4)\n```\nbut the output is still garbled:\n\n<img width=\"1580\" height=\"260\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/7f23253e-c9f9-4105-9b4d-ccb9e1148690\" />\n\nNext, I tried loading the model without VLLM using Transformers and AutoAWQ:\n```\nmodel = AutoAWQForCausalLM.from_quantized(\n    model_path,\n    fuse_la",
+    "author": "zzzyoyo",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/30165",
+    "createdAt": "2025-12-06T01:33:27.000Z",
+    "updatedAt": "2026-04-10T02:18:31.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:afa9532b18162b6dafbee3e6fc2406dfbf6eafa6a47d93a0a49743596777f025",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.6-AWQ 输出乱码",
+      "summaryZh": "vLLM v0.10.2 部署 GLM-4.6-AWQ：在 H800 上使用 vllm/vllm-openai:v0.10.2-x86_64 服务 GLM-4.6-AWQ 时，服务可正常启动，但生成文本出现乱码；通过 vLLM 的 LLM API 加载模型时仍然存在该问题；问题出现在 4 张 H800 的张量并行部署场景，模型使用 AWQ Marlin 4-bit 量化配置",
+      "models": [
+        "GLM-4.6-AWQ"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 vLLM v0.10.2 对 GLM-4.6-AWQ 的推理输出。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】GLM-4.6-AWQ model outputs garbled text on vllm/vllm-openai:v0.10.2-x86_64",
+        "【正文】The server starts successfully... However, the output text is garbled"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-29864",
+    "nodeId": "I_kwDOI7xefs7bpm7H",
+    "repository": "vllm-project/vllm",
+    "number": 29864,
+    "type": "issue",
+    "title": "[Usage]: I am unable to run the GLM-4.5-Air-REAP-82B-A12B-nvfp4 model on an RTX 5090.",
+    "bodyExcerpt": "### Your current environment\n\n\n I am unable to run the GLM-4.5-Air-REAP-82B-A12B-nvfp4 model on an RTX 5090.\n\n```text\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 12.3.0-1ubuntu1~22.04.2) 12.3.0\nClang version                : Could not collect\nCMake version                : version 4.2.0\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.10.0.dev20251124+cu128\nIs debug build               : False\nCUDA used to build PyTorch   : 12.8\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.10.12 (main, Nov  4 2025, 08:48:33) [GCC 11.4.0] (64-bit runtime)\nPython platform              : Linux-6.8.0-87-generic-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.8.93\nCUDA_MODULE_LOADING set to   : \nGPU models and configuration : \nGPU 0: NVIDIA GeForce RTX 5090\nGPU 1: NVIDIA GeForce RTX 5090\nGPU 2: NVIDIA GeForce RTX 5090\nGPU 3: NVIDIA GeForce RTX 5090\n\nNvidia driver version        : 570.172.08\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                         x86_64\nCPU op-mode(s):                       32-bit, 64-bit\nAddress sizes:                        46 bits physical, 57 bits virtual\nByte Order:                           Little Endian\nCPU(s):                               112\nOn-line CPU(s) list:                  0-111\nVendor ID:                            GenuineInte",
+    "author": "east612-ai",
+    "state": "closed",
+    "labels": [
+      "usage",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/29864",
+    "createdAt": "2025-12-02T10:13:31.000Z",
+    "updatedAt": "2026-04-06T02:16:57.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:7a1ac72fccc7362139c7ad2f1808bed71b3aa8acdeaff7a11146bfd1df79e27c",
+    "category": "COMPATIBILITY",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "RTX 5090 无法运行 GLM-4.5-Air-REAP-82B-A12B-nvfp4",
+      "summaryZh": "在 RTX 5090 GPU 上运行 GLM-4.5-Air-REAP-82B-A12B-nvfp4 模型：用户无法在 RTX 5090 上运行 GLM-4.5-Air-REAP-82B-A12B-nvfp4 模型",
+      "models": [
+        "GLM-4.5-Air-REAP-82B-A12B-nvfp4"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "COMPATIBILITY",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响使用 RTX 5090 运行该模型的场景。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】I am unable to run the GLM-4.5-Air-REAP-82B-A12B-nvfp4 model on an RTX 5090.",
+        "【正文】I am unable to run the GLM-4.5-Air-REAP-82B-A12B-nvfp4 model on an RTX 5090."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-29823",
+    "nodeId": "PR_kwDOI7xefs62eXJD",
+    "repository": "vllm-project/vllm",
+    "number": 29823,
+    "type": "pr",
+    "title": "[Frontend] Fixes glm reasoning parser leaking tokens",
+    "bodyExcerpt": "\n## Purpose\nFixes https://github.com/vllm-project/vllm/issues/27703\n\n\n## Test Plan\n\n## Test Result\n\n---\n<details>\n<summary> Essential Elements of an Effective PR Description Checklist </summary>\n\n- [ ] The purpose of the PR, such as \"Fix some issue (link existing issues this PR will resolve)\".\n- [ ] The test plan, such as providing test command.\n- [ ] The test results, such as pasting the results comparison before and after, or e2e results\n- [ ] (Optional) The necessary documentation update, such as updating `supported_models.md` and `examples` for a new model.\n- [ ] (Optional) Release notes update. If your change is user facing, please update the release notes draft in the [Google Doc](https://docs.google.com/document/d/1YyVqrgX4gHTtrstbq8oWUImOyPCKSGnJ7xtTpmXzlRs/edit?tab=t.0).\n</details>\n\n",
+    "author": "bbartels",
+    "state": "closed",
+    "labels": [
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/29823",
+    "createdAt": "2025-12-02T00:15:11.000Z",
+    "updatedAt": "2026-04-04T02:15:36.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:4fe7720508d02902d64760f8aaf299a5c360ca3f4ec35bf733ce23e2dc37def5",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM 推理解析器泄漏 token",
+      "summaryZh": "修复 GLM reasoning parser 泄漏 token 的问题，解决GLM reasoning parser 存在 token 泄漏问题",
+      "models": [
+        "GLM"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 vLLM 前端的 GLM 推理解析。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Fixes glm reasoning parser leaking tokens",
+        "【正文】Fixes https://github.com/vllm-project/vllm/issues/27703"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-29763",
+    "nodeId": "I_kwDOI7xefs7bR6Ke",
+    "repository": "vllm-project/vllm",
+    "number": 29763,
+    "type": "issue",
+    "title": "[Bug]: GLM-4.5 reasoning parser streaming fails without tools in request - missing as_list() conversion",
+    "bodyExcerpt": "### Your current environment\n\nvLLM version: 0.9.1 (built from source)\nModel: GLM-4.5-Air (AWQ 4-bit quantized)\nHardware: NVIDIA GB10\nFlags: --reasoning-parser glm45 --enable-reasoning\n\n### 🐛 Describe the bug\n\n## Bug Description\n\nThe GLM-4.5 reasoning parser (`--reasoning-parser glm45`) fails to extract `reasoning_content` during **streaming** chat completions when **no tools are included in the request**. The `<think>` tags leak into the `content` field while `reasoning_content` remains `null`.\n\n### Observed Behavior\n| Scenario | `reasoning_content` | `content` |\n|----------|---------------------|-----------|\n| WITH tools in request | ✅ Correctly populated | ✅ Clean |\n| WITHOUT tools in request | ❌ `null` | ❌ Contains `<think>...</think>` tags |\n\n### Expected Behavior\nBoth scenarios should correctly populate `reasoning_content` with thinking text and `content` with the final response.\n\n## Root Cause\n\nIn `vllm/entrypoints/openai/serving_chat.py`, line 1034 passes `output.token_ids` directly to the reasoning parser without converting it using `as_list()`.\n\n**Line 1034 (BUG):**\n```python\nelif self.reasoning_parser:\n    delta_message = reasoning_parser.extract_reasoning_content_streaming(\n        previous_text, current_text, delta_text,\n        previous_token_ids, current_token_ids,\n        output.token_ids,  # <-- RAW GenericSequence (BUG!)\n    )\n\n\n## Comparison with working code path (line 939, WITH tools):\nelif tool_choice_auto and self.reasoning_parser:\n    output_token_ids = as_list(output.token_ids)  # <-- Correctly converted\n    delta_message = reasoning_parser.extract_reasoning_content_streaming(\n        previous_text, current_text, delta_text,\n        previous_token_ids, current_token_ids,\n        output_token_ids,  # <-- Uses converted list\n    )\nThe output.token_ids type is GenericSequence[int] which may be a NumPy array or other sequence type where the in operator behaves differently than with Python lists.\n\n## Pattern Evidence\nEvery other similar code path",
+    "author": "sygenaithanos",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/29763",
+    "createdAt": "2025-12-01T02:08:46.000Z",
+    "updatedAt": "2026-04-01T02:16:31.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:bb77c9f50333fcd84d09e5f29f366e67f7d76b118cd9ed2d46e066821d15a68d",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.5 流式推理解析器缺少 as_list 转换",
+      "summaryZh": "vLLM 中 GLM-4.5/GLM-4.5-Air 的流式聊天推理解析：未在请求中包含 tools 时，GLM-4.5 推理解析器无法提取 reasoning_content，<think> 标签泄漏到 content 字段；而包含 tools 时表现正常。问题定位为 serving_chat.py 直接将 output.token_ids 传入解析器，未先通过 as_list() 转换；影响 vLLM 0.9.1、NVIDIA GB10 上启用 --reasoning-parser glm45 和 --enable-reasoning 的流式聊天补全",
+      "models": [
+        "GLM-4.5",
+        "GLM-4.5-Air"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "MEDIUM",
+      "impactScopeZh": "不含 tools 的流式聊天请求；含 tools 的请求不受该现象影响。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】GLM-4.5 reasoning parser streaming fails without tools in request - missing as_list() conversion",
+        "【正文】WITHOUT tools in request: reasoning_content is null; content contains <think>...</think> tags"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-31319",
+    "nodeId": "I_kwDOI7xefs7gKeQw",
+    "repository": "vllm-project/vllm",
+    "number": 31319,
+    "type": "issue",
+    "title": "[Bug]: GLM-4.7-FP8 missing beginning <think> tag ",
+    "bodyExcerpt": "### Your current environment\n\nI am on docker nightly vLLM API server version 0.14.0rc1.dev104+g8ee90c83f\n\n\n### 🐛 Describe the bug\n\n\nI hosted the model via vllm and already without reasoning_parser, I found the model output with directly output without <think> but having close tag </think> later. \n\n```\nroot@iv-ydzbs5zshss6ipm6s5gu /h/n/d/ark_http_proxy# curl --location 'http://localhost/v1/chat/completions' \\\n                                                    --header 'Authorization: Bearer YOUR_API_KEY' \\\n                                                    --header 'Content-Type: application/json' \\\n                                                    --data '{\n                                                        \"model\": \"GLM-4.7-FP8\", \"stream\": true,\n                                                        \"messages\": [\n                                                            {\n                                                                \"role\": \"user\",\n                                                                \"content\": \"what is cryptography\"\n                                                            }\n                                                        ],\"chat_template_kwargs\": {\"enable_thinking\": true}, \"skip_special_tokens\": false,\n                                                        \"thinking\": {\n                                                            \"type\": \"enabled\"\n                                                        },\n                                                        \"max_tokens\": 1024,\n                                                        \"temperature\": 1.0\n                                                    }'\ndata: {\"id\":\"chatcmpl-9fbc092d919f9e51\",\"object\":\"chat.completion.chunk\",\"created\":1766599479,\"model\":\"GLM-4.7-FP8\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"reasoning_content\":null},\"logprobs\":null,\"finish_reason\":null}],\"prompt_token_ids\":null}\n\ndata: {\"id\":\"chatcmpl-9fbc092d919f9e51\"",
+    "author": "Nemo-G",
+    "state": "closed",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/31319",
+    "createdAt": "2025-12-24T18:45:34.000Z",
+    "updatedAt": "2026-01-24T04:01:20.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:7f66f9b53de3be64fb254a620d254759523f09e1f322b9d7ba69ff335c218818",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.7-FP8 缺少开头 <think> 标签",
+      "summaryZh": "vLLM API Server 托管 GLM-4.7-FP8 时的思维输出：启用思考模式且未配置 reasoning_parser 时，模型输出直接开始内容，缺少开头的 <think> 标签，但后续出现了闭合标签 </think>；影响 vLLM 0.14.0rc1.dev104+g8ee90c83f 的流式 Chat Completions 请求",
+      "models": [
+        "GLM-4.7-FP8"
+      ],
+      "hardware": [
+        "UNKNOWN"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "MEDIUM",
+      "impactScopeZh": "GLM-4.7-FP8 在启用思考模式的 vLLM 推理服务中。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Bug]: GLM-4.7-FP8 missing beginning <think> tag",
+        "【正文】model output with directly output without <think> but having close tag </think> later"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-31386",
+    "nodeId": "PR_kwDOI7xefs66nrLa",
+    "repository": "vllm-project/vllm",
+    "number": 31386,
+    "type": "pr",
+    "title": "[GLM-4.7] GLM Model support for GLM-Lite",
+    "bodyExcerpt": "using with transformers 5.0.0 with GLM-Lite model， transformers PR [here](https://github.com/huggingface/transformers/pull/43031)",
+    "author": "zRzRzRzRzRzRzR",
+    "state": "merged",
+    "labels": [
+      "documentation",
+      "performance",
+      "new-model",
+      "ready",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/31386",
+    "createdAt": "2025-12-26T10:06:30.000Z",
+    "updatedAt": "2026-01-21T05:37:08.000Z",
+    "mergedAt": "2026-01-19T09:18:38.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:52fa3f054a5c2df45b5267ee17f9212ef3c007dc1bc5999c85f2a30819195091",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-Lite 模型支持",
+      "summaryZh": "新增 GLM-Lite 模型支持，适配 Transformers 5.0.0，并关联 Transformers PR #43031；影响使用 Transformers 5.0.0 与 GLM-Lite 模型的场景",
+      "models": [
+        "GLM-Lite"
+      ],
+      "hardware": [],
+      "scenarios": [],
+      "category": "NEW_SUPPORT",
+      "severity": "INFO",
+      "impactScopeZh": "vLLM 模型支持与 Transformers 5.0.0 集成",
+      "attention": "ROUTINE",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】[GLM-4.7] GLM Model support for GLM-Lite",
+        "【正文】using with transformers 5.0.0 with GLM-Lite model"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-31449",
+    "nodeId": "PR_kwDOI7xefs66u5U8",
+    "repository": "vllm-project/vllm",
+    "number": 31449,
+    "type": "pr",
+    "title": "fix no think of GLM-4.5 / GLM-4.7",
+    "bodyExcerpt": "Using the logic of DeepSeek-R1 and Qwen3, it can be extracted even if it doesn't appear.",
+    "author": "zRzRzRzRzRzRzR",
+    "state": "merged",
+    "labels": [
+      "ready"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/31449",
+    "createdAt": "2025-12-28T10:23:25.000Z",
+    "updatedAt": "2026-01-15T08:43:30.000Z",
+    "mergedAt": "2026-01-04T03:43:00.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:8ebe41fa16f0d96fc23964f68039cdfb8d4fe6ca77751e959de5f3f8f687e889",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM-4.5/GLM-4.7 思考内容缺失",
+      "summaryZh": "修复 GLM-4.5 与 GLM-4.7 在思考内容未显式出现时无法提取的问题，采用类似 DeepSeek-R1 和 Qwen3 的处理逻辑；即使思考内容未显式出现，也可以进行提取",
+      "models": [
+        "GLM-4.5",
+        "GLM-4.7"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 GLM-4.5 与 GLM-4.7 的推理输出处理。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】fix no think of GLM-4.5 / GLM-4.7",
+        "【正文】Using the logic of DeepSeek-R1 and Qwen3, it can be extracted even if it doesn't appear."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-31055",
+    "nodeId": "PR_kwDOI7xefs657OVE",
+    "repository": "vllm-project/vllm",
+    "number": 31055,
+    "type": "pr",
+    "title": "[Bugfix] Fix GLM-4 MoE router logits dtype for data parallel chunking",
+    "bodyExcerpt": "## Purpose\nFixes dtype mismatch in GLM4-MoE when using data parallel chunking with `--all2all-backend pplx`.\n\n**Root cause:** GLM4-MoE uses float32 gates, but data parallel chunking pre-allocates buffers with the model's dtype (bfloat16). When `--all2all-backend pplx` is used, chunking is enabled and the dtype assertion fails.\n\nThe assertion that fails is this one: assert self.batched_router_logits.dtype == full_router_logits.dtype from `vllm/model_executor/layers/fused_moe/layer.py`, [permalink](https://github.com/vllm-project/vllm/blob/d52c5096d7305abc7f266026cb042121ff5bccda/vllm/model_executor/layers/fused_moe/layer.py#L1786).\n\nThe buffer is created with model's dtype in `ensure_dp_chunking` with `self.batched_router_logits = torch.zeros(logits_shape, dtype=moe.in_dtype, device=torch.cuda.current_device())`, [permalink](https://github.com/vllm-project/vllm/blob/d52c5096d7305abc7f266026cb042121ff5bccda/vllm/model_executor/layers/fused_moe/layer.py#L1520).\n\nAnd the `moe.in_dtype` comes from `vllm_config.model_config.dtype` so in general it's a bfloat16.\n\nBut GLM4's [gates explicitly use float32](https://github.com/vllm-project/vllm/blob/d52c5096d7305abc7f266026cb042121ff5bccda/vllm/model_executor/models/glm4_moe.py#L147), there is an explanation in the code that explains why they can't use `ReplicatedLinear` as do some other MoEs and I think that's why this issue wasn't caught before or maybe wasn't caught by CI or something?\n\nThe router logits are thus flaot32 as well `router_logits = self.gate(hidden_states.to(dtype=torch.float32))` in the [forward](https://github.com/vllm-project/vllm/blob/d52c5096d7305abc7f266026cb042121ff5bccda/vllm/model_executor/models/glm4_moe.py#L207C9-L207C73).\n\nSo this causes a mismatch between the buffer's type and the actual logits.\n\nThe actual cause of this issue is not the simple mismatch, but the mismatch only happens when doing chunking. I thought it was the default but surprisingly it is not. When I disabled the pplx backend, I d",
+    "author": "ReinforcedKnowledge",
+    "state": "merged",
+    "labels": [
+      "ready"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/31055",
+    "createdAt": "2025-12-20T02:18:47.000Z",
+    "updatedAt": "2026-01-06T17:57:57.000Z",
+    "mergedAt": "2026-01-06T17:57:57.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:9da251d10080c22daa5ae95089339676860a9a53bffe7ced9125fe2f3a1c243e",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM-4 MoE 路由日志 dtype 不匹配",
+      "summaryZh": "修复 GLM4-MoE 在 data parallel chunking 场景下因路由日志缓冲区 dtype 与实际 logits 不一致而触发的断言失败，解决使用 --all2all-backend pplx 启用 data parallel chunking 时，GLM4-MoE 的 gates 和 router logits 为 float32，而预分配缓冲区使用模型 dtype（通常为 bfloat16），导致 batched_router_logits 与 full_router_logits 的 dtype 断言失败；影响使用 GLM4-MoE、data parallel chunking 和 --all2all-backend pplx 的场景",
+      "models": [
+        "GLM-4",
+        "GLM4-MoE"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "vLLM 的 GLM4-MoE 数据并行分块与 pplx all2all 后端路径。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Fix GLM-4 MoE router logits dtype for data parallel chunking",
+        "【正文】Fixes dtype mismatch in GLM4-MoE when using data parallel chunking with --all2all-backend pplx."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-31485",
+    "nodeId": "I_kwDOI7xefs7ghb0-",
+    "repository": "vllm-project/vllm",
+    "number": 31485,
+    "type": "issue",
+    "title": "[Feature]: Support Tool Calling with transformers 5.x for GLM-4.6V Models",
+    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\nSorry but please allow me to use some AI to summary my findings and request \n\n**Request:** Add support for tool calling (`glm45` parser) when using transformers 5.x with GLM-4.6V models.\n\n**Current Limitation:** GLM-4.6V models require transformers 5.0.0rc1 for vision/multimodal support, but vLLM v0.13's tool calling parser (`glm45`) is incompatible with transformers 5.x, forcing users to choose between tool calling OR vision.\n\n## Environment\n\n- **vLLM Version:** v0.13.0\n- **Model:** `zai-org/GLM-4.6V-FP8`, `zai-org/GLM-4.6V-Flash`\n- **Transformers 4.56.0:** Tool calling works, vision not supported\n- **Transformers 5.0.0rc1:** Vision works, tool calling broken\n- **Tool Call Parser:** `glm45`\n- **GPU:** 2x NVIDIA RTX 6000 Pro (96GB each)\n\n## Current Behavior\n\n### With transformers 4.56.0 (Tool Calling Works)\n\n```bash\nvllm serve zai-org/GLM-4.6V-FP8 \\\n  --tool-call-parser glm45 \\\n  --limit-mm-per-prompt '{\"image\": 0, \"video\": 0}'\n```\n\nResponse includes `tool_calls`:\n```json\n{\n  \"choices\": [{\n    \"message\": {\n      \"tool_calls\": [{\n        \"id\": \"call_abc\",\n        \"function\": {\n          \"name\": \"get_weather\",\n          \"arguments\": \"{\\\"location\\\": \\\"Tokyo\\\"}\"\n        }\n      }]\n    }\n  }]\n}\n```\n\n### With transformers 5.0.0rc1 (Tool Calling Broken)\n\n```bash\npip install --upgrade 'transformers==5.0.0rc1'\nvllm serve zai-org/GLM-4.6V-FP8 \\\n  --tool-call-parser glm45 \\\n  --limit-mm-per-prompt '{\"image\": 1, \"video\": 0}'\n```\n\nResponse has `tool_calls: null`:\n```json\n{\n  \"choices\": [{\n    \"message\": {\n      \"content\": \"I should use the get_weather function...\",\n      \"tool_calls\": null\n    }\n  }]\n}\n```\n\n## Why transformers 5.0.0rc1 is Required\n\nGLM-4.6V models have a multimodal vision processor that only exists in transformers 5.0.0rc1:\n\n```\nError: Cannot find module 'transformers.models.glm.visualizing_glm'\n```\n\nThe `GLMVisionProcessor` class was added in transformers 5.0.0rc1 and is required for image support.\n\n### Alternatives\n\n_N",
+    "author": "tamthaihoangminh",
+    "state": "closed",
+    "labels": [
+      "feature request"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/31485",
+    "createdAt": "2025-12-29T09:14:18.000Z",
+    "updatedAt": "2026-01-05T19:32:45.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:6363603988c502de8324837d1f92e80c5f789a2a7d19a2a0dc818378656707c9",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "支持 Transformers 5.x 下 GLM-4.6V 工具调用",
+      "summaryZh": "请求为使用 transformers 5.x 的 GLM-4.6V-FP8 和 GLM-4.6V-Flash 模型增加 glm45 工具调用支持；当前用户必须在工具调用和视觉支持之间二选一：transformers 4.56.0 支持工具调用但不支持视觉，5.0.0rc1 支持视觉但工具调用失效",
+      "models": [
+        "GLM-4.6V-FP8",
+        "GLM-4.6V-Flash"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响在 vLLM v0.13.0 中同时使用 GLM-4.6V 视觉能力与工具调用的推理场景。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】Support Tool Calling with transformers 5.x for GLM-4.6V Models",
+        "【正文】GLM-4.6V models require transformers 5.0.0rc1 for vision/multimodal support, but vLLM v0.13's tool calling parser (`glm起"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-31436",
+    "nodeId": "PR_kwDOI7xefs66t0Bk",
+    "repository": "vllm-project/vllm",
+    "number": 31436,
+    "type": "pr",
+    "title": "Add GLM-ASR multimodal support ",
+    "bodyExcerpt": "<!-- markdownlint-disable -->\n\n## Purpose\nSupport that model :https://huggingface.co/zai-org/GLM-ASR-Nano-2512 \n## Test Plan\n\n## Test Result\nfor download and convert test audio:\nhttps://paste.ubuntu.com/p/K7S9Thmvfg/\n\nStart server:\n```\nexport VLLM_DISABLE_TORCH_COMPILE=1\nexport TORCH_COMPILE=0\n\npython -m vllm.entrypoints.openai.api_server \\\n  --model zai-org/GLM-ASR-Nano-2512 \\\n  --port 8000 \\\n  --dtype bfloat16 \\\n  --allowed-local-media-path /root/vllm/peoples_speech_100\n```\n\n bench_glm_asr_e2e.py https://paste.ubuntu.com/p/t658x4W2fJ/ \npython bench_glm_asr_e2e.py --dir /root/vllm/peoples_speech_100 --limit 100 --concurrency 1 --warmup 1\n```\n  === SUMMARY ===\n OK=100 FAIL=0\n Wall time: 43.08s Latency(s): mean=0.43 p50=0.42 p90=0.50 p99=0.63 \nRTF: mean=0.03 p50=0.03 p90=0.04 p99=0.04 Total audio: 1449.06s => Throughput=33.64 audio-sec/s Saved: /root/vllm/peoples_speech_100/bench_100_c1.jsonl Saved: /root/vllm/peoples_speech_100/transcripts_100_c1.tsv\n\n```\npython bench_glm_asr_e2e.py --dir /root/vllm/peoples_speech_100 --limit 100 --concurrency 4 --warmup 1\n```\n=== SUMMARY === OK=100 FAIL=0 Wall time: 9.81s Latency(s): mean=0.39 p50=0.38 p90=0.48 p99=0.55 RTF: mean=0.03 p50=0.03 p90=0.03 p99=0.04 Total audio: 1449.06s => Throughput=147.64 audio-sec/s Saved: /root/vllm/peoples_speech_100/bench_100_c4.jsonl Saved: /root/vllm/peoples_speech_100/transcripts_100_c4.tsv (.venv) root@d50ebd3703cf:~/vllm\n\n```\npython bench_glm_asr_e2e.py --dir /root/vllm/peoples_speech_100 --limit 100 --concurrency 8 --warmup 1\n```\n`\n=== SUMMARY === OK=100 FAIL=0 Wall time: 5.36s Latency(s): mean=0.41 p50=0.41 p90=0.53 p99=0.59 RTF: mean=0.03 p50=0.03 p90=0.04 p99=0.04 Total audio: 1449.06s => Throughput=270.24 audio-sec/s Saved: /root/vllm/peoples_speech_100/bench_100_c8.jsonl Saved: /root/vllm/peoples_speech_100/transcripts_100_c8.tsv (.venv) root@d50ebd3703cf:~/vllm#\n`\n```\n---\n<details>\n<summary> Essential Elements of an Effective PR Description Checklist </summary>\n\n- [ ] The purpose of t",
+    "author": "baonudesifeizhai",
+    "state": "merged",
+    "labels": [
+      "documentation",
+      "new-model",
+      "ready",
+      "multi-modality"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/31436",
+    "createdAt": "2025-12-27T23:29:01.000Z",
+    "updatedAt": "2025-12-31T15:12:25.000Z",
+    "mergedAt": "2025-12-31T15:12:24.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:1346e2631e78d17e4b8d5fb49c8f8791dfb8604beb6027f66d1cf4df40d687fa",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "新增 GLM-ASR 多模态支持",
+      "summaryZh": "新增 GLM-ASR-Nano-2512 模型的多模态音频支持，并提供 OpenAI API 服务启动方式及端到端基准测试；测试覆盖 100 个音频样本，1、4、8 并发均为 OK=100、FAIL=0；8 并发吞吐量为 270.24 audio-sec/s",
+      "models": [
+        "GLM-ASR-Nano-2512"
+      ],
+      "hardware": [
+        "UNKNOWN"
+      ],
+      "scenarios": [
+        "INFERENCE",
+        "EVALUATION"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "INFO",
+      "impactScopeZh": "影响 vLLM 中 GLM-ASR-Nano-2512 的音频推理与服务部署场景。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】Add GLM-ASR multimodal support",
+        "【正文】Support that model :https://huggingface.co/zai-org/GLM-ASR-Nano-2512"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-31417",
+    "nodeId": "PR_kwDOI7xefs66tfPc",
+    "repository": "vllm-project/vllm",
+    "number": 31417,
+    "type": "pr",
+    "title": "[Reasoning] Add GLM-4.7 reasoning parser for template-injected <think> tag",
+    "bodyExcerpt": "## Summary\n- Adds a new `Glm47ReasoningParser` for GLM-4.7 models that inject `<think>` in the chat template\n- Fixes #31319\n\n### Problem\nGLM-4.7 chat templates include `<think>` at the end of the prompt (after `<|assistant|>`), so the model output:\n- Starts directly with thinking content (no `<think>` tag)\n- Ends with `</think>` when thinking is complete\n\nThis causes the existing parser to fail to detect reasoning content.\n\n### Solution\nThe new `Glm47ReasoningParser` class:\n1. **Streaming**: Treats initial output as reasoning when no `<think>` token is present\n2. **Non-streaming**: Prepends `<think>` to model output when `</think>` exists without `<think>`\n3. Falls back to parent `Glm4MoeModelReasoningParser` for standard cases\n\n### Usage\n```bash\nvllm serve <model> --reasoning-parser glm47\n```\n\n## Test plan\n- [x] Ruff checks pass\n- [ ] Manual testing with GLM-4.7 model\n\nFixes #31319\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "author": "yurekami",
+    "state": "closed",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/pull/31417",
+    "createdAt": "2025-12-27T20:14:17.000Z",
+    "updatedAt": "2025-12-29T12:50:44.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:fa8162141eb95ba47602ff5be4e2838236b002b822ce4e5730d84326a16667ef",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "新增 GLM-4.7 推理解析器",
+      "summaryZh": "新增 Glm47ReasoningParser，支持流式输出在缺少 <think> 时将初始内容视为推理，支持非流式输出在存在 </think> 而缺少 <think> 时补齐标签，并对标准情况回退至父解析器，解决GLM-4.7 聊天模板在提示词末尾注入 <think>，导致模型输出直接从思考内容开始并仅以 </think> 结束，现有解析器无法识别推理内容；GLM-4.7 可通过 --reasoning-parser glm47 使用新的推理解析能力",
+      "models": [
+        "GLM-4.7"
+      ],
+      "hardware": [
+        "UNKNOWN"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 GLM-4.7 推理输出的流式和非流式解析。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】Add GLM-4.7 reasoning parser for template-injected <think> tag",
+        "【正文】Adds a new `Glm47ReasoningParser` for GLM-4.7 models that inject `<think>` in the chat template"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-31383",
+    "nodeId": "PR_kwDOI7xefs66nNhN",
+    "repository": "vllm-project/vllm",
+    "number": 31383,
+    "type": "pr",
+    "title": "[Bugfix] Add GLM-4 append-think reasoning parser for missing <think> token",
+    "bodyExcerpt": "## Summary\n\nFixes #31319\n\nSome GLM-4 variants (e.g., GLM-4.7-FP8) don't generate the `<think>` start token in their output even though the chat template adds it to the prompt. This causes malformed reasoning output with only the `</think>` end tag.\n\nThis PR adds `Glm4AppendThinkReasoningParser` which prepends `<think>` to the output content, following the same pattern as `MiniMaxM2AppendThinkReasoningParser`.\n\n### Changes\n- Added `Glm4AppendThinkReasoningParser` class in `glm4_moe_reasoning_parser.py`\n- Registered the parser as `glm45_append_think` in `__init__.py`\n- Added comprehensive unit tests\n\n### Usage\nUsers with GLM-4.7-FP8 or similar models can use:\n```bash\nvllm serve GLM-4.7-FP8 --reasoning-parser glm45_append_think\n```\n\n## Test plan\n- [x] Added unit tests for the new parser covering streaming and non-streaming cases\n- [ ] Manual testing with GLM-4.7-FP8 model (requires GPU environment)\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "author": "yurekami",
+    "state": "closed",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/pull/31383",
+    "createdAt": "2025-12-26T08:43:30.000Z",
+    "updatedAt": "2025-12-29T12:50:43.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:f0e46b2e1a0443b0dbc451c806b375d514842a076bb8af943133b61e5ab0077a",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "新增 GLM-4 缺失思考标记解析器",
+      "summaryZh": "新增 `Glm4AppendThinkReasoningParser`，在输出内容前补充 `<think>`；注册为 `glm45_append_think`，并添加流式与非流式单元测试，解决部分 GLM-4 变体未生成 `<think>` 起始标记，但聊天模板已将其加入提示词，导致输出仅包含 `</think>` 结束标记，推理内容格式异常；GLM-4.7-FP8 或类似模型可通过 `--reasoning-parser glm45_append_think` 使用该解析器",
+      "models": [
+        "GLM-4",
+        "GLM-4.7-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE",
+        "EVALUATION"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响使用 GLM-4 推理解析器的推理服务；手动测试需要 GPU 环境。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Add GLM-4 append-think reasoning parser for missing <think> token",
+        "【正文】Some GLM-4 variants (e.g., GLM-4.7-FP8) don't generate the `<think>` start token ... This causes malformed reasoning"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-31474",
+    "nodeId": "I_kwDOI7xefs7gftzq",
+    "repository": "vllm-project/vllm",
+    "number": 31474,
+    "type": "issue",
+    "title": "[Feature]: GLM 4.7 vocab padding feature",
+    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\nThe number of attention heads in GLM-4.7 is 96, so I’m trying to run the FP8 version with 6× H20 GPUs using tensor parallelism (tp=6).\n\nHowever, vllm serve fails and due to `151552 cannot be divided by 6`.\n\nThis seems to be caused by the vocab size 151552 not being divisible by the TP size. In my understanding, this could be solvable by padding the vocab size up. \n\nAlternatively, is there any simpler workaround or recommended solution for this case? Thanks!\n\n### Alternatives\n\n_No response_\n\n### Additional context\n\n_No response_\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "H100-H200-B200",
+    "state": "closed",
+    "labels": [
+      "feature request"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/31474",
+    "createdAt": "2025-12-29T04:55:28.000Z",
+    "updatedAt": "2025-12-29T09:28:17.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:ec279f41142cc7bdf6a2105c67047db4b7d1a6001a7473872e6bcc62f523ecde",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.7 词表填充支持",
+      "summaryZh": "请求支持将 GLM-4.7 的词表大小向上填充，使其可用于 TP=6；或提供该配置的推荐替代方案；目标是在 6×H20 GPU 上使用张量并行运行 GLM-4.7 FP8",
+      "models": [
+        "GLM-4.7"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 GLM-4.7 FP8 在 TP=6 配置下的服务启动。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】[Feature]: GLM 4.7 vocab padding feature",
+        "【正文】vllm serve fails and due to `151552 cannot be divided by 6`"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-31407",
+    "nodeId": "PR_kwDOI7xefs66sSLp",
+    "repository": "vllm-project/vllm",
+    "number": 31407,
+    "type": "pr",
+    "title": "Add Fused MoE Triton kernels for GLM-4.5-Air, GLM-4.5v, GLM-4.6v on 2x RTX Pro 6000",
+    "bodyExcerpt": "## Purpose\n\nAdd optimized config for 2x RTX Pro 6000 for:\n- GLM-4.5-Air model (N=129)\n- GLM-4.5V, GLM-4.6V and GLM-4.5-Air finetunes with no MTP layers\n\nNote: those were produced through SGLang tuner.\n\n## Test Plan\n\nTested locally on vLLM and in SGLang\n\n## Test Result\n\nIt works. See comment: https://github.com/vllm-project/vllm/issues/26838#issuecomment-3669355236\n\n---\n<details>\n<summary> Essential Elements of an Effective PR Description Checklist </summary>\n\n- [x] The purpose of the PR, such as \"Fix some issue (link existing issues this PR will resolve)\".\n- [x] The test plan, such as providing test command.\n- [x] The test results, such as pasting the results comparison before and after, or e2e results\n- [ ] (Optional) The necessary documentation update, such as updating `supported_models.md` and `examples` for a new model.\n- [ ] (Optional) Release notes update. If your change is user facing, please update the release notes draft in the [Google Doc](https://docs.google.com/document/d/1YyVqrgX4gHTtrstbq8oWUImOyPCKSGnJ7xtTpmXzlRs/edit?tab=t.0).\n</details>\n\n",
+    "author": "mratsim",
+    "state": "merged",
+    "labels": [
+      "performance",
+      "ready"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/31407",
+    "createdAt": "2025-12-27T10:00:14.000Z",
+    "updatedAt": "2025-12-28T16:38:34.000Z",
+    "mergedAt": "2025-12-28T16:38:34.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:8f3daf6afa5324b328d77d7f0acfc2059aae75345196a2fe1dccfc4b93caeae9",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "新增 GLM 系列 Fused MoE Triton 内核配置",
+      "summaryZh": "新增面向 2x RTX Pro 6000 的优化配置和 Fused MoE Triton 内核支持，覆盖 GLM-4.5-Air（N=129）、GLM-4.5V、GLM-4.6V 以及无 MTP 层的 GLM-4.5-Air 微调模型；配置由 SGLang tuner 生成，并已在 vLLM 和 SGLang 中完成本地测试",
+      "models": [
+        "GLM-4.5-Air",
+        "GLM-4.5V",
+        "GLM-4.6V"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "INFO",
+      "impactScopeZh": "影响使用 2x RTX Pro 6000 部署所述 GLM 模型的场景。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】Add Fused MoE Triton kernels for GLM-4.5-Air, GLM-4.5v, GLM-4.6v on 2x RTX Pro 6000",
+        "【正文】Add optimized config for 2x RTX Pro 6000"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-30876",
+    "nodeId": "PR_kwDOI7xefs65ZNxR",
+    "repository": "vllm-project/vllm",
+    "number": 30876,
+    "type": "pr",
+    "title": "GLM-4.7 Tool Parser and Doc Update",
+    "bodyExcerpt": "Added support for GLM-4.7's Tool Parser and improved documentation.",
+    "author": "zRzRzRzRzRzRzR",
+    "state": "merged",
+    "labels": [
+      "documentation",
+      "frontend",
+      "ready",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/30876",
+    "createdAt": "2025-12-17T15:20:10.000Z",
+    "updatedAt": "2025-12-23T09:19:14.000Z",
+    "mergedAt": "2025-12-20T00:09:58.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:4506892ff2191ecb693906c6342d3433763d779068871a3320a10a216b8f93bd",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "新增 GLM-4.7 工具解析器支持",
+      "summaryZh": "新增对 GLM-4.7 Tool Parser 的支持，并改进相关文档；支持 GLM-4.7 的工具调用解析",
+      "models": [
+        "GLM-4.7"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "INFO",
+      "impactScopeZh": "面向 GLM-4.7 工具调用场景。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】GLM-4.7 Tool Parser and Doc Update",
+        "【正文】Added support for GLM-4.7's Tool Parser and improved documentation."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-30843",
+    "nodeId": "I_kwDOI7xefs7exfhK",
+    "repository": "vllm-project/vllm",
+    "number": 30843,
+    "type": "issue",
+    "title": "[Bug]: vllm serve GLM-4.6V-Flash error",
+    "bodyExcerpt": "### Your current environment\n\ndocker image: vllm/vllm-openai:nightly（sha256:b40b770900bfb2b4a66bc04e888141830e20fd732c79e07ab3e3d6186d0ed437）\n\nvllm version: 0.13.0rc2.dev118+g29f7d9771\ntransformers version: 4.57.3\n\n\n### 🐛 Describe the bug\n\nvllm serve GLM-4.6V-Flash : Error\n\n<img width=\"1784\" height=\"514\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/cb263d02-5925-41c7-9ec9-1a68ab85d92a\" />\n\n<img width=\"1776\" height=\"450\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/47bcfdbc-20f5-47e8-8c0f-d7afa0cc48a1\" />\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "F0undLinks",
+    "state": "closed",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/30843",
+    "createdAt": "2025-12-17T06:23:08.000Z",
+    "updatedAt": "2025-12-19T01:29:25.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:e47587bbc18ddf5e774a086649f42df81f57bf3a1c64be35cf822b4e11393006",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "vllm serve GLM-4.6V-Flash 报错",
+      "summaryZh": "使用 vLLM 启动 GLM-4.6V-Flash 服务：执行 vllm serve GLM-4.6V-Flash 时发生错误，具体错误信息仅通过截图提供",
+      "models": [
+        "GLM-4.6V-Flash"
+      ],
+      "hardware": [
+        "UNKNOWN"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "MEDIUM",
+      "impactScopeZh": "GLM-4.6V-Flash 服务无法按报告中的方式启动。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Bug]: vllm serve GLM-4.6V-Flash error",
+        "【正文】vllm serve GLM-4.6V-Flash : Error"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-30920",
+    "nodeId": "PR_kwDOI7xefs65fxRg",
+    "repository": "vllm-project/vllm",
+    "number": 30920,
+    "type": "pr",
+    "title": "[Bugfix] Fix Unicode issues in GLM-4 tool calling",
+    "bodyExcerpt": "\n## Purpose\n\n## Test Plan\nmain\n```\n[ChatCompletionMessageFunctionToolCall(id='chatcmpl-tool-a206a0a9cae7c285', function=Function(arguments='{\"city\": \"\\\\u5317\\\\u4eac\", \"date\": \"2024-06-27\"}', name='get_weather'), type='function'), ChatCompletionMessageFunctionToolCall(id='chatcmpl-tool-9b1f3dc7e2f41093', function=Function(arguments='{\"city\": \"\\\\u4e0a\\\\u6d77\", \"date\": \"2024-06-27\"}', name='get_weather'), type='function')]\n\n```\n\nthis pr\n\n```\n[ChatCompletionMessageFunctionToolCall(id='chatcmpl-tool-a206a0a9cae7c285', function=Function(arguments='{\"city\": \"北京\", \"date\": \"2024-06-27\"}', name='get_weather'), type='function'), ChatCompletionMessageFunctionToolCall(id='chatcmpl-tool-9b1f3dc7e2f41093', function=Function(arguments='{\"city\": \"上海\", \"date\": \"2024-06-27\"}', name='get_weather'), type='function')]\n\n```\n## Test Result\n\n---\n<details>\n<summary> Essential Elements of an Effective PR Description Checklist </summary>\n\n- [ ] The purpose of the PR, such as \"Fix some issue (link existing issues this PR will resolve)\".\n- [ ] The test plan, such as providing test command.\n- [ ] The test results, such as pasting the results comparison before and after, or e2e results\n- [ ] (Optional) The necessary documentation update, such as updating `supported_models.md` and `examples` for a new model.\n- [ ] (Optional) Release notes update. If your change is user facing, please update the release notes draft in the [Google Doc](https://docs.google.com/document/d/1YyVqrgX4gHTtrstbq8oWUImOyPCKSGnJ7xtTpmXzlRs/edit?tab=t.0).\n</details>\n\n",
+    "author": "chaunceyjiang",
+    "state": "merged",
+    "labels": [
+      "ready"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/30920",
+    "createdAt": "2025-12-18T03:26:41.000Z",
+    "updatedAt": "2025-12-18T07:12:18.000Z",
+    "mergedAt": "2025-12-18T07:12:17.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:a56e522a62999b6b9c11c12e6a6e3bfd8701c0002e95f5e7e35fa65877947faf",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM-4 工具调用 Unicode 问题",
+      "summaryZh": "修复 GLM-4 工具调用中的 Unicode 处理，使函数参数中的中文城市名直接保留为可读文本，解决工具调用函数参数中的中文城市名被转义为 Unicode 序列，例如“北京”显示为“\\u5317\\u4eac”；工具调用参数中的中文内容从 Unicode 转义序列恢复为直接显示的中文",
+      "models": [
+        "GLM-4"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "GLM-4 工具调用的函数参数序列化与展示。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Bugfix] Fix Unicode issues in GLM-4 tool calling",
+        "【正文】this pr ... arguments='{\"city\": \"北京\", \"date\": \"2024-06-27\"}'"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-30835",
+    "nodeId": "I_kwDOI7xefs7ewZ8J",
+    "repository": "vllm-project/vllm",
+    "number": 30835,
+    "type": "issue",
+    "title": "[Feature]: support glm-46v",
+    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\nhttps://huggingface.co/collections/zai-org/glm-46v\n\n\n### Alternatives\n\n_No response_\n\n### Additional context\n\n_No response_\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "ghost",
+    "state": "closed",
+    "labels": [
+      "feature request"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/30835",
+    "createdAt": "2025-12-17T03:57:17.000Z",
+    "updatedAt": "2025-12-17T04:18:50.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:7590ddc4208e196ff04bee2961ebf782ff5b5daf9712c15e18a4fe7b2c891d9a",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "vLLM 支持 GLM-4.6V",
+      "summaryZh": "请求请求 vLLM 支持 GLM-4.6V 模型",
+      "models": [
+        "GLM-4.6V"
+      ],
+      "hardware": [],
+      "scenarios": [],
+      "category": "NEW_SUPPORT",
+      "severity": "INFO",
+      "impactScopeZh": "涉及 vLLM 的 GLM-4.6V 模型支持能力。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】[Feature]: support glm-46v",
+        "【正文】https://huggingface.co/collections/zai-org/glm-46v"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-30584",
+    "nodeId": "I_kwDOI7xefs7eC3ya",
+    "repository": "vllm-project/vllm",
+    "number": 30584,
+    "type": "issue",
+    "title": "[Bug]: GLM-4.6V-Flash + transformers v5: vLLM passes MediaWithBytes to HF image processor, causing 400 errors for multimodal requests",
+    "bodyExcerpt": "### Your current environment\n\nEnvironment\n\nvLLM: latest main branch (commit b4039c08b5dd0a14d5c1ccac8557aa11732d857c)\n\ntransformers: v5.0.0rc1\n\nModel: zai-org/GLM-4.6V-Flash\n\nPython: 3.12\n\nSystem: DGX Spark (GB10) Blackwell; arm64\n\nServing mode: OpenAI-compatible /v1/chat/completions\n\n### 🐛 Describe the bug\n\n**Summary**\n\nWhen serving GLM-4.6V / GLM-4.6V-Flash with vLLM (latest main) and transformers v5 (RC), all multimodal (image) requests fail with 400 Bad Request.\n\nRoot cause: vLLM passes its internal MediaWithBytes wrapper directly into HuggingFace’s Glm46VProcessor, but the processor strictly rejects non-PIL / non-URL inputs, raising a TypeError. The exception is caught and surfaced as a generic 400, hiding the real cause.\n\nText-only requests work as expected.\n\n**Error Observed**\n\nClient receives:\n\n400 Bad Request\nBadRequestError: Failed to apply Glm46VProcessor on data=...\n\n\nServer logs do not include the underlying exception.\n\n**Root Cause (Confirmed)**\n\nMinimal reproducer outside vLLM:\n\nfrom transformers import AutoProcessor\nfrom vllm.multimodal.image import ImageMediaIO\n\nprocessor = AutoProcessor.from_pretrained(\"zai-org/GLM-4.6V-Flash\")\n\nmm = ImageMediaIO()\nmw = mm.load_file(\"test.jpg\")  # MediaWithBytes[PIL.Image]\n\nprocessor(text=\"<|image|>\", images=[mw], return_tensors=\"pt\")\n\n\nThis fails with:\n\nTypeError: only a single or a list of entries is supported\nbut got type=<class 'vllm.multimodal.base.MediaWithBytes'>\n\n\nPassing a plain PIL.Image works correctly.\n\nSubmitted PR #30583 ; planning to change from draft to official PR after determining if there are any regression errors that would be associated with this change.\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "dbotwinick",
+    "state": "closed",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/30584",
+    "createdAt": "2025-12-13T01:26:30.000Z",
+    "updatedAt": "2025-12-14T13:19:21.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:82e2e017f25a5e1fe7a01132c4133da096946bae2b1394f1a2c5d0c3f93fe9b1",
+    "category": "COMPATIBILITY",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.6V-Flash 多模态请求返回400",
+      "summaryZh": "vLLM 使用 transformers v5 服务 GLM-4.6V-Flash 的图像请求：vLLM 将 MediaWithBytes 直接传给 Hugging Face 的 Glm46VProcessor，处理器因不接受该类型而抛出 TypeError，导致所有多模态图像请求返回 400 Bad Request；文本请求正常。服务器日志未显示底层异常；影响 OpenAI 兼容的 /v1/chat/completions 多模态服务，环境为 transformers v5.0.0rc1；已提交 PR #30583",
+      "models": [
+        "GLM-4.6V-Flash",
+        "GLM-4.6V"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "COMPATIBILITY",
+      "severity": "HIGH",
+      "impactScopeZh": "DGX Spark（GB10 Blackwell、arm64）上的图像请求；纯文本请求不受影响。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】vLLM passes MediaWithBytes to HF image processor, causing 400 errors for multimodal requests",
+        "【正文】processor strictly rejects non-PIL / non-URL inputs, raising a TypeError；all multimodal (image) requests fail with 400"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-30285",
+    "nodeId": "PR_kwDOI7xefs63y8PE",
+    "repository": "vllm-project/vllm",
+    "number": 30285,
+    "type": "pr",
+    "title": "Ensure minimum frames for GLM 4.6V compatibility",
+    "bodyExcerpt": "Fix for startup video generation of 1 frame that causes issue with GLM 4.6V-FP8: ` (EngineCore_DP0 pid=1037) INFO 12-08 23:30:53 [core.py:93] Initializing a V1 LLM engine (v0.12.0) with config: model='zai-org/GLM-4.6V-FP8', speculative_config=None, tokenizer='zai-org/GLM-4.6V-FP8', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=8192, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, disable_custom_all_reduce=False, quantization=compressed-tensors, enforce_eager=False, kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_fallback=False, disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01), seed=0, served_model_name=zai-org/GLM-4.6V-FP8, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'level': None, 'mode': <CompilationMode.VLLM_COMPILE: 3>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['none'], 'splitting_ops': ['vllm::unified_attention', 'vllm::unified_attention_with_output', 'vllm::unified_mla_attention', 'vllm::unified_mla_attention_with_output', 'vllm::mamba_mixer2', 'vllm::mamba_mixer', 'vllm::short_conv', 'vllm::linear_attention', 'vllm::plamo2_mamba_mixer', 'vllm::gdn_attention_core', 'vllm::kda_attention', 'vllm::sparse_attn_indexer'], 'compile_mm_encoder': False, 'compile_sizes': [], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': ",
+    "author": "gh-wf",
+    "state": "merged",
+    "labels": [
+      "ready"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/30285",
+    "createdAt": "2025-12-09T00:23:27.000Z",
+    "updatedAt": "2025-12-11T05:26:50.000Z",
+    "mergedAt": "2025-12-11T05:26:49.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:dc8edbe453ac656bbb089ca60c5f1ff3c2f10945407a4657c1ffc34bae9b2ab3",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM-4.6V-FP8 最小帧数兼容性",
+      "summaryZh": "修复视频生成启动阶段的最小帧数处理，以确保 GLM-4.6V 兼容性，解决启动仅生成 1 帧视频时会触发 GLM-4.6V-FP8 兼容性问题；覆盖 vLLM 中 GLM-4.6V-FP8 的启动视频生成场景",
+      "models": [
+        "GLM-4.6V-FP8",
+        "GLM 4.6V"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 GLM-4.6V-FP8 的视频生成启动流程。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Ensure minimum frames for GLM 4.6V compatibility",
+        "【正文】Fix for startup video generation of 1 frame that causes issue with GLM 4.6V-FP8"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  }
+]

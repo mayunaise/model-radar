@@ -1,0 +1,904 @@
+[
+  {
+    "id": "vllm-issue-43497",
+    "nodeId": "I_kwDOI7xefs8AAAABDMyDzA",
+    "repository": "vllm-project/vllm",
+    "number": 43497,
+    "type": "issue",
+    "title": "[Feature]: Porting `QKNormRoPEFusionPass` to manual fusion",
+    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\nSee https://github.com/vllm-project/vllm/issues/43224\n\nThis should be covering `q_norm + k_norm + rope` fusion (currently `QKNormRoPEFusionPass` in the compilation pass manager) used in the GLM4 / Qwen3 / Gemma path\n\n### Alternatives\n\n_No response_\n\n### Additional context\n\n_No response_\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "mgoin",
+    "state": "open",
+    "labels": [
+      "feature request",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/43497",
+    "createdAt": "2026-05-23T21:48:28.000Z",
+    "updatedAt": "2026-08-24T02:01:58.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:c5492390edaf34b1a79a79d99858714279f963671289f0bcf34fe7b91d11c367",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "移植 QKNormRoPEFusionPass 到手动融合",
+      "summaryZh": "请求将编译流程中的 QKNormRoPEFusionPass 移植为手动融合实现，覆盖 q_norm + k_norm + RoPE 融合；影响 GLM4、Qwen3 和 Gemma 路径",
+      "models": [
+        "GLM4",
+        "Qwen3",
+        "Gemma"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "LOW",
+      "impactScopeZh": "涉及 GLM4、Qwen3 和 Gemma 模型路径的融合实现。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】Porting `QKNormRoPEFusionPass` to manual fusion",
+        "【正文】This should be covering `q_norm + k_norm + rope` fusion ... used in the GLM4 / Qwen3 / Gemma path"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-43375",
+    "nodeId": "PR_kwDOI7xefs7eKL3a",
+    "repository": "vllm-project/vllm",
+    "number": 43375,
+    "type": "pr",
+    "title": "[RL] P2P RDT weight sync",
+    "bodyExcerpt": "original design doc: https://docs.google.com/document/d/103ppQh3VxOR6Njzw0PQn6vGIaDFOAxTpiS9_Na68zN4/edit?tab=t.0\r\n\r\n## Summary\r\n\r\nA fourth weight-transfer backend, `sharded_rdt`. Every existing backend pushes\r\n**whole parameters** to every inference worker. This one lets each worker **pull\r\nonly the slice it actually consumes** under tensor and expert parallelism, over\r\nNIXL / Ray Direct Transport. A large MoE moves roughly `total_bytes / num_workers`\r\nper worker instead of `total_bytes`.\r\n\r\nThe mechanism, in one paragraph: at init we run `model.load_weights` once against\r\nzero-storage placeholder tensors and **record what each of vLLM's own weight\r\nloaders does** — `narrow`, `t`, `view`, … — as a replayable op chain per\r\ndestination slice. Every later sync is pure replay: the worker asks a trainer rank\r\nfor exactly those slices, and they land directly in the\r\n[layerwise reload](https://docs.vllm.ai/en/latest/training/layerwise/) buffers.\r\nNo full HF tensor is ever materialized on a worker.\r\n\r\nMeasured on Qwen3-235B-A22B, 8 trainer GPUs → 8 inference GPUs (H100): the full\r\n472 GB moves in a **3.3 s** warm sync under DP8+EP8 at 43 GiB/s, vs 6.1 s at\r\n26–28 GiB/s for the same model under TP8. GLM-4.5-Air holds the same wire rate;\r\nKimi K2 (1T, FP8) is validated from a raw sharded checkpoint. Full table below.\r\n\r\n| # | File | Lines | What it is |\r\n| - | ---- | ----- | ---------- |\r\n| 1 | `docs/training/weight_transfer/sharded_rdt.md` | 126 | **Start here.** The whole design in a page |\r\n| 2 | `vllm/distributed/weight_transfer/base.py` | +154 | The three ABC additions this backend needs |\r\n| 3 | `.../sharded_rdt_lazy.py` | 300 | The recorder: how a loader's slicing becomes a wire format |\r\n| 4 | `.../sharded_rdt_common.py` | 225 | The op allowlist and the routing rules. No I/O, no Ray |\r\n| 5 | `.../sharded_rdt_engine.py` | 1404 | Consumer side: bake, plan, pull, scatter |\r\n| 6 | `.../sharded_rdt_trainer.py` | 1053 | Trainer side: ownership, gather loop, the serve actor",
+    "author": "hao-aaron",
+    "state": "merged",
+    "labels": [
+      "documentation",
+      "ready",
+      "ray",
+      "ci/build",
+      "v1",
+      "qwen",
+      "cpu",
+      "nvidia",
+      "rust",
+      "kimi"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/43375",
+    "createdAt": "2026-05-22T01:08:58.000Z",
+    "updatedAt": "2026-08-23T16:42:23.000Z",
+    "mergedAt": "2026-08-23T16:42:23.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:2554a583614a5887d11892a74b4b85520f8a1e0729f13c9d0e59d7525aea19c0",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "新增 sharded_rdt 权重同步后端",
+      "summaryZh": "新增第四种权重传输后端 sharded_rdt，使每个推理工作器在张量并行和专家并行下仅拉取实际消费的权重切片，并通过 NIXL / Ray Direct Transport 直接写入 layerwise reload 缓冲区；在 Qwen3-235B-A22B 的 8 个训练 GPU 到 8 个推理 GPU 测试中，472 GB 权重 warm sync 用时 3.3 秒、速率 43 GiB/s；相同模型 TP8 为 6.1 秒、26–28 GiB/s",
+      "models": [
+        "Qwen3-235B-A22B",
+        "GLM-4.5-Air",
+        "Kimi K2"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "RL",
+        "TRAINING",
+        "INFERENCE"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "MEDIUM",
+      "impactScopeZh": "覆盖 MoE 模型的训练到推理权重同步，并支持原始分片检查点验证。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】[RL] P2P RDT weight sync",
+        "【正文】A fourth weight-transfer backend, `sharded_rdt`... each worker pull only the slice it actually consumes"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T10:27:08.865Z"
+    }
+  },
+  {
+    "id": "vllm-pr-42349",
+    "nodeId": "PR_kwDOI7xefs7acp4A",
+    "repository": "vllm-project/vllm",
+    "number": 42349,
+    "type": "pr",
+    "title": "[Spec Decode] Fix EAGLE3 MRoPE decode-step position computation to use per-request delta",
+    "bodyExcerpt": "## Purpose\r\n\r\nIn the EAGLE3 proposer, `_update_positions_dependent_metadata` computes MRoPE decode-step positions by replicating dimension 0 into dims 1 and 2:\r\n\r\n```python\r\nself.mrope_positions[1:, :batch_size] = self.mrope_positions[0, :batch_size]\r\n```\r\n\r\nThe target model uses a per-request `mrope_position_delta` in `MRotaryEmbedding.get_next_input_positions_tensor` to compute decode positions as `delta + context_len`, writing the same value to all 3 dims. For standard text decode tokens this is numerically equivalent to dim-replication, so acceptance rate is unaffected in the common case.\r\n\r\nHowever, when multimodal pruning is enabled, `recompute_mrope_positions` can update `req_state.mrope_position_delta` mid-request. `_gather_mm_embeddings` is called from within the speculative decode path, so a pruning event during spec decode causes the proposer's positions to advance from a stale base rather than the updated delta — a mismatch with the target model.\r\n\r\nThis fix maintains a persistent pinned CPU buffer of per-request deltas in `GPUModelRunner`, kept current by `_update_states` (on batch changes) and `_gather_mm_embeddings` (on pruning events). A dirty flag gates a CPU→GPU copy at the start of each `propose()` call, so steady-state decode steps pay no allocation or copy cost. The `[batch_size]` delta slice is passed into `_update_positions_dependent_metadata`, computing all 3 dims as:\r\n\r\n```\r\ndecode_pos = delta + seq_lens_after_kernel - 1 = delta + context_len\r\n```\r\n\r\nThis matches the target model's formula and remains correct after any delta update. Non-MRoPE models take a separate code path and are unaffected.\r\n\r\nAffects all `SupportsMRoPE` models (Qwen2/2.5/3-VL, GLM4V, and others) when used with EAGLE3 speculative decoding in vLLM V1.\r\n\r\nNo open PR addresses this fix (searched `vllm-project/vllm` for `mrope eagle speculative` and `mrope_position_delta proposer`).\r\n\r\nDeveloped with AI assistance (Claude, Anthropic). Every changed line has been reviewed by ",
+    "author": "eppaneamd",
+    "state": "open",
+    "labels": [
+      "speculative-decoding",
+      "v1"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/42349",
+    "createdAt": "2026-05-11T22:27:26.000Z",
+    "updatedAt": "2026-08-21T20:04:50.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:59d6d527ed89e5a998f5bf66a2e9cbb52750a38572736f3acccf3180e81b0288",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 EAGLE3 MRoPE 解码位置偏移",
+      "summaryZh": "修复 EAGLE3 proposer 的 MRoPE 解码步位置计算，按请求使用持久化的 mrope_position_delta；在状态更新或剪枝事件后同步偏移，并在 propose() 开始时按需复制到 GPU，使三维位置与目标模型公式一致，解决多模态剪枝在投机解码期间更新 mrope_position_delta 后，EAGLE3 proposer 仍基于过期偏移计算位置，导致与目标模型不匹配；覆盖 Qwen2/2.5/3-VL、GLM4V 等 SupportsMRoPE 模型在 vLLM V1 EAGLE3 投机解码中的多模态剪枝场景；非 MRoPE 模型不受影响",
+      "models": [
+        "Qwen2-VL",
+        "Qwen2.5-VL",
+        "Qwen3-VL",
+        "GLM4V"
+      ],
+      "hardware": [
+        "GPU",
+        "CPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 vLLM V1 中启用 EAGLE3 投机解码和多模态剪枝的 MRoPE 模型。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Fix EAGLE3 MRoPE decode-step position computation to use per-request delta",
+        "【正文】multimodal pruning ... causes the proposer's positions to advance from a stale base rather than the updated delta"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-43172",
+    "nodeId": "I_kwDOI7xefs8AAAABCyu-aw",
+    "repository": "vllm-project/vllm",
+    "number": 43172,
+    "type": "issue",
+    "title": "[Usage]: GLM-5/GLM-5.1 deployment on L40 with vLLM",
+    "bodyExcerpt": "### Your current environment\n\nHi,\n\nI'm trying to evaluate the deployment of GLM-5/GLM-5.1 on an NVIDIA L40 (48GB VRAM).  but I'm hitting an \"Operator Unsupported\" error.\n\n```\nValueError: No valid attention backend found for cuda... Reasons: {FLASH_ATTN_MLA: [compute capability not supported], FLASHMLA: [compute capability not supported... only supported on Hopper and Blackwell devices.]}\n```\n\nIs this model fully compatible with L40 currently? If so, are there any known workarounds or specific setup steps for this GPU architecture to fix the kernel issue?\n\n\n### How would you like to use vllm\n\nI want to run inference of a [specific model](put link here). I don't know how to integrate it with vllm.\n\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "zhanghx0905",
+    "state": "open",
+    "labels": [
+      "usage",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/43172",
+    "createdAt": "2026-05-20T01:30:20.000Z",
+    "updatedAt": "2026-08-19T02:34:46.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:f01912b61ac38b678c3ec32356c71c99c712a8c8056e2be3f5919b15c3a56d59",
+    "category": "COMPATIBILITY",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5 在 L40 上注意力后端不支持",
+      "summaryZh": "NVIDIA L40 上使用 vLLM 部署 GLM-5/GLM-5.1 进行推理：部署 GLM-5/GLM-5.1 时出现“Operator Unsupported”错误，CUDA 未找到有效注意力后端；FLASH_ATTN_MLA 和 FLASHMLA 均因计算能力不支持而不可用，且 FLASHMLA 仅支持 Hopper 和 Blackwell",
+      "models": [
+        "GLM-5",
+        "GLM-5.1"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "COMPATIBILITY",
+      "severity": "MEDIUM",
+      "impactScopeZh": "涉及配备 48GB 显存的 NVIDIA L40 GPU 架构。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】GLM-5/GLM-5.1 deployment on L40 with vLLM",
+        "【正文】ValueError: No valid attention backend found for cuda... FLASH_ATTN_MLA: [compute capability not supported], FLASHMLA: ["
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-42016",
+    "nodeId": "I_kwDOI7xefs8AAAABBnd_cQ",
+    "repository": "vllm-project/vllm",
+    "number": 42016,
+    "type": "issue",
+    "title": "[Bug]: vLLM producing incorrect output for GLM-OCR",
+    "bodyExcerpt": "### Your current environment\n\nAMD MI300 env:\nCollecting environment information...\n```\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nClang version                : 22.0.0git (https://github.com/RadeonOpenCompute/llvm-project roc-7.2.1 26084 f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nCMake version                : version 3.31.10\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.10.0+git8514f05\nIs debug build               : False\nCUDA used to build PyTorch   : N/A\nROCM used to build PyTorch   : 7.2.53211\nXPU used to build PyTorch    : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.13 (main, Mar  4 2026, 09:23:07) [GCC 11.4.0] (64-bit runtime)\nPython platform              : Linux-5.15.0-176-generic-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : Could not collect\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration :  (gfx942:sramecc+:xnack-)\nNvidia driver version        : Could not collect\ncuDNN version                : Could not collect\nHIP runtime version          : 7.2.53211\nMIOpen runtime version       : 3.5.1\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           46 bits physical, 57 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  224\nOn-line CPU(s) list:                     0-223\nVendor ID:                            ",
+    "author": "rasmith",
+    "state": "open",
+    "labels": [
+      "bug",
+      "rocm",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/42016",
+    "createdAt": "2026-05-08T02:59:01.000Z",
+    "updatedAt": "2026-08-08T02:12:21.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:4affcf2c73a349daf3346bb83f98539c30aebcfd6211548d6df6d4f91fa1a221",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-OCR 在 AMD MI300 上输出错误",
+      "summaryZh": "vLLM 在 AMD MI300（ROCm）环境运行 GLM-OCR：vLLM 运行 GLM-OCR 时产生错误输出；影响 AMD MI300、ROCm 7.2 环境",
+      "models": [
+        "GLM-OCR"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "AMD MI300（gfx942）ROCm 环境中的 GLM-OCR 推理输出。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】vLLM producing incorrect output for GLM-OCR",
+        "【正文】AMD MI300 env"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-44098",
+    "nodeId": "I_kwDOI7xefs8AAAABD5zL9A",
+    "repository": "vllm-project/vllm",
+    "number": 44098,
+    "type": "issue",
+    "title": "[Bug]: GLM tool-call streaming final chunks repeat metadata and combine arguments with finish_reason",
+    "bodyExcerpt": "### Your current environment\n\nCurrent local upstream main:\n\n```text\ncommit 6bdabbad5 [CI/Build] Enable Step3p7ForConditionalGeneration testing (#43956)\n```\n\nThe relevant code path is `vllm/entrypoints/openai/chat_completion/serving.py` with GLM tool parsers such as `glm45` / `glm47` used for GLM-4.5 / GLM-5 style tool-call streaming.\n\n### 🐛 Describe the bug\n\nThere are still two GLM tool-call streaming protocol issues on current main.\n\n#### 1. Final remaining-argument chunks can re-emit tool-call metadata\n\nWhen `OpenAIServingChat` computes remaining tool arguments at finish time, `_create_remaining_args_delta()` preserves `id`, `type`, and `function.name` from the original delta:\n\n```python\nreturn DeltaMessage(\n    tool_calls=[\n        DeltaToolCall(\n            index=index,\n            id=original_tc.id if original_tc else None,\n            type=original_tc.type if original_tc else None,\n            function=DeltaFunctionCall(\n                name=original_fn.name if original_fn else None,\n                arguments=remaining_call,\n            ),\n        )\n    ]\n)\n```\n\nFor continuation / final remaining-argument chunks, this can send `id`, `type`, and `function.name` again even though those fields were already emitted in the first chunk for that tool-call index. OpenAI-compatible clients generally expect metadata to appear in the first chunk only, while later chunks append only `function.arguments` fragments.\n\nA minimal probe against current main shows the metadata is still preserved:\n\n```text\nremaining_delta.model_dump=\n{'id': 'call_current', 'type': 'function', 'index': 0,\n 'function': {'name': 'current_name', 'arguments': ']}'}}\n```\n\n#### 2. A terminal argument chunk can be combined with `finish_reason=\"tool_calls\"`\n\nWhen the final engine output has both a tool argument delta and `output.finish_reason is not None`, the current stream generator builds one `ChatCompletionResponseStreamChoice` containing both:\n\n- `delta.tool_calls[*].function.arguments`\n- `finish_re",
+    "author": "QwertyJack",
+    "state": "closed",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/issues/44098",
+    "createdAt": "2026-05-31T07:32:33.000Z",
+    "updatedAt": "2026-07-05T11:26:51.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:663fa0bc956e85ea36f32afebf03ee80a72f525f5d9832578492623ac17eb649",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM 工具调用流式元数据重复与终止块合并",
+      "summaryZh": "GLM-4.5/GLM-5 风格工具调用的 OpenAI 兼容流式响应：当前主分支存在两项 GLM 工具调用流式协议问题：最终剩余参数块会重复发送已在首块出现的 id、type 和 function.name；终止参数块可能同时包含 function.arguments 与 finish_reason=\"tool_calls\"；可能导致 OpenAI 兼容客户端错误解析工具调用流式响应",
+      "models": [
+        "GLM-4.5",
+        "GLM-5"
+      ],
+      "hardware": [
+        "UNKNOWN"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 vllm OpenAI 聊天补全接口中 GLM 工具调用的流式输出。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】GLM tool-call streaming final chunks repeat metadata and combine arguments with finish_reason",
+        "【正文】There are still two GLM tool-call streaming protocol issues on current main."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-43477",
+    "nodeId": "PR_kwDOI7xefs7emm9f",
+    "repository": "vllm-project/vllm",
+    "number": 43477,
+    "type": "pr",
+    "title": "Enable DeepSeek V4 and GLM-5.1 on SM120",
+    "bodyExcerpt": "## Summary\r\n\r\nThis draft PR brings up the DeepSeek V4 and GLM-5.1 SM120 path on consumer Blackwell:\r\n\r\n- routes DSv4 sparse MLA through the FlashInfer SM120 sparse MLA wrapper/backend\r\n- adds SM120 sparse MLA decode/prefill handling for sparse MLA models\r\n- wires DSv4-specific kernel warmups, including FlashInfer decode autotune during warmup\r\n- enables DeepGEMM MXFP4 MoE paths and related grouped-GEMM heuristics for SM120\r\n- updates CMake plumbing for local/fetched DeepGEMM and QuTLASS source trees\r\n\r\nTo use the version now, you can use the pre-built image at https://hub.docker.com/r/lucifer1004/dsv4-flash-sm120\r\n\r\n## Blocking Dependencies\r\n\r\nThis PR is draft-only until the following dependency branches are either merged upstream or replaced by equivalent released/pinned revisions:\r\n\r\n- **FlashInfer SM120 sparse MLA** (https://github.com/flashinfer-ai/flashinfer/pull/3395)\r\n- **DeepGEMM SM120 / MXFP4** (https://github.com/deepseek-ai/DeepGEMM/pull/324)\r\n\r\nUntil those branches land upstream, this vLLM branch should be built/tested with the matching local checkouts, e.g. via `DEEPGEMM_SRC_DIR` for DeepGEMM and a FlashInfer install from the branch above.\r\n\r\n## Accuracy\r\n\r\n- NVIDIA RTX PRO 6000 Blackwell Server Edition (96 GB, SM120)\r\n- GSM8K Pass@1: 95.0%\r\n- GPQA-Diamond Pass@1\r\n  - No thinking: 73.2%\r\n  - Max thinking: 87.4% (384K context length, 2 problems failure due to output length cap)\r\n\r\n## Performance\r\n\r\n- NVIDIA RTX PRO 6000 Blackwell Server Edition (96 GB, SM120)\r\n- Random dataset\r\n- ISL=8000, OSL=1000\r\n\r\n### DeepSeek-V4-Flash · TP=2 · No MTP\r\n\r\n| Concurrency | TTFT mean / median / P99 (ms) | TPOT mean / median / P99 (ms) | Output throughput (tok/s) | Request throughput (req/s) |\r\n|:---:|:---:|:---:|:---:|:---:|\r\n| 1 | 718 / 717 / 725 | 10.65 / 10.65 / 10.65 | 88.1 | 0.09 |\r\n| 2 | 1066 / 1076 / 1433 | 12.93 / 12.92 / 13.29 | 143.0 | 0.14 |\r\n| 4 | 1668 / 1769 / 2806 | 17.26 / 17.12 / 18.32 | 211.5 | 0.21 |\r\n| 8 | 2660 / 2973 / 5298 | 27.82 / 27.72 / 30.63 | 2",
+    "author": "lucifer1004",
+    "state": "merged",
+    "labels": [
+      "documentation",
+      "speculative-decoding",
+      "ready",
+      "ci/build",
+      "v1",
+      "deepseek",
+      "nvidia",
+      "verified"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/43477",
+    "createdAt": "2026-05-23T10:56:42.000Z",
+    "updatedAt": "2026-06-29T11:25:50.000Z",
+    "mergedAt": "2026-06-22T18:54:15.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:8fdce6fa8752abba8f746869e52d2647b7d47d66433f1ee88e919c64ffca52e6",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "DeepSeek V4 与 GLM-5.1 支持 SM120",
+      "summaryZh": "新增 DeepSeek V4 与 GLM-5.1 的 SM120 支持，接入 FlashInfer 稀疏 MLA、DeepGEMM MXFP4 MoE 路径及相关预热、构建配置与解码/预填充处理；支持在 NVIDIA RTX PRO 6000 Blackwell Server Edition（SM120）上运行并测试相关模型；该变更依赖 FlashInfer SM120 稀疏 MLA 和 DeepGEMM SM120/MXFP4 分支或等效版本",
+      "models": [
+        "DeepSeek V4",
+        "GLM-5.1"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE",
+        "EVALUATION"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "MEDIUM",
+      "impactScopeZh": "面向 SM120 Blackwell GPU 上的相关模型推理路径，当前为 draft PR，需匹配依赖分支构建和测试。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】Enable DeepSeek V4 and GLM-5.1 on SM120",
+        "【正文】routes DSv4 sparse MLA through the FlashInfer SM120 sparse MLA wrapper/backend；enables DeepGEMM MXFP4 MoE paths"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-43525",
+    "nodeId": "PR_kwDOI7xefs7ex7cy",
+    "repository": "vllm-project/vllm",
+    "number": 43525,
+    "type": "pr",
+    "title": "[Kernel] Support GLM-5 dimensions for TRT-LLM ragged MLA prefill",
+    "bodyExcerpt": "## Purpose\r\n\r\nThis PR lets `TRTLLM_RAGGED` MLA prefill accept GLM-5 dimensions:\r\n\r\n- `DeepSeek-R1`: `(qk_nope_head_dim=128, qk_rope_head_dim=64, v_head_dim=128)`\r\n- `GLM-5`: `(qk_nope_head_dim=192, qk_rope_head_dim=64, v_head_dim=256)`\r\n\r\nIt also replaces the old DeepSeek-R1-only validation flag with per-backend supported `MLADimensions` declarations, so `FLASHINFER` and `TOKENSPEED_MLA` stay limited to `(qk_nope_head_dim=128, qk_rope_head_dim=64, v_head_dim=128)` while `TRTLLM_RAGGED` can support both supported dimension sets.\r\n\r\nFlashInfer support landed in flashinfer-ai/flashinfer#3064; this needs the next stable FlashInfer release that includes it.\r\n\r\n## Tests\r\n\r\n### Accuracy test on single-node GB300\r\n\r\n```bash\r\nvllm serve nvidia/GLM-5.1-NVFP4 \\\r\n  --trust-remote-code \\\r\n  --chat-template-content-format string \\\r\n  --kv-cache-dtype fp8 \\\r\n  --tensor-parallel-size 4 \\\r\n  --attention-config '{\"mla_prefill_backend\": \"TRTLLM_RAGGED\", \"use_prefill_query_quantization\": true}' \\\r\n  --moe-backend flashinfer_trtllm \\\r\n  --tool-call-parser glm47 \\\r\n  --enable-auto-tool-choice \\\r\n  --reasoning-parser glm45 \\\r\n  --speculative-config '{\"method\": \"mtp\", \"num_speculative_tokens\": 3}'\r\n```\r\n\r\n```bash\r\nlm_eval --model local-completions --model_args \"model=nvidia/GLM-5.1-NVFP4,base_url=http://localhost:8000/v1/completions,max_length=8192,tokenized_requests=False,tokenizer_backend=None,num_concurrent=512\" --tasks gsm8k\r\n```\r\n\r\nResult:\r\n\r\n```text\r\n|Tasks|Version|     Filter     |n-shot|  Metric   |   |Value |   |Stderr|\r\n|-----|------:|----------------|-----:|-----------|---|-----:|---|-----:|\r\n|gsm8k|      3|flexible-extract|     5|exact_match|↑  |0.9477|±  |0.0061|\r\n|     |       |strict-match    |     5|exact_match|↑  |0.9477|±  |0.0061|\r\n```\r\n\r\n### Unit test\r\n\r\n```bash\r\npytest \\\r\n  tests/v1/attention/test_mla_prefill_selector.py::TestAutoSelectMLAPrefillBackend \\\r\n  tests/v1/attention/test_mla_prefill_selector.py::TestBackendValidation::test_backend_supported_dimension_validat",
+    "author": "mmangkad",
+    "state": "merged",
+    "labels": [
+      "documentation",
+      "ready",
+      "v1",
+      "nvidia"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/43525",
+    "createdAt": "2026-05-24T12:50:46.000Z",
+    "updatedAt": "2026-06-20T11:51:47.000Z",
+    "mergedAt": "2026-06-16T20:49:47.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:13579529c6d3d936defc61ebe39fe914afb7494fafa35b7a8855a2541394d63a",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "TRTLLM_RAGGED支持GLM-5 MLA维度",
+      "summaryZh": "新增TRTLLM_RAGGED MLA prefill对GLM-5维度的支持，并将仅适用于DeepSeek-R1的校验标志替换为按后端声明支持的MLADimensions；FLASHINFER和TOKENSPEED_MLA仍仅支持DeepSeek-R1维度；支持在TRTLLM_RAGGED后端使用GLM-5维度；相关FlashInfer支持依赖包含对应变更的下一版稳定FlashInfer",
+      "models": [
+        "GLM-5",
+        "DeepSeek-R1"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE",
+        "EVALUATION"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "INFO",
+      "impactScopeZh": "影响TRTLLM_RAGGED MLA prefill的维度校验及GLM-5推理场景。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】Support GLM-5 dimensions for TRT-LLM ragged MLA prefill",
+        "【正文】This PR lets `TRTLLM_RAGGED` MLA prefill accept GLM-5 dimensions"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-41654",
+    "nodeId": "PR_kwDOI7xefs7YG1Z6",
+    "repository": "vllm-project/vllm",
+    "number": 41654,
+    "type": "pr",
+    "title": "[Bugfix] Fix GLM zero-arg streaming tool names",
+    "bodyExcerpt": "## Summary\n- Treat a completed GLM tool-call region with no newline or `<arg_key>` as a zero-argument tool call name.\n- Strengthen GLM-4.7 streaming tests to assert the emitted function name and `{}` argument fragments.\n- Adds coverage for an MCP-style tool name: `mcp__gmail-cleanup__list_filters`.\n\n## Why this is not duplicating an existing PR\nI checked open PRs for the related areas before submitting. PR #39615 fixes the generic `serving.py` finish-flush path that can blank arguments when all args arrive in one delta, but it does not change the GLM parser. This PR is narrower: it fixes GLM parser name extraction for completed zero-argument streaming tool calls.\n\nRelated but different open PRs found:\n- #39615: generic serving-layer final argument flush behavior.\n- #40197/#37385/#36410: GLM streaming argument corruption/double-serialization issues, not completed zero-arg tool-name extraction.\n\n## Human review / AI assistance\nI reviewed the 5 logical code lines modified in the parser. AI assistance was used to prepare the branch and tests.\n\n## Tests\n- `pre-commit run --files vllm/tool_parsers/glm4_moe_tool_parser.py tests/tool_parsers/test_glm47_moe_tool_parser.py`\n- `.venv/bin/ruff check vllm/tool_parsers/glm4_moe_tool_parser.py tests/tool_parsers/test_glm47_moe_tool_parser.py`\n- `.venv/bin/ruff format --check vllm/tool_parsers/glm4_moe_tool_parser.py tests/tool_parsers/test_glm47_moe_tool_parser.py`\n- `.venv/bin/python -m py_compile vllm/tool_parsers/glm4_moe_tool_parser.py tests/tool_parsers/test_glm47_moe_tool_parser.py`\n- Targeted behavior script verified that `get_current_date` and `mcp__gmail-cleanup__list_filters` stream their names and `{}` args.\n\nFull pytest collection did not run in my local checkout because the existing local `vllm/_C.abi3.so` extension fails to import with a CUDA symbol mismatch before this test file loads.",
+    "author": "joninco",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/41654",
+    "createdAt": "2026-05-04T17:46:38.000Z",
+    "updatedAt": "2026-06-19T14:52:52.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:47be73cb02c055a063d51429f6bdbf6942c03aa4a420a5f2e90f596cad6b15c0",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM 零参数流式工具名提取",
+      "summaryZh": "修复 GLM 解析器：当已完成的工具调用区域不包含换行符或 `<arg_key>` 时，将其识别为零参数工具调用名称；强化 GLM-4.7 流式测试，校验函数名和 `{}` 参数片段，并覆盖 MCP 风格工具名；`get_current_date` 和 `mcp__gmail-cleanup__list_filters` 可在流式输出中正确发送工具名及 `{}` 参数",
+      "models": [
+        "GLM-4.7"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 GLM 流式工具调用的名称提取。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Bugfix] Fix GLM zero-arg streaming tool names",
+        "【正文】Treat a completed GLM tool-call region with no newline or `<arg_key>` as a zero-argument tool call name."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-42400",
+    "nodeId": "I_kwDOI7xefs8AAAABB-qsVQ",
+    "repository": "vllm-project/vllm",
+    "number": 42400,
+    "type": "issue",
+    "title": "[Bug]: GLM-5.1 tool call parsing fails intermittently when used as backend for Claude Code",
+    "bodyExcerpt": "### Your current environment\n\n```text\nvLLM version: v0.20.1 (vllm-openai:v0.20.1)\nModel: GLM-5.1-FP8 (max_model_len: 202752)\nTool call parser: glm47\nReasoning parser: glm45\nSpeculative decoding: MTP (num_speculative_tokens=3)\n```\n\n### 🐛 Describe the bug\n\nWhen deploying GLM-5.1 with vLLM and connecting it as a custom model provider in **Claude Code** (Anthropic's CLI agent), tool calls intermittently fail to parse. Claude Code reports:\n\n> The model's tool call could not be parsed (retry also failed).\n\n**Key observations:**\n1. The issue only manifests when the context window is nearly full (~200k tokens, approaching the model's 202752 max_model_len limit). With short-to-moderate contexts, tool calls parse correctly in both streaming and non-streaming modes.\n2. **The failure typically occurs when Claude Code enters planning mode** — the model must produce a structured Plan tool call with detailed content at long context. This combination of near-max context + complex tool call output appears to be the trigger.\n\n<img width=\"1606\" height=\"472\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/af106d70-b473-4996-86fb-760c0fc1b0bd\" />\n\n### Reproduction\n\n1. Deploy GLM-5.1 with vLLM:\n   ```bash\n    vllm serve /xxxxx/GLM-5.1-FP8 \\\n      --trust-remote-code \\\n      --chat-template-content-format=string \\\n      --tensor-parallel-size 8 \\\n      --tool-call-parser glm47 \\\n      --enable-auto-tool-choice \\\n      --reasoning-parser glm45 \\\n      --speculative-config.method mtp \\\n      --speculative-config.num_speculative_tokens 3 \\\n      --port 8000\n   ```\n\n2. Configure Claude Code to use this vLLM endpoint via `api_base`. Claude Code communicates via the Anthropic Messages API (`/v1/messages`) in streaming mode.\n\n3. Use Claude Code for an extended session — once the conversation context approaches ~200k tokens, ask Claude Code to enter plan mode and create a debug plan. For example: *\"Switch to plan mode and create a plan to debug the authentication issue.\"* The error \"",
+    "author": "Titan-Frank",
+    "state": "closed",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/issues/42400",
+    "createdAt": "2026-05-12T09:11:15.000Z",
+    "updatedAt": "2026-06-19T14:52:08.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:8b9344fefa7bd55c5e39ee0159c44232da5f4d053e435d80298f297b8ded1a92",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.1 工具调用解析间歇性失败",
+      "summaryZh": "vLLM 后端中的 GLM-5.1-FP8 与 Claude Code 计划模式工具调用：使用 vLLM 0.20.1 部署 GLM-5.1-FP8 并通过 Claude Code 调用时，工具调用会间歇性解析失败，重试也可能失败。问题通常在上下文接近约 200k tokens、模型输出复杂 Plan 工具调用时出现；短至中等上下文下，流式和非流式模式均可正常解析；影响 Claude Code 通过 Anthropic Messages API 流式接口进行长上下文计划操作",
+      "models": [
+        "GLM-5.1-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "长上下文接近 202752 max_model_len 时，在 Claude Code 计划模式下触发工具调用解析失败。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】GLM-5.1 tool call parsing fails intermittently when used as backend for Claude Code",
+        "【正文】The issue only manifests when the context window is nearly full (~200k tokens)"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-41631",
+    "nodeId": "PR_kwDOI7xefs7YB7Ph",
+    "repository": "vllm-project/vllm",
+    "number": 41631,
+    "type": "pr",
+    "title": "[Bugfix][GLM-4] Skip schema injection for Responses named-function",
+    "bodyExcerpt": "## Summary\n\n`Glm4MoeModelToolParser.adjust_request` short-circuits structured-output injection only for `ChatCompletionNamedToolChoiceParam` (Chat Completions); on `/v1/responses` the same `{\"type\": \"function\", \"name\": ...}` dict is parsed by Pydantic into `openai.types.responses.tool_choice_function.ToolChoiceFunction` — a different class — so it falls through to the grandparent `ToolParser.adjust_request`, which forces a Hermes JSON schema. GLM-4.x emits XML `<tool_call>` markers, so guided JSON output produces nothing the parser can extract: streaming `function_call_arguments.delta` events are silently dropped on `/v1/responses` with `tool_choice={\"type\": \"function\", \"name\": \"...\"}`.\n\nPer [reviewer feedback](https://github.com/vllm-project/vllm/pull/41631#issuecomment-4411389364), the fix lives on `Glm4MoeModelToolParser` (the parent) so it covers the full GLM-4x family — **GLM-4.5, GLM-4.6, and GLM-4.7** — uniformly, instead of the GLM-4.7 child only. The named-function `isinstance` check is broadened to recognise both the Chat Completions (`ChatCompletionNamedToolChoiceParam`) and Responses API (`ToolChoiceFunction`) forms, alongside `tool_choice=\"required\"`. The previously-introduced `Glm47MoeModelToolParser.adjust_request` override is removed as redundant.\n\nNo core-engine changes; preserves the existing `supports_required_and_named = False` contract on the parser.\n\n## Changes\n\n- `vllm/tool_parsers/glm4_moe_tool_parser.py` — import `ToolChoiceFunction`; broaden `adjust_request`'s `isinstance` check to recognise both forced-named-function classes alongside `tool_choice=\"required\"`. Skips parent + grandparent so no JSON schema is injected; delegates cleanly for `auto` / `none` / no-tools.\n- `vllm/tool_parsers/glm47_moe_tool_parser.py` — drop the now-redundant `adjust_request` override and its sole-use imports. The GLM-4.7 regex overrides (`func_detail_regex`, `func_arg_regex`) are unaffected.\n- `tests/tool_parsers/test_glm4_moe_tool_parser.py` — new `TestGlm4Adj",
+    "author": "hnt2601",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/41631",
+    "createdAt": "2026-05-04T13:35:36.000Z",
+    "updatedAt": "2026-06-19T05:35:47.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:3431e0961e10b8deac5491348dce26a182ab47b37c48b9422dc886b2acc3f04c",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM-4 Responses 命名函数调用解析",
+      "summaryZh": "修复 GLM-4.x 工具解析器对 Chat Completions 和 Responses API 两种命名函数类型的识别，跳过 JSON schema 注入；移除 GLM-4.7 中重复的 adjust_request 覆盖，解决Responses API 的命名函数选择被误注入 Hermes JSON schema，导致 GLM-4.x 的 XML 工具调用无法解析，流式 function_call_arguments.delta 事件被静默丢弃；覆盖 GLM-4.5、GLM-4.6 和 GLM-4.7；不修改核心引擎，并保留 supports_required_and_named = False 契约",
+      "models": [
+        "GLM-4.5",
+        "GLM-4.6",
+        "GLM-4.7"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 /v1/responses 中使用命名函数 tool_choice 的 GLM-4.x 工具调用流式解析。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Bugfix][GLM-4] Skip schema injection for Responses named-function",
+        "【正文】streaming function_call_arguments.delta events are silently dropped on /v1/responses"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-42979",
+    "nodeId": "PR_kwDOI7xefs7cqlQz",
+    "repository": "vllm-project/vllm",
+    "number": 42979,
+    "type": "pr",
+    "title": "[Bugfix] GLM tool parser: fix regex and robustness issues",
+    "bodyExcerpt": "## Summary\n\nFix several issues with the GLM-4 MoE tool parser:\n\n1. **Regex fails without newline**: The `func_detail_regex` required a `\\n` between the function name and the first `<arg_key>`, but GLM-4.7 model output has no newline (e.g., `<tool_call>select_choice<arg_key>...`). Fix: make the name capture group stop at either a newline or an XML tag opening (`[^\\n<]*`).\n\n2. **String type detection too narrow**: `_is_string_type` only checked `prop.get(\"type\") == \"string\"`, missing `anyOf`/`oneOf` variants (Pydantic `Optional[str]`) and list types like `[\"string\", \"null\"]`. This caused string values to be incorrectly deserialized.\n\n3. **Streaming corruption**: When non-string values changed format between partial and complete rendering (e.g. Python `True` vs JSON `true`), the diff logic produced corrupt JSON. Fix: add `_format_nonstring_value` to preserve raw JSON when valid, and add a prefix-invariant guard in `_compute_args_diff`.\n\nNote: the serving layer already handles `supports_required_and_named=False` by routing named/required tool_choice through the tool parser (lines 719-741 of `engine/serving.py`), so no serving-layer changes are needed.\n\n## Test plan\n\nValidated with the following AI coding agents performing tool calls:\n- Claude Code\n- OpenCode\n- Hermes\n- Goose\n\nValidated on the following hardware configurations:\n- 4x NVIDIA RTX 6000 PRO with `nvidia/GLM-4.7-NVFP4`\n- 2x NVIDIA H200 with `QuantTrio/GLM-4.7-Flash-AWQ`\n\nAll pre-commit hooks pass. Existing tests in `tests/tool_parsers/test_glm4_moe_tool_parser.py` should continue to pass.\n\nFixes #40195",
+    "author": "s-yanev",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "tool-calling",
+      "verified"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/42979",
+    "createdAt": "2026-05-18T13:19:09.000Z",
+    "updatedAt": "2026-06-18T06:22:44.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:d32f90a4c169ed7f760aa96c607ea636f996174268d3c8a0c1bcf820c7074ec2",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM-4 MoE 工具解析器问题",
+      "summaryZh": "修复工具名正则以支持换行或 XML 标签边界；扩展字符串类型检测以覆盖 anyOf、oneOf 和列表类型；新增非字符串值格式化逻辑及参数差异前缀不变保护，避免流式输出生成损坏 JSON，解决函数名与首个 XML 标签之间无换行时正则匹配失败；字符串类型检测遗漏 anyOf、oneOf 和字符串/空值列表；非字符串值在部分与完整渲染格式变化时可能导致流式 JSON 损坏；已在 GLM-4.7-NVFP4 和 GLM-4.7-Flash-AWQ 上验证工具调用；无需修改 serving 层",
+      "models": [
+        "GLM-4.7-NVFP4",
+        "GLM-4.7-Flash-AWQ"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 GLM-4 MoE 工具调用解析，涵盖非流式参数反序列化和流式输出。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Bugfix] GLM tool parser: fix regex and robustness issues",
+        "【正文】Fix several issues with the GLM-4 MoE tool parser"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-43676",
+    "nodeId": "PR_kwDOI7xefs7fb--J",
+    "repository": "vllm-project/vllm",
+    "number": 43676,
+    "type": "pr",
+    "title": "[ROCm][Bugfix] Plumb rotary_dim through fused QK-norm+RoPE+KV-cache kernel (enables GLM-4.7-FP8 on top of #42749)",
+    "bodyExcerpt": "## Summary\n\nFollow-up to #42749 (e2e QK-norm + RoPE + KV-cache fusion on ROCm) to make\nthe fused kernel work for **partial-RoPE** models — concretely it enables\n**GLM-4.7-FP8** (`partial_rotary_factor=0.5`, `head_dim=128` → `rotary_dim=64`),\nwhich is currently broken end-to-end when #42749's fusion is activated.\n\nStacked on top of #42749; the actual change in this PR is the\n`fix(rocm): plumb rotary_dim ...` commit, a 3-file +55-line addition.\n\nThe aiter kernel (`mrope_utils::fused_mrope_rms_kv_kernel`) accepts a\n`rotary_dim` parameter that defaults to `HEAD_SIZE` when not passed. vLLM was\nnever threading it through, so partial-RoPE models silently:\n\n1. apply RoPE to **all 128 head dims** (instead of just dims 0–63), corrupting\n   the Q/K vectors of the second half of every head, and\n2. read `cos_sin_cache[..., 64:128]`, which is **out of bounds** on a tensor\n   whose last dim is 64 — pulling arbitrary GPU memory into the rotation.\n\nThe result on GLM-4.7-FP8 is essentially-random Q/K vectors → garbage tokens\nfrom the attention layer → catastrophic gsm8k regression (strict-match\n**0 of 1319 problems** correct) the moment `fuse_qk_norm_rope_kvcache=true`\nis set.\n\n## Fix\n\nDerive `rotary_dim` from the `cos_sin_cache` tensor itself:\n\n```python\nrotary_dim = cos_sin_cache.shape[-1]\n```\n\n`RotaryEmbedding._compute_cos_sin_cache` builds\n`cache = cat(cos, sin, dim=-1)` where `cos` and `sin` each have last dim\n`rotary_dim/2`, so `cos_sin_cache.shape[-1] == rotary_dim` holds for every\nRoPE variant currently in the tree.\n\nPlumb it through to the aiter kernel call in both attention backends that\n#42749 introduces as callers of `fused_qk_norm_rope_and_cache`:\n\n- `vllm/_aiter_ops.py` — `fused_qk_norm_rope_and_cache` gains a\n  `rotary_dim: int = 0` parameter forwarded to the aiter binding.\n- `vllm/v1/attention/backends/rocm_aiter_fa.py` — derives `rotary_dim` from\n  `cos_sin_cache.shape[-1]`, passes it to the helper.\n- `vllm/v1/attention/backends/rocm_attn.py` — same change.\n\nAlso add",
+    "author": "omirosh",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "rocm",
+      "needs-rebase",
+      "v1"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/43676",
+    "createdAt": "2026-05-26T14:06:12.000Z",
+    "updatedAt": "2026-06-12T15:52:16.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:fa2b03201aa427a8d1168dbeb270480430d03a12bd045bad5300f06e35bfaee1",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 ROCm fused QK-norm+RoPE 的 rotary_dim",
+      "summaryZh": "修复 ROCm 融合内核的 rotary_dim 传递：从 cos_sin_cache.shape[-1] 推导 rotary_dim，并通过 _aiter_ops.py、rocm_aiter_fa.py 和 rocm_attn.py 传入 aiter 内核，解决融合内核未传递 rotary_dim，导致 partial-RoPE 模型对全部 128 个 head 维度应用 RoPE，并越界读取 cos_sin_cache[..., 64:128]；GLM-4.7-FP8 在启用融合后生成随机 Q/K 向量，gsm8k 严格匹配正确数为 0/1319；支持 GLM-4.7-FP8 等 partial-RoPE 模型在启用 fuse_qk_norm_rope_kvcache=true 时正确运行",
+      "models": [
+        "GLM-4.7-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE",
+        "EVALUATION"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 ROCm 后端启用 QK-norm、RoPE 与 KV-cache 融合的 partial-RoPE 模型。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[ROCm][Bugfix] Plumb rotary_dim through fused QK-norm+RoPE+KV-cache kernel (enables GLM-4.7-FP8)",
+        "【正文】vLLM was never threading it through, so partial-RoPE models silently apply RoPE to all 128 head dims and read cos_sin_c​"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-42912",
+    "nodeId": "I_kwDOI7xefs8AAAABCi18ig",
+    "repository": "vllm-project/vllm",
+    "number": 42912,
+    "type": "issue",
+    "title": "[Bug]: vllm-glm5.1 with llmcache with glm-5-fp8 failed",
+    "bodyExcerpt": "### Your current environment\n\nubuntu22.04\nvllm/vllm-openai:glm51\n\n### 🐛 Describe the bug\n\n[Bug]: vllm-glm5.1 with llmcache with glm-5-fp8 failed\n[31;20m[2026-05-16 13:54:01,727] LMCache ERROR:\u001b[0m LMCacheEngine marked as init failed: Traceback (most recent call last):\n(Worker_TP0 pid=120)   File \"/usr/local/lib/python3.12/dist-packages/lmcache/v1/manager.py\", line 208, in post_init\n(Worker_TP0 pid=120)     self._lmcache_engine.post_init(async_lookup_server=async_lookup_server)\n(Worker_TP0 pid=120)   File \"/usr/local/lib/python3.12/dist-packages/lmcache/v1/cache_engine.py\", line 301, in post_init\n(Worker_TP0 pid=120)     self.storage_manager = StorageManager(\n(Worker_TP0 pid=120)                            ^^^^^^^^^^^^^^^\n(Worker_TP0 pid=120)   File \"/usr/local/lib/python3.12/dist-packages/lmcache/v1/storage_backend/storage_manager.py\", line 246, in __init__\n(Worker_TP0 pid=120)     self.create_backends()\n(Worker_TP0 pid=120)   File \"/usr/local/lib/python3.12/dist-packages/lmcache/v1/storage_backend/storage_manager.py\", line 1224, in create_backends\n(Worker_TP0 pid=120)     new_backends = CreateStorageBackends(\n(Worker_TP0 pid=120)                    ^^^^^^^^^^^^^^^^^^^^^^\n(Worker_TP0 pid=120)   File \"/usr/local/lib/python3.12/dist-packages/lmcache/v1/storage_backend/__init__.py\", line 160, in CreateStorageBackends\n(Worker_TP0 pid=120)     local_cpu_backend = LocalCPUBackend(\n(Worker_TP0 pid=120)                         ^^^^^^^^^^^^^^^^\n(Worker_TP0 pid=120)   File \"/usr/local/lib/python3.12/dist-packages/lmcache/v1/storage_backend/local_cpu_backend.py\", line 67, in __init__\n(Worker_TP0 pid=120)     self.initialize_allocator(config, metadata)  # type: ignore\n(Worker_TP0 pid=120)     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n(Worker_TP0 pid=120)   File \"/usr/local/lib/python3.12/dist-packages/lmcache/v1/storage_backend/local_cpu_backend.py\", line 434, in initialize_allocator\n(Worker_TP0 pid=120)     return MixedMemoryAllocator(\n(Worker_TP0 pid=120)            ^^^^^^",
+    "author": "yiminghub2024",
+    "state": "open",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/42912",
+    "createdAt": "2026-05-18T01:51:53.000Z",
+    "updatedAt": "2026-06-11T03:50:01.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:79c75ecf2581fac500fc20dd563a478bdd94a5951289f8da55c3fda3ea2c2298",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5-FP8 启用 LMCache 初始化失败",
+      "summaryZh": "vllm-glm5.1 使用 LMCache 加载 glm-5-fp8：vllm-glm5.1 配置 LMCache 运行 glm-5-fp8 时，LMCacheEngine 初始化失败，并在创建 LocalCPUBackend 的 MixedMemoryAllocator 过程中报错；Ubuntu 22.04 和 vllm/vllm-openai:glm51 环境受到影响",
+      "models": [
+        "glm-5-fp8"
+      ],
+      "hardware": [
+        "CPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响使用 LMCache 的 vllm-glm5.1 推理启动流程。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】vllm-glm5.1 with llmcache with glm-5-fp8 failed",
+        "【正文】LMCacheEngine marked as init failed；在 LocalCPUBackend 初始化 MixedMemoryAllocator 时失败"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-43851",
+    "nodeId": "I_kwDOI7xefs8AAAABDo4CEg",
+    "repository": "vllm-project/vllm",
+    "number": 43851,
+    "type": "issue",
+    "title": "[Bug]: GLM chat template crashes with \"'None' has no attribute 'items'\" when tool_call arguments is the string \"null\"",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nvLLM v0.20.1 confirmed affected.\nModel: zai-org/GLM-5.1-FP8\nStartup flags: --tool-call-parser glm47 --reasoning-parser glm45 --enable-auto-tool-choice --chat-template-content-format string\n```\n\n</details>\n\n### 🐛 Describe the bug\n\nWhen a multi-turn request includes an assistant message whose `tool_calls[].function.arguments` is the JSON string `\"null\"`, vLLM returns a `400 BadRequestError: 'None' has no attribute 'items'`.\n\nThe request is valid per the OpenAI wire spec — `arguments` is a string, so it passes Pydantic validation — but the server crashes before producing a response. This surfaces in real chatbot applications where the model calls a zero-argument tool: the client echoes the assistant turn back verbatim on the next round, and `arguments` ends up as the string `\"null\"`.\n\nNote: sending `arguments: null` (JSON null, not string) is correctly rejected by Pydantic with a different error. Only the string `\"null\"` hits this path.\n\n**Minimal reproduction** (no model needed, pure HTTP):\n\n```python\nimport json, urllib.request, urllib.error, os\n\npayload = {\n    \"model\": os.environ[\"VLLM_MODEL\"],\n    \"messages\": [\n        {\"role\": \"user\", \"content\": \"What time is it?\"},\n        {\n            \"role\": \"assistant\",\n            \"content\": None,\n            \"tool_calls\": [{\n                \"id\": \"call_1\",\n                \"type\": \"function\",\n                \"function\": {\"name\": \"get_current_time\", \"arguments\": \"null\"},\n            }],\n        },\n        {\"role\": \"tool\", \"tool_call_id\": \"call_1\", \"content\": \"14:32 UTC\"},\n    ],\n    \"tools\": [{\n        \"type\": \"function\",\n        \"function\": {\n            \"name\": \"get_current_time\",\n            \"description\": \"Returns the current server time.\",\n            \"parameters\": {\"type\": \"object\", \"properties\": {}, \"required\": []},\n        },\n    }],\n    \"max_tokens\": 64,\n}\n\nreq = urllib.request.Request(\n    f\"{os.env",
+    "author": "william-rom",
+    "state": "closed",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/issues/43851",
+    "createdAt": "2026-05-28T09:08:07.000Z",
+    "updatedAt": "2026-06-03T05:17:28.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:f399631768344ae81617d5baa8e297da8a306036d56f23454308d98e7268d23b",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM chat template 处理字符串 null 崩溃",
+      "summaryZh": "vLLM GLM chat template 处理工具调用参数为字符串 \"null\" 的多轮请求：多轮请求中 assistant 的 tool_calls[].function.arguments 为 JSON 字符串 \"null\" 时，vLLM 返回 400 BadRequestError：'None' has no attribute 'items'，并在生成响应前崩溃。该字符串符合 OpenAI wire spec，但会触发 GLM chat template 的异常路径；影响 vLLM v0.20.1、zai-org/GLM-5.1-FP8 及使用工具调用的真实聊天应用；JSON null 会被 Pydantic 以不同错误拒绝",
+      "models": [
+        "zai-org/GLM-5.1-FP8"
+      ],
+      "hardware": [
+        "UNKNOWN"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "GLM 工具调用的多轮推理请求",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】GLM chat template crashes with \"'None' has no attribute 'items'\" when tool_call arguments is the string \"null\"",
+        "【正文】When a multi-turn request includes an assistant message whose tool_calls[].function.arguments is the JSON string \"null\","
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-43967",
+    "nodeId": "I_kwDOI7xefs8AAAABDwvfWg",
+    "repository": "vllm-project/vllm",
+    "number": 43967,
+    "type": "issue",
+    "title": "[Bug]: KeyError: 'layers.0.mlp.gate_up_proj.g_idx'  of  GLM-OCR GPTQ Int8 in v0.21.1rc1",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\nName: vllm\n\nVersion: 0.21.1rc1.dev281+gaa2b56ffb\n\nSummary: A high-throughput and memory-efficient inference and serving engine for LLMs\n\nHome-page: https://github.com/vllm-project/vllm\n\nAuthor: vLLM Team\n\n```text\nYour output of `python collect_env.py` here\n```\n\n</details>\n\n\n### 🐛 Describe the bug\n\n# Description\nFailed to load glm-ocr gptq quantization model\n\n\nvllm version:  0.21.1rc1.dev281+gaa2b56ffb\n\n# serve cmd\nRun `vllm serve ./GLM-OCR-w8g128 --served-model-name glm-ocr --tensor-parallel-size 1 --trust-remote-code --port 8888`\n\n# Model information\nhttps://huggingface.co/xiongjingwu/GLM-OCR-GPTQ-w8g128/tree/main\n\n# The error message\n```text\n(EngineCore pid=1202) ERROR 05-29 07:53:57 [core.py:1165] EngineCore failed to start.\n(EngineCore pid=1202) ERROR 05-29 07:53:57 [core.py:1165] Traceback (most recent call last):\n(EngineCore pid=1202) ERROR 05-29 07:53:57 [core.py:1165]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py\", line 1139, in run_engine_core\n(EngineCore pid=1202) ERROR 05-29 07:53:57 [core.py:1165]     engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)\n(EngineCore pid=1202) ERROR 05-29 07:53:57 [core.py:1165]                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n(EngineCore pid=1202) ERROR 05-29 07:53:57 [core.py:1165]   File \"/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py\", line 178, in sync_wrapper\n(EngineCore pid=1202) ERROR 05-29 07:53:57 [core.py:1165]     return func(*args, **kwargs)\n(EngineCore pid=1202) ERROR 05-29 07:53:57 [core.py:1165]            ^^^^^^^^^^^^^^^^^^^^^\n(EngineCore pid=1202) ERROR 05-29 07:53:57 [core.py:1165]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py\", line 905, in __init__\n(EngineCore pid=1202) ERROR 05-29 07:53:57 [core.py:1165]     super().__init__(\n(EngineCore pid=1202) ERROR 05-29 07:53:57 [core.py:1165]   File \"/us",
+    "author": "xiongjingwu",
+    "state": "open",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/43967",
+    "createdAt": "2026-05-29T09:36:25.000Z",
+    "updatedAt": "2026-05-29T12:23:30.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:be353dff4c261285b31ead8d7574c79d1408591de9e703ccb87ec7639c9bf859",
+    "category": "COMPATIBILITY",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-OCR GPTQ Int8 加载时报 KeyError",
+      "summaryZh": "vLLM 0.21.1rc1 使用 GPTQ Int8 GLM-OCR 模型启动服务：使用 vLLM 0.21.1rc1.dev281 执行 GLM-OCR GPTQ-w8g128 模型服务命令时，EngineCore 启动失败并出现 KeyError：'layers.0.mlp.gate_up_proj.g_idx'；GLM-OCR GPTQ 量化模型无法加载并启动服务",
+      "models": [
+        "GLM-OCR"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "COMPATIBILITY",
+      "severity": "HIGH",
+      "impactScopeZh": "影响在 vLLM 0.21.1rc1 上加载 GLM-OCR GPTQ Int8 模型的推理服务。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】KeyError: 'layers.0.mlp.gate_up_proj.g_idx' of GLM-OCR GPTQ Int8 in v0.21.1rc1",
+        "【正文】Failed to load glm-ocr gptq quantization model"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-43163",
+    "nodeId": "I_kwDOI7xefs8AAAABCyVCRQ",
+    "repository": "vllm-project/vllm",
+    "number": 43163,
+    "type": "issue",
+    "title": "[Bug]: GLM-5.1-FP8 produces gibberish with RunAI streamer after ac3dac545",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nOS: Ubuntu 24.04.4 LTS (x86_64)\nPython: 3.12.3\nPyTorch: 2.11.0+cu130\nCUDA used to build PyTorch: 13.0\nNVIDIA driver: 580.126.20\nGPUs: 8x NVIDIA H200\nvLLM versions tested: 0.20.0 and source bisect builds\ntransformers: 5.5.0\nrunai-model-streamer: 0.15.8\nrunai-model-streamer-s3: 0.15.8\nrunai-model-streamer-gcs: 0.15.8\nrunai-model-streamer-azure: 0.15.8\nflashinfer-python: 0.6.8.post1\ntriton: 3.6.0\n\nSystem details from collect_env.py:\n\nOS                           : Ubuntu 24.04.4 LTS (x86_64)\nGCC version                  : (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\nLibc version                 : glibc-2.39\nPyTorch version              : 2.11.0+cu130\nIs debug build               : False\nCUDA used to build PyTorch   : 13.0\nPython version               : 3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]\nIs CUDA available            : True\nGPU models and configuration : 8x NVIDIA H200\nNvidia driver version        : 580.126.20\nCPU                          : AMD EPYC 9655 96-Core Processor, 192 CPUs\nvLLM Version                 : 0.20.0\n\nRelevant pip packages:\nflashinfer-python==0.6.8.post1\nnumpy==2.2.6\ntorch==2.11.0+cu130\ntorchaudio==2.11.0+cu130\ntorchvision==0.26.0+cu130\ntransformers==5.5.0\ntriton==3.6.0\nrunai-model-streamer==0.15.8\nrunai-model-streamer-s3==0.15.8\nrunai-model-streamer-gcs==0.15.8\nrunai-model-streamer-azure==0.15.8\n```\n\n</details>\n\n### 🐛 Describe the bug\n\nWhen serving `zai-org/GLM-5.1-FP8` with vLLM using `--load-format=runai_streamer`, tool-calling chat requests can produce corrupted/gibberish output. The model loads and serves successfully, but streamed output becomes abnormal and often looks like fragments of tool schemas or unrelated text instead of a coherent answer.\n\nThis reproduces on `v0.20.0` and on the Apr 16 nightly. It does not reproduce on the Apr 15 nightly in the same test setup.\n\nThe exact first bad commit from source bisection i",
+    "author": "bbartels",
+    "state": "closed",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/issues/43163",
+    "createdAt": "2026-05-19T23:55:11.000Z",
+    "updatedAt": "2026-05-28T02:16:54.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:eb67c6b4b8f372574937a1c3845bb915c0fe286107f4119b84e852965c5ac2b3",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.1-FP8 RunAI 流式输出乱码",
+      "summaryZh": "使用 RunAI streamer 加载 GLM-5.1-FP8 时的工具调用聊天请求：通过 vLLM 的 --load-format=runai_streamer 服务 zai-org/GLM-5.1-FP8 时，工具调用聊天请求的流式输出会出现损坏或乱码，常表现为工具 schema 片段或无关文本，而非连贯回答。问题在 v0.20.0 和 4 月 16 日 nightly 可复现，4 月 15 日 nightly 未复现；模型能够成功加载并启动服务，但相关工具调用请求的输出异常",
+      "models": [
+        "zai-org/GLM-5.1-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响使用 RunAI streamer 推理 GLM-5.1-FP8 的工具调用聊天请求。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】GLM-5.1-FP8 produces gibberish with RunAI streamer",
+        "【正文】tool-calling chat requests can produce corrupted/gibberish output"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-42026",
+    "nodeId": "PR_kwDOI7xefs7ZZiJv",
+    "repository": "vllm-project/vllm",
+    "number": 42026,
+    "type": "pr",
+    "title": "[Bugfix] Preserve leading/trailing whitespace in GLM non-streaming tool parser",
+    "bodyExcerpt": "## Purpose\r\n\r\nGLM's non-streaming tool parser currently calls `value.strip()` on completed `<arg_value>` text before parsing it, which for string types can remove important leading or trailing whitespace, causing incorrect parsing results in code-editing tools, diffs etc...\r\n\r\nFor example, when the model generates:\r\n\r\n```xml\r\n<tool_call>apply_diff\r\n<arg_key>string</arg_key>\r\n<arg_value>    indented code    </arg_value>\r\n</tool_call>\r\n```\r\n\r\nThe parser produces: `{\"string\": \"indented code\"}` and not: `{\"string\": \"    indented code    \"}`\r\n\r\nFixed this by stripping only non-string values, leaving string whitespace intact.\r\n\r\n## Test Plan\r\n\r\n<details>\r\n<summary>repro script</summary>\r\n\r\n```python\r\n.venv/bin/python - <<'PY'\r\nimport json\r\nfrom types import SimpleNamespace\r\n\r\nfrom vllm.entrypoints.openai.chat_completion.protocol import ChatCompletionToolsParam\r\nfrom vllm.entrypoints.openai.engine.protocol import FunctionDefinition\r\nfrom vllm.tool_parsers.glm4_moe_tool_parser import Glm4MoeModelToolParser\r\nfrom vllm.tool_parsers.glm47_moe_tool_parser import Glm47MoeModelToolParser\r\n\r\n\r\nclass Tok:\r\n    def get_vocab(self):\r\n        return {\r\n            \"<tool_call>\": 1,\r\n            \"</tool_call>\": 2,\r\n        }\r\n\r\n\r\nglm4_tools = [\r\n    ChatCompletionToolsParam(\r\n        function=FunctionDefinition(\r\n            name=\"apply_diff\",\r\n            parameters={\r\n                \"type\": \"object\",\r\n                \"properties\": {\"s\": {\"type\": \"string\"}},\r\n                \"required\": [\"s\"],\r\n            },\r\n        )\r\n    )\r\n]\r\n\r\nglm47_tools = [\r\n    ChatCompletionToolsParam(\r\n        function=FunctionDefinition(\r\n            name=\"get_weather\",\r\n            parameters={\r\n                \"type\": \"object\",\r\n                \"properties\": {\"city\": {\"type\": \"string\"}},\r\n            },\r\n        )\r\n    )\r\n]\r\n\r\ncases = [\r\n    (\r\n        \"glm4\",\r\n        Glm4MoeModelToolParser,\r\n        glm4_tools,\r\n        \"s\",\r\n        \"    indented code    \",\r\n        \"<tool_call>apply_diff\\n\"\r\n       ",
+    "author": "rishaps",
+    "state": "merged",
+    "labels": [
+      "bug",
+      "ready",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/42026",
+    "createdAt": "2026-05-08T04:45:43.000Z",
+    "updatedAt": "2026-05-09T04:52:41.000Z",
+    "mergedAt": "2026-05-09T04:49:16.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:d5b731f67bd481b0a6dda3cc58fe729e4db9108b0010bcc198cc0baf59ab670c",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复GLM非流式工具解析空白丢失",
+      "summaryZh": "修复非字符串参数的去空白处理，仅对非字符串值调用 strip()，保留字符串参数的前导和尾随空白，解决解析器对完成的参数值统一调用 strip()，导致字符串参数开头和结尾的重要空白被移除，代码编辑工具和差异内容可能解析错误；代码编辑工具、diff 等场景中的字符串参数可保留原始空白，避免错误解析",
+      "models": [
+        "GLM4",
+        "GLM4.7"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "GLM 非流式工具调用解析。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Preserve leading/trailing whitespace in GLM non-streaming tool parser",
+        "【正文】Fixed this by stripping only non-string values, leaving string whitespace intact."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  }
+]

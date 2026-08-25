@@ -1,0 +1,99 @@
+[
+  {
+    "id": "vllm-pr-11883",
+    "nodeId": "PR_kwDOI7xefs6HKM-O",
+    "repository": "vllm-project/vllm",
+    "number": 11883,
+    "type": "pr",
+    "title": "add model_glm code",
+    "bodyExcerpt": "The full glm model code eliminates formatting and logic issues during inference using the inherited llama method.",
+    "author": "zhipuch",
+    "state": "closed",
+    "labels": [
+      "needs-rebase",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/11883",
+    "createdAt": "2025-01-09T06:37:47.000Z",
+    "updatedAt": "2025-05-10T05:41:23.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:54c08a8d208f44ae913364f1657d926e1294b80d7bab637f15976dd2985e450b",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "vLLM 新增完整 GLM 模型代码",
+      "summaryZh": "新增完整的 GLM 模型代码，替代继承的 Llama 方法；消除使用继承 Llama 方法进行推理时的格式和逻辑问题",
+      "models": [
+        "GLM"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 GLM 模型的推理代码与结果处理。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】add model_glm code",
+        "【正文】The full glm model code eliminates formatting and logic issues during inference using the inherited llama method."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T10:27:08.865Z"
+    }
+  },
+  {
+    "id": "vllm-pr-12634",
+    "nodeId": "PR_kwDOI7xefs6JsbTL",
+    "repository": "vllm-project/vllm",
+    "number": 12634,
+    "type": "pr",
+    "title": "[Model][Quant] Fix GLM, Fix fused module mappings for quantization",
+    "bodyExcerpt": "## Purpose ##\n* Get fused module mappings for quantization from the model, rather than a hard-coded list\n  * Currently, in order for the quantization config to determine which modules to ignore, it must map these modules to their names in the quant config. However, if the module is fused, the quant config must rely on `FUSED_LAYER_NAME_MAPPING` in order to find the names that compose the fused module.\n* This PR replaces the hard-coded `FUSED_LAYER_NAME_MAPPING` which is static for all models and instead uses the `packed_modules_mapping` class attribute\n* Remove `_handle_fused_layers`, as its logic is now handled by #12617\n* Clarify how fused layers are handled when matching by adding a `fused_strategy`\n  * fused has `first` component's quantization scheme <=> `all` components have a quantization scheme (and not caught by `should_ignore_layer`)\n  * fused has `first` component's sparsity scheme <=> `all` components have a sparsity scheme (that is not in the ignore list)\n\n## Changes ##\n* The `packed_modules_mapping` is passed to the quant_config before the model is inited.\n```python3\ndef configure_quant_config(quant_config, model_class):\n    packed_mapping = getattr(model_class, \"packed_modules_mapping\", None)\n    if packed_mapping is not None:\n        # pass packed_modules_mapping by reference to quant_config\n        quant_config.packed_modules_mapping = packed_mapping\n    else:\n        logger.warning(\n            \"The model class %s has not defined `packed_modules_mapping`, \"\n            \"this may lead to incorrect mapping of quantized or ignored \"\n            \"modules\", model_class.__name__)\n```\n* Models which change model class via the `__new__` function now update the base model `packed_modules_mapping` attribute. Because the base model `packed_modules_mapping` attribute was passed by reference to the quant_config, the quant_config now has a reference to valid mappings before model initialization begins\n```python3\nclass QWenLMHeadModel(QWenBaseModel, SupportsMulti",
+    "author": "kylesayrs",
+    "state": "merged",
+    "labels": [
+      "ready"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/12634",
+    "createdAt": "2025-01-31T22:28:26.000Z",
+    "updatedAt": "2025-02-05T15:30:33.000Z",
+    "mergedAt": "2025-02-05T05:32:07.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:564e74f23298059b58a4535d87ba022138f33e2dac0eca708eb4bd680e2d1e52",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM 量化融合模块映射",
+      "summaryZh": "修复 GLM 量化支持；将融合模块映射从硬编码的 FUSED_LAYER_NAME_MAPPING 改为使用模型的 packed_modules_mapping，并在模型初始化前传入量化配置；移除 _handle_fused_layers，并新增 fused_strategy 以明确量化和稀疏方案的匹配条件，解决量化配置依赖静态的 FUSED_LAYER_NAME_MAPPING 查找融合模块组成名称，无法适配不同模型的融合模块映射，可能导致量化或忽略模块映射不正确；模型可在初始化前向量化配置提供有效的融合模块映射；未定义 packed_modules_mapping 的模型可能出现量化或忽略模块映射不正确",
+      "models": [
+        "GLM"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 vLLM 中使用融合模块映射进行量化配置匹配的模型。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Fix GLM, Fix fused module mappings for quantization",
+        "【正文】This PR replaces the hard-coded `FUSED_LAYER_NAME_MAPPING` ... and instead uses the `packed_modules_mapping` class атриб"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T10:27:08.865Z"
+    }
+  }
+]

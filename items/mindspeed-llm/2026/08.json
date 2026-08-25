@@ -1,0 +1,150 @@
+[
+  {
+    "id": "mindspeed-llm-pr-4961",
+    "nodeId": "gitcode-pr-9052011",
+    "repository": "Ascend/MindSpeed-LLM",
+    "number": 4961,
+    "type": "pr",
+    "title": "feat: support GLM-5.2 ShareIndex with custom VPP layouts",
+    "bodyExcerpt": "Fixes #1782\n\n## What this PR does / why we need it?\n\n1. Adds PP/VPP-aware global decoder-layer mapping for GLM-5.2 ShareIndex, so every Share layer resolves the intended Compute source inside the same process-local PP/VPP chunk.\n2. Reuses MindSpeed PipelineParallelLayerLayout as the single runtime layout parser and patch owner. MindSpeed-LLM keeps only the model-specific validation that decoder totals and each physical PP partition match num_layers and uneven num_layer_list.\n3. Persists the custom pipeline layout in checkpoint arguments, validates the initialized VPP model-chunk count, and uses lazy imports where needed so MindSpeed pre-import patches run before Megatron and optional Transformer Engine modules are loaded.\n4. Extends HF-to-MCore and MCore-to-HF conversion to use the same VPP-major/PP-major layer mapping, including custom uneven layouts, while remaining compatible with the Megatron Core v0.12.1 integration.\n5. Adds focused ShareIndex unit coverage for global layer assignment and invalid local ShareIndex group boundaries.\n\n## Does this PR introduce any user-facing change?\n\nYes. GLM-5.2 users can combine uneven PP partitioning such as --num-layer-list \"18,20,20,20\" with a custom VPP layout such as --pipeline-model-parallel-layout 'Ett|(tttt|)*18ttttL' for training, checkpoint loading, and HF/MCore conversion. Invalid global totals, per-PP distributions, VPP chunk counts, or ShareIndex groups crossing local PP/VPP boundaries fail with explicit validation errors.\n\n## How was this patch tested?\n\n1. Ran the repository-configured pre-commit hooks on all 12 PR files. Trailing whitespace, end-of-file, added-large-file, merge-conflict, private-key, Ruff check/format, Codespell, Pylint, Bandit, and Typos checks passed. The repository-local Gitleaks hook was skipped after confirming that the required ./gitleaks executable is absent from this workspace.\n2. Ran Python byte-code compilation for all 12 changed Python files; all files compiled successfully. The focuse",
+    "author": "LinShua",
+    "state": "open",
+    "labels": [
+      "ci-pipeline-passed",
+      "ascend-cla/yes",
+      "docs-ci-pipeline-failed"
+    ],
+    "url": "https://gitcode.com/Ascend/MindSpeed-LLM/merge_requests/4961",
+    "createdAt": "2026-08-18T09:18:21.000Z",
+    "updatedAt": "2026-08-24T07:10:38.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T12:29:53.179Z",
+    "contentHash": "sha256:fae88c39fc81dbdd44e53aa1f03cef396c62db83a8b0776d99d9e85cd6e5280f",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "支持 GLM-5.2 ShareIndex 自定义 VPP 布局",
+      "summaryZh": "新增 GLM-5.2 ShareIndex 的 PP/VPP 感知全局解码层映射，支持不均匀 PP 分区和自定义 VPP 布局；复用 PipelineParallelLayerLayout 进行布局解析与校验，持久化检查点布局参数，并统一 HF 与 MCore 的层映射及转换逻辑；GLM-5.2 用户可在训练、检查点加载和 HF/MCore 转换中使用不均匀 PP 分区与自定义 VPP 布局；无效的层数、分区、VPP chunk 数或跨本地边界的 ShareIndex 分组会触发明确校验错误",
+      "models": [
+        "GLM-5.2"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "TRAINING",
+        "INFERENCE",
+        "OTHER"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "MEDIUM",
+      "impactScopeZh": "覆盖 GLM-5.2 ShareIndex 的训练、检查点加载及 HF/MCore 转换流程。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】feat: support GLM-5.2 ShareIndex with custom VPP layouts",
+        "【正文】GLM-5.2 users can combine uneven PP partitioning ... with a custom VPP layout ... for training, checkpoint loading, and5"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T12:29:53.179Z"
+    }
+  },
+  {
+    "id": "mindspeed-llm-issue-1782",
+    "nodeId": "gitcode-issue-4261218",
+    "repository": "Ascend/MindSpeed-LLM",
+    "number": 1782,
+    "type": "issue",
+    "title": "[Feature]: support GLM-5.2 ShareIndex with custom VPP layouts",
+    "bodyExcerpt": "### Background\n\nGLM-5.2 ShareIndex training can use uneven pipeline partitioning through `--num-layer-list`, for example `18,20,20,20`. When virtual pipeline parallelism is enabled with a custom layout such as `Ett|(tttt|)*18ttttL`, the runtime and checkpoint conversion paths must derive the same PP/VPP-to-global-layer mapping. Without this capability, ShareIndex compute/share layers can resolve ambiguous global layer offsets, VPP checkpoints can build an incorrect number of model chunks, and HF/MCore conversion cannot preserve the custom layout.\n\n### Expected implementation\n\n1. Parse and validate `--pipeline-model-parallel-layout`, including decoder-layer totals and per-PP consistency with `--num-layer-list`.\n2. Resolve global decoder-layer offsets for every PP/VPP chunk so each ShareIndex layer reuses the intended compute source without crossing a process-local PP/VPP boundary.\n3. Build and load the correct number of VPP model chunks and persist the layout in checkpoint arguments.\n4. Support custom-layout HF-to-MCore and MCore-to-HF conversion while remaining compatible with Megatron Core v0.12.1, where `LayerType` is not available from `megatron.core.transformer.enums`.\n5. Add focused unit coverage for layer-offset calculation, per-PP validation, and ShareIndex source mapping.\n\n### Acceptance criteria\n\n- `--num-layer-list \"18,20,20,20\"` and `--pipeline-model-parallel-layout 'Ett|(tttt|)*18ttttL'` produce 78 unique global decoder layers across PP=4 and VPP=5.\n- Each ShareIndex consumer resolves the expected compute source within the same local PP/VPP chunk, with explicit validation errors for invalid split boundaries.\n- HF/MCore conversion uses the same custom layout mapping in both directions, and the resulting VPP checkpoint can be loaded with the configured layout.\n- The PR remains a single review commit and the repository checks for the changed-file scope are reported factually.",
+    "author": "LinShua",
+    "state": "open",
+    "labels": [
+      "feature",
+      "requirement"
+    ],
+    "url": "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1782",
+    "createdAt": "2026-08-18T09:16:49.000Z",
+    "updatedAt": "2026-08-18T09:16:49.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T12:29:53.179Z",
+    "contentHash": "sha256:2ad4f2664a59af6d16d47b9a8f7d9ff78ef6a5edfa85054a2ede878e116837a5",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "支持 GLM-5.2 ShareIndex 自定义 VPP 布局",
+      "summaryZh": "请求支持解析并校验 --pipeline-model-parallel-layout 与 --num-layer-list 的一致性，计算各 PP/VPP 分块的全局层偏移，正确构建和加载 VPP 模型分块，持久化布局参数，并支持自定义布局的 HF/MCore 双向转换及相关单元测试；配置 --num-layer-list \"18,20,20,20\" 和布局 Ett|(tttt|)*18ttttL 时，在 PP=4、VPP=5 下生成 78 个唯一全局解码层，并确保 ShareIndex 映射和检查点转换保持一致",
+      "models": [
+        "GLM-5.2"
+      ],
+      "hardware": [
+        "UNKNOWN"
+      ],
+      "scenarios": [
+        "TRAINING",
+        "OTHER"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "MEDIUM",
+      "impactScopeZh": "覆盖 ShareIndex 训练、VPP 检查点以及 HF/MCore 转换路径，并兼容 Megatron Core v0.12.1。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】support GLM-5.2 ShareIndex with custom VPP layouts",
+        "【正文】--num-layer-list \"18,20,20,20\" 和 --pipeline-model-parallel-layout 'Ett|(tttt|)*18ttttL' 在 PP=4、VPP=5 下产生 78 个唯一全局解码层"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T12:29:53.179Z"
+    }
+  },
+  {
+    "id": "mindspeed-llm-pr-4894",
+    "nodeId": "gitcode-pr-8973723",
+    "repository": "Ascend/MindSpeed-LLM",
+    "number": 4894,
+    "type": "pr",
+    "title": "[bugfix] Fix dense MLP double norm under transformer_engine",
+    "bodyExcerpt": "### What\n\nFix double RMSNorm in DeepSeek/GLM dense MLP layers when `--transformer-impl transformer_engine` is enabled.\n\n### Why\n\nFor dense/MoE mixed models, dense layers use `_get_mlp_module_spec(use_te=True)`, which builds `MindSpeedTELayerNormColumnParallelLinear` for `mlp.linear_fc1`. This module already contains fused pre-MLP norm.\n\nHowever, `pre_mlp_layernorm` was still kept as `PTNorm`, causing dense layers to apply RMSNorm twice:\n\n- external `pre_mlp_layernorm`\n- internal norm in `MindSpeedTELayerNormColumnParallelLinear`\n\n### How\n\nIn `TransformerBlock.build_layer`:\n\n- MoE layers keep `pre_mlp_layernorm = PTNorm`\n- Dense TE layers use `pre_mlp_layernorm = IdentityOp`\n- Dense local layers keep `pre_mlp_layernorm = PTNorm`\n\n### Verification\n\nVerified with GLM/DeepSeek dense + MoE mixed training:\n\n- dense TE layer: `IdentityOp + MindSpeedTELayerNormColumnParallelLinear`\n- MoE TE layer: `PTNorm + TEGroupedMLP`\n- training accuracy comparison passed\n\n",
+    "author": "chengjili72",
+    "state": "open",
+    "labels": [
+      "docs-ci-pipeline-success",
+      "ascend-cla/yes"
+    ],
+    "url": "https://gitcode.com/Ascend/MindSpeed-LLM/merge_requests/4894",
+    "createdAt": "2026-08-03T03:21:35.000Z",
+    "updatedAt": "2026-08-03T03:24:03.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T12:29:53.179Z",
+    "contentHash": "sha256:90a554cd1cb390f14da891c9d0ccbb10939f02e7535573de69e701b56f8c276d",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 TE 下 Dense MLP 双重 RMSNorm",
+      "summaryZh": "修复 `TransformerBlock.build_layer` 的归一化配置：MoE 层保留 `PTNorm`，Dense TE 层改用 `IdentityOp`，Dense 本地层继续使用 `PTNorm`，解决启用 `--transformer-impl transformer_engine` 后，Dense 层同时保留外部 `pre_mlp_layernorm` 和 `MindSpeedTELayerNormColumnParallelLinear` 内置的融合归一化，导致 RMSNorm 被执行两次；GLM/DeepSeek Dense 与 MoE 混合训练验证通过，Dense TE 层不再重复执行 RMSNorm",
+      "models": [
+        "GLM",
+        "DeepSeek"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "TRAINING"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响启用 transformer_engine 的 GLM/DeepSeek Dense MLP 层；MoE 层及 Dense 本地层配置保持不变。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【正文】Fix double RMSNorm in DeepSeek/GLM dense MLP layers when `--transformer-impl transformer_engine` is enabled.",
+        "【正文】Dense TE layers use `pre_mlp_layernorm = IdentityOp`"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T12:39:55.629Z"
+    }
+  }
+]
