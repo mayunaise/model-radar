@@ -1,5 +1,339 @@
 [
   {
+    "id": "vllm-pr-50005",
+    "nodeId": "PR_kwDOI7xefs72_VW5",
+    "repository": "vllm-project/vllm",
+    "number": 50005,
+    "type": "pr",
+    "title": "[Bugfix][DCP] Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention",
+    "bodyExcerpt": "# [Bugfix][DCP] Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention\n\nFixes #50095.\n\n## Purpose\n\nFix two DCP correctness defects in the fused DeepSeek-V3.2 / GLM-5.2\nattention path:\n\n- The fused norm/RoPE kernel skipped query RMSNorm when a DCP rank had no\n  owner-local KV-cache slot. KV ownership does not remove that rank's query\n  contribution.\n- Pure DCP sent only rank-local query heads into attention over owner-local KV\n  and did not combine the resulting partial output/LSE across DCP ranks.\n\nThe sparse-indexer DCP rank, world-size, and interleave plumbing described in\nthe original version of this PR has since landed independently on `main`; this\nPR no longer changes that part.\n\n## Implementation\n\n- Run query RMSNorm before the owner-local slot check. Negative slots still\n  suppress MLA and indexer KV-cache writes.\n- For pure DCP, gather query heads through `MLADCPManager` before sparse MLA\n  attention. The manager keeps the direct-workspace fast path when supported\n  and falls back safely for oversized mixed batches.\n- Combine partial output/LSE through the existing `MLADCPManager` after\n  attention. For this NVIDIA pure-DCP mixed-batch path, pass no PCP-only decode\n  metadata; its sparse backend supplies neutral contributions for empty local\n  shards.\n- Extend the existing fused norm/RoPE test with an all-negative-slot regression\n  that checks valid query output, unchanged caches, and Top-K clearing.\n\n## Non-duplication\n\nI re-audited related open work on August 23, 2026. Searching for issue #50095\nfinds only this PR.\n\n- #52472 adds a separate TurboQuant sparse MLA backend and does not modify this\n  fused DeepSeek-V3.2 attention or norm/RoPE path.\n- #52377 has landed with generic sparse-MLA forced-MQA metadata and\n  direct-workspace fallback handling after the DCP-manager refactor; this PR\n  now consumes that manager path but still supplies the NVIDIA fused override\n  and negative-slot query-normalization fixes.\n- #47779 enables DCP in the SM120 FlashInfer sparse",
+    "author": "foraxe",
+    "state": "open",
+    "labels": [
+      "bug",
+      "deepseek",
+      "nvidia",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/50005",
+    "createdAt": "2026-07-27T15:32:03.000Z",
+    "updatedAt": "2026-08-25T02:58:19.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:8af4805d4c728138c4bb3c102b11c559fd91c10829b5479ca942610df3a37959",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 NVIDIA DeepSeek-V3.2/GLM-5.2 融合注意力",
+      "summaryZh": "修复 query RMSNorm 被 KV-cache 槽位检查跳过的问题；纯 DCP 在稀疏 MLA 注意力前跨 DCP group 汇聚 query heads，并在注意力后通过 MLADCPManager 合并部分输出和 LSE；新增全负槽位回归测试，解决DCP 融合注意力存在两个正确性缺陷：无本地 KV-cache 槽位的 rank 会跳过 query RMSNorm；纯 DCP 仅使用本地 query heads 进行注意力计算，未跨 rank 合并部分输出和 LSE；修复 NVIDIA 纯 DCP 混合批处理路径的注意力正确性，同时保持负槽位对 MLA 和 indexer KV-cache 写入的抑制",
+      "models": [
+        "DeepSeek-V3.2",
+        "GLM-5.2"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 NVIDIA 上 DeepSeek-V3.2/GLM-5.2 的 DCP 融合注意力路径。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention",
+        "【正文】Fix two DCP correctness defects in the fused DeepSeek-V3.2 / GLM-5.2 attention path"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T10:27:08.865Z"
+    }
+  },
+  {
+    "id": "vllm-pr-47927",
+    "nodeId": "PR_kwDOI7xefs7vCttX",
+    "repository": "vllm-project/vllm",
+    "number": 47927,
+    "type": "pr",
+    "title": "Preserve DeepSeek sigmoid grouped routing metadata",
+    "bodyExcerpt": "\r\n\r\n\r\n## Purpose\r\n\r\nGLM-style DeepSeekV4/DSA models can use sigmoid routing with an expert-score correction bias, norm_topk_prob=True, n_group/topk_group metadata, and a non-unit routed scaling factor. With no group metadata passed to FusedMoE, the router is classified as RoutingMethodType.Unspecified: the bias-aware top-k router has no way to distinguish an explicit grouped DeepSeek router from not-a-grouped-router at all.\r\n\r\nThat classification matters for NVFP4 FlashInfer TRTLLM MoE. The monolithic TRTLLM expert path supports RoutingMethodType.DeepSeekV3, but intentionally does not claim Unspecified. Losing grouped routing metadata can therefore push the model onto a modular/pre-routed path instead of the monolithic from-logits path, bypassing FlashInfer fixes that are specific to DeepSeekV3 routing.\r\n\r\nPropagate the model n_group and topk_group into FusedMoE for valid sigmoid routers only. A one-group router is semantically equivalent to selecting top-k over all experts, but it preserves the DeepSeekV3 routing contract for kernel selection and for backends that consume the routing metadata directly. Do not apply this to sqrtsoftplus DeepSeekV4 routing, which is a different routing method with different kernel support.\r\n\r\n## Test Plan\r\n\r\nAdd CPU model tests that monkeypatch FusedMoE and verify valid sigmoid grouped routing metadata is preserved for both single-group and ordinary grouped cases. The tests also verify invalid group metadata is cleared and non-sigmoid routing still clears the same metadata.\r\n\r\n## Test Result\r\n\r\nnew unit test cases passes, this PR combined with https://github.com/flashinfer-ai/flashinfer/pull/3875 also seems to resolve https://github.com/vllm-project/vllm/issues/42426#issuecomment-4908867521 in our real world usage\r\n\r\n---\r\n<details>\r\n<summary> Essential Elements of an Effective PR Description Checklist </summary>\r\n\r\n- [x] The purpose of the PR, such as \"Fix some issue (link existing issues this PR will resolve)\".\r\n- [x] The test plan,",
+    "author": "alexeldeib",
+    "state": "open",
+    "labels": [
+      "needs-rebase",
+      "deepseek",
+      "DSv4"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/47927",
+    "createdAt": "2026-07-07T23:00:27.000Z",
+    "updatedAt": "2026-08-25T00:27:10.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-25T03:09:28.557Z",
+    "contentHash": "sha256:5bf445ee7cfafa3bf8e2c92b3b848961ab6f482b9e124a77c67c806f679427ca",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "保留 DeepSeek sigmoid 分组路由元数据",
+      "summaryZh": "将有效 sigmoid 路由器的 n_group 和 topk_group 元数据传递至 FusedMoE，覆盖单组和普通分组场景；清除无效分组元数据及非 sigmoid 路由的相同元数据，不应用于 sqrtsoftplus DeepSeekV4 路由，解决FusedMoE 未接收 n_group 和 topk_group 时，路由会被分类为 RoutingMethodType.Unspecified，可能使 NVFP4 FlashInfer TRTLLM MoE 走模块化或预路由路径，绕过 DeepSeekV3 专用修复；保留 DeepSeekV3 路由契约，支持内核选择及直接消费路由元数据的后端；新增 CPU 模型测试验证相关行为",
+      "models": [
+        "DeepSeekV4/DSA",
+        "DeepSeekV3"
+      ],
+      "hardware": [
+        "GPU",
+        "CPU"
+      ],
+      "scenarios": [
+        "INFERENCE",
+        "EVALUATION"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 NVFP4 FlashInfer TRTLLM MoE 的路由路径选择及相关 DeepSeek 模型推理。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【正文】Propagate the model n_group and topk_group into FusedMoE for valid sigmoid routers only.",
+        "【正文】Losing grouped routing metadata can therefore push the model onto a modular/pre-routed path instead of the monolithic从​​"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-25T03:09:28.557Z"
+    }
+  },
+  {
+    "id": "vllm-pr-47928",
+    "nodeId": "PR_kwDOI7xefs7vCvwj",
+    "repository": "vllm-project/vllm",
+    "number": 47928,
+    "type": "pr",
+    "title": "Account scheduled spec slots on empty output rows",
+    "bodyExcerpt": "\r\n\r\n\r\n\r\n## Purpose\r\n\r\nThe async scheduler reserves output slots before a speculative decode step finishes. For MTP with five draft tokens, a decode step can reserve six output slots: one sampled token slot plus five draft slots. Normal rejection sampling later drains the unmaterialized draft slots after the worker output is applied.\r\n\r\nThe old accounting only ran when both `scheduled_spec_token_ids` and `generated_token_ids` were non-empty. If the worker row parsed to an empty token list, neither accepted-token application nor rejected-token accounting ran. Repeated empty rows then leaked `num_computed_tokens` and async `num_output_placeholders` until the request reached its model-length scheduling budget with no real output progress.\r\n\r\nGLM-5.2 reproduced this with real high-KV MTP traffic. One observed empty-row source was a recovered sampled token equal to `vocab_size`; vLLM 0.24 already contains the upstream sampler boundary fix for that case. This patch keeps the scheduler invariant robust regardless of the empty-row source: if a request had speculative output slots scheduled, every unmaterialized scheduled slot is refunded even when the parsed output row is empty.\r\n\r\nThe subtle point is the sampled/base slot. Prior upstream discussion in vllm-project/vllm#42722 noted that rolling back only rejected draft tokens is not sufficient for an empty autoregressive row. When no token materializes, the sampled slot must also be rolled back so the request can schedule the same position again instead of remaining one token ahead of concrete output.\r\n\r\nFor normal rows this reduces to the existing behavior:\r\n\r\n- one sampled token and no accepted drafts materialized -> drain all drafts;\r\n- sampled token plus accepted drafts materialized -> drain only the missing scheduled slots;\r\n- all scheduled slots materialized -> drain nothing.\r\n\r\nThe unmaterialized-slot count is capped by the request's actual scheduled token count for this step, so sync and async speculative decode path",
+    "author": "alexeldeib",
+    "state": "closed",
+    "labels": [
+      "needs-rebase",
+      "v1",
+      "scheduler"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/47928",
+    "createdAt": "2026-07-07T23:02:46.000Z",
+    "updatedAt": "2026-08-25T00:23:38.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-25T03:09:28.557Z",
+    "contentHash": "sha256:b766f99a2dde2eb0f171ba3242c0e08b0917dde77641cc1949e6331848b56011",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复空输出行的推测槽位记账",
+      "summaryZh": "修复空输出行的推测输出槽位回退逻辑：当请求已调度推测输出槽位时，即使解析结果为空，也退还所有未物化槽位，并在没有 token 物化时同时回退采样基础槽位；正常输出行继续按已物化槽位数量清理缺失槽位，解决异步调度器在推测解码后解析出空 token 行时，未执行已调度输出槽位的接受或拒绝记账，导致 num_computed_tokens 和异步 num_output_placeholders 泄漏；重复空行可能使请求达到模型长度调度预算，却没有实际输出进展；覆盖同步和异步推测解码路径；GLM-5.2 的高 KV MTP 流量可复现该问题",
+      "models": [
+        "GLM-5.2"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响使用 MTP 推测解码的请求调度与输出进度记账。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Account scheduled spec slots on empty output rows",
+        "【正文】If the worker row parsed to an empty token list, neither accepted-token application nor rejected-token accounting ran..."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-25T03:09:28.557Z"
+    }
+  },
+  {
+    "id": "vllm-pr-50415",
+    "nodeId": "PR_kwDOI7xefs74bojp",
+    "repository": "vllm-project/vllm",
+    "number": 50415,
+    "type": "pr",
+    "title": "Add MoNe experts pruning support",
+    "bodyExcerpt": "## Purpose\r\n\r\nMixture of Novices and Experts (MoNe) is an expert pruning method accepted at ICLR-2026 https://arxiv.org/pdf/2507.00390\r\n \r\nThe method computes statistics (access frequency and output variance) about experts during calibration, identifies redundant experts and replaces them with constant vectors which are their unbiased estimators. MoNe is planned to be supported in the llm-compressor https://github.com/vllm-project/llm-compressor/pull/2906 \r\n\r\nGiven MoNe replaces redundant expert's MLP blocks with constant vectors, it requires custom support in vllm. \r\n\r\nThis PR is the first self-contained step toward broader MoNE support. It introduces an algorithm-independent expert-substitution checkpoint contract and implements the minimal constant-v1 inference path for unquantized DeepSeek/GLM models using the Triton backend and tensor parallelism. It intentionally does not support additional model families, replacement formats, quantized experts, expert/data parallelism, or other MoE backends. ",
+    "author": "ieBoytsov",
+    "state": "open",
+    "labels": [
+      "documentation",
+      "new-model",
+      "deepseek",
+      "minimax"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/50415",
+    "createdAt": "2026-07-30T09:13:46.000Z",
+    "updatedAt": "2026-08-24T17:53:43.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:ad054c2451a7e4fc5f20c5be041642cd8f8997b2e2a6ded31cdc63d75bfdd507",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "vLLM 新增 MoNE 专家剪枝支持",
+      "summaryZh": "新增共享融合 MoE 栈的通用 MoNE 支持：将冗余专家替换为学习到的常量向量，紧凑存储保留专家权重，并在 Triton GEMM 中排除替换路由。支持 MiniMax M2、DeepSeek V2/V3（包括 GLM-5/5.2）和 OLMoE；12 项测试通过，并验证了 MiniMax M2、DeepSeek V2 Lite 和 GLM-5.2 MoNE 检查点的服务与评估",
+      "models": [
+        "MiniMax M2",
+        "DeepSeek V2",
+        "DeepSeek V3",
+        "GLM-5",
+        "GLM-5.2",
+        "OLMoE"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE",
+        "EVALUATION"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "INFO",
+      "impactScopeZh": "覆盖共享融合 MoE 栈及列出的 MoNE 模型检查点。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】Add MoNe experts pruning support",
+        "【正文】This PR adds an initial implementation with generalized MoNE support to the shared fused MoE stack."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-49602",
+    "nodeId": "PR_kwDOI7xefs71bnT9",
+    "repository": "vllm-project/vllm",
+    "number": 49602,
+    "type": "pr",
+    "title": "[Bugfix] Hoist $defs/definitions in Cohere parser tool schema composition",
+    "bodyExcerpt": "\r\n\r\n## Purpose\r\n\r\nFix a bug where any `/v1/chat/completions` request with tools whose JSON Schema\r\ncontains `$defs`/`definitions` fails with HTTP 500 on Cohere models served with\r\n`--reasoning-parser cohere_command3|cohere_command4`.\r\n\r\nResolves the bug class reported in #16467 (closed as stale, never fixed) for the\r\nCohere reasoning parser path specifically. Other parsers that compose their own\r\ngrammars are out of scope (see the GLM case in #47175); the generic tool path in\r\n`vllm/tool_parsers/utils.py` already hoists `$defs` and is unaffected.\r\n\r\n**Root cause.** `collect_tool_schema` in\r\n`vllm/reasoning/cohere_command_reasoning_parser.py` builds the constrained-decoding\r\ngrammar for tool calls by nesting each tool's `parameters` schema inside a\r\n`{tool_call_id, tool_name, parameters}` envelope. The tool schema was spliced in\r\nverbatim, so a definitions block originally at the schema root ends up under\r\n`properties.parameters`, while its `$ref` pointers (`#/$defs/X`) remain\r\nroot-anchored. xgrammar then correctly rejects the dangling JSON pointer:\r\n\r\n```text\r\nRuntimeError: Cannot find field $defs in #/$defs/X\r\n```\r\n\r\nThe request fails during preprocessing, before generation. Agentic frameworks such as pydantic-ai emit `$defs`\r\nfor any nested model, so this breaks effectively all tools defined via such\r\nframeworks (see user reports in #16467).\r\n\r\n**Minimal repro** against a Cohere model served with\r\n`--reasoning-parser cohere_command4 --tool-call-parser cohere_command4 --enable-auto-tool-choice`\r\n(any tool schema whose parameters carry `$defs` + `$ref`; a flat schema without\r\n`$defs` does not reproduce):\r\n\r\n```bash\r\ncurl -s http://localhost:8000/v1/chat/completions \\\r\n  -H \"Content-Type: application/json\" \\\r\n  -d '{\r\n    \"model\": \"CohereLabs/North-Mini-Code-1.0\",\r\n    \"messages\": [{\"role\": \"user\", \"content\": \"Weather in Prague?\"}],\r\n    \"tool_choice\": \"auto\",\r\n    \"tools\": [{\r\n      \"type\": \"function\",\r\n      \"function\": {\r\n        \"name\": \"get_weather\",\r\n        \"",
+    "author": "vaclavcadek",
+    "state": "open",
+    "labels": [
+      "bug",
+      "tool-calling",
+      "cohere"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49602",
+    "createdAt": "2026-07-23T15:04:30.000Z",
+    "updatedAt": "2026-08-24T14:21:29.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:f24cb8318adcda32501943a9a57002380403532cbdfcabab0831e310797c02dd",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 Cohere 工具 schema 的 $defs 引用错误",
+      "summaryZh": "修复 Cohere parser 工具 schema 组合逻辑，将根级 $defs/definitions 提升到组合后的 schema 根部，保持 $ref 的根路径有效，解决使用 cohere_command3 或 cohere_command4 reasoning parser 时，工具参数 schema 包含 $defs/definitions 与 $ref 会在 /v1/chat/completions 预处理阶段触发 HTTP 500，xgrammar 报错“Cannot find field $defs in #/$defs/X”；修复 Cohere 模型工具调用对嵌套模型 schema 的支持；不影响通用工具路径，其他自定义 grammar 的 parser 不在范围内",
+      "models": [
+        "CohereLabs/North-Mini-Code-1.0"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "Cohere reasoning parser 的工具调用请求。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Bugfix] Hoist $defs/definitions in Cohere parser tool schema composition",
+        "【正文】any /v1/chat/completions request with tools whose JSON Schema contains $defs/definitions fails with HTTP 500 on Cohere"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-48726",
+    "nodeId": "PR_kwDOI7xefs7x-6o7",
+    "repository": "vllm-project/vllm",
+    "number": 48726,
+    "type": "pr",
+    "title": "[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
+    "bodyExcerpt": "## 📌 Description\r\n\r\nHi @youkaichao @WoosukKwon @mgoin @hmellor @njhill @Isotr0py @DarkLight1337, could you please take a look at this PR when you have a chance?\r\n\r\nThis PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA):\r\n\r\n- **LiteTopK** accelerates the indexer by fusing MQA scoring, online filtering, and TopK selection without materializing the `[num_q, seq_len]` score matrix.\r\n- **LiteDSA** further accelerates the subsequent sparse-attention computation by packing multiple neighboring queries into one larger masked attention GEMM, reusing their heavily overlapping KV sets.\r\n\r\nTo the best of our knowledge, LiteTopk is the first Indexer-Topk implementation that avoids to store the score matrix, and LiteDSA is the first that converts multiple small per-token sparse-attention GEMMs into a grouped masked GEMM while preserving each query's original attend set. The corresponding paper is available on [arXiv](https://arxiv.org/abs/2607.11976).\r\n\r\n**At 1M-token prefill, LiteTopK accelerates GLM-5.2 and DeepSeek-V4-Flash by 1.29× and 1.08×, respectively. LiteDSA increases the end-to-end speedups to 1.40× and 1.25×, with no accuracy loss.**\r\n\r\nThanks to my collaborators Jianyang Gao ([@gaoj0017](https://github.com/gaoj0017)) from ETH Zurich, Peiqi Yin ([@yinpeiqi](https://github.com/yinpeiqi)) from CUHK, and Jiangneng Li ([@gravesprite](https://github.com/gravesprite)) from NTU.\r\n\r\n### Motivation\r\n\r\nDSA models such as **DeepSeek-V3.2/DeepSeek-V4**, **GLM-4.6/GLM-5.2**, and **LongCat-2.0** use a sparse-attention indexer during prefill. The current indexer computes an FP8 MQA score for every query/KV pair, materializes a `[num_q, seq_len]` matrix in HBM, and then runs a per-row TopK:\r\n\r\n```python\r\nlogits = fp8_fp4_mqa_logits(...)        # materializes [num_q, seq_len] in HBM\r\nops.top_k_per_row_prefill(logits, ...)  # TopK over the materialized matrix\r\n```\r\n\r\nAt 256K–1M context, this transient matrix is both large and expensive to ",
+    "author": "Heisenberg-Yin",
+    "state": "open",
+    "labels": [
+      "documentation",
+      "performance",
+      "new-model",
+      "rocm",
+      "structured-output",
+      "frontend",
+      "intel-gpu",
+      "speculative-decoding",
+      "needs-rebase",
+      "ci/build",
+      "multi-modality",
+      "tool-calling",
+      "llama",
+      "qwen",
+      "deepseek",
+      "cpu",
+      "gpt-oss",
+      "kv-connector",
+      "nvidia",
+      "quantization",
+      "mrv2",
+      "DSv4",
+      "rust",
+      "kimi"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/48726",
+    "createdAt": "2026-07-15T10:48:12.000Z",
+    "updatedAt": "2026-08-24T13:58:36.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:ae3e71b16879bb457e26271022293a043411047863acaed7380a4507d6ca5b0d",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "新增DSA LiteTopK与LiteDSA预填充优化",
+      "summaryZh": "新增LiteTopK与LiteDSA两项SM100预填充优化：LiteTopK融合MQA评分、在线过滤和TopK选择，避免物化[num_q, seq_len]评分矩阵；LiteDSA将相邻查询的多个小型稀疏注意力GEMM打包为带掩码的分组GEMM，并保留各查询原有的注意力集合；在1M-token预填充下，LiteTopK使GLM-5.2和DeepSeek-V4-Flash分别加速1.29倍和1.08倍；结合LiteDSA后端到端加速分别达到1.40倍和1.25倍，且无精度损失",
+      "models": [
+        "GLM-5.2",
+        "DeepSeek-V4-Flash",
+        "DeepSeek-V3.2",
+        "DeepSeek-V4",
+        "GLM-4.6",
+        "LongCat-2.0"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "TRAINING"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "面向SM100平台的DSA模型预填充性能优化。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
+        "【正文】This PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA)"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-pr-49678",
     "nodeId": "PR_kwDOI7xefs71sxER",
     "repository": "vllm-project/vllm",
@@ -42,58 +376,6 @@
       "evidence": [
         "【标题】Reuse Sparse Physical Indices via Attention Metadata （throughput +3.76%）",
         "【正文】The optimization caches the converted sparse physical indices in attention metadata"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T10:27:08.865Z"
-    }
-  },
-  {
-    "id": "vllm-pr-50005",
-    "nodeId": "PR_kwDOI7xefs72_VW5",
-    "repository": "vllm-project/vllm",
-    "number": 50005,
-    "type": "pr",
-    "title": "[Bugfix][DCP] Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention",
-    "bodyExcerpt": "# [Bugfix][DCP] Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention\n\nFixes #50095.\n\n## Purpose\n\nFix two DCP correctness defects in the fused DeepSeek-V3.2 / GLM-5.2\nattention path:\n\n- The fused norm/RoPE kernel skipped query RMSNorm when a DCP rank had no\n  owner-local KV-cache slot. KV ownership does not remove that rank's query\n  contribution.\n- Pure DCP sent only rank-local query heads into attention over owner-local KV\n  and did not combine the resulting partial output/LSE across DCP ranks.\n\nThe sparse-indexer DCP rank, world-size, and interleave plumbing described in\nthe original version of this PR has since landed independently on `main`; this\nPR no longer changes that part.\n\n## Implementation\n\n- Run query RMSNorm before the owner-local slot check. Negative slots still\n  suppress MLA and indexer KV-cache writes.\n- For pure DCP, gather query heads across the DCP group before sparse MLA\n  attention.\n- Combine partial output/LSE through the existing `MLADCPManager` after\n  attention. For this NVIDIA pure-DCP mixed-batch path, pass no PCP-only decode\n  metadata; its sparse backend supplies neutral contributions for empty local\n  shards.\n- Extend the existing fused norm/RoPE test with an all-negative-slot regression\n  that checks valid query output, unchanged caches, and Top-K clearing.\n\n## Non-duplication\n\nI re-audited related open work on August 23, 2026. Searching for issue #50095\nfinds only this PR.\n\n- #52472 adds a separate TurboQuant sparse MLA backend and does not modify this\n  fused DeepSeek-V3.2 attention or norm/RoPE path.\n- #52377 fixes generic sparse-MLA forced-MQA metadata and direct-workspace\n  handling after the DCP-manager refactor; it does not modify the NVIDIA fused\n  override or the negative-slot query-normalization defect.\n- #47779 enables DCP in the SM120 FlashInfer sparse MLA wrapper.\n- #50009 is independent Shared-DCP performance work.\n\nNone fixes both live defects in\n`vllm/models/deepseek_v32/{attention.py,common/kernels.py}`.\n\n## Validation\n",
-    "author": "foraxe",
-    "state": "open",
-    "labels": [
-      "bug",
-      "deepseek",
-      "nvidia",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/50005",
-    "createdAt": "2026-07-27T15:32:03.000Z",
-    "updatedAt": "2026-08-24T02:11:19.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:5fec7270c9b7fdcb3e3ac3376591f3798d64f4f615aad8ad21122132a3cfb2d1",
-    "category": "FIX",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "修复 NVIDIA DeepSeek-V3.2/GLM-5.2 融合注意力",
-      "summaryZh": "修复 query RMSNorm 被 KV-cache 槽位检查跳过的问题；纯 DCP 在稀疏 MLA 注意力前跨 DCP group 汇聚 query heads，并在注意力后通过 MLADCPManager 合并部分输出和 LSE；新增全负槽位回归测试，解决DCP 融合注意力存在两个正确性缺陷：无本地 KV-cache 槽位的 rank 会跳过 query RMSNorm；纯 DCP 仅使用本地 query heads 进行注意力计算，未跨 rank 合并部分输出和 LSE；修复 NVIDIA 纯 DCP 混合批处理路径的注意力正确性，同时保持负槽位对 MLA 和 indexer KV-cache 写入的抑制",
-      "models": [
-        "DeepSeek-V3.2",
-        "GLM-5.2"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "FIX",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 NVIDIA 上 DeepSeek-V3.2/GLM-5.2 的 DCP 融合注意力路径。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention",
-        "【正文】Fix two DCP correctness defects in the fused DeepSeek-V3.2 / GLM-5.2 attention path"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
@@ -204,55 +486,6 @@
     }
   },
   {
-    "id": "vllm-pr-49602",
-    "nodeId": "PR_kwDOI7xefs71bnT9",
-    "repository": "vllm-project/vllm",
-    "number": 49602,
-    "type": "pr",
-    "title": "[Bugfix] Hoist $defs/definitions in Cohere parser tool schema composition",
-    "bodyExcerpt": "\r\n\r\n## Purpose\r\n\r\nFix a bug where any `/v1/chat/completions` request with tools whose JSON Schema\r\ncontains `$defs`/`definitions` fails with HTTP 500 on Cohere models served with\r\n`--reasoning-parser cohere_command3|cohere_command4`.\r\n\r\nResolves the bug class reported in #16467 (closed as stale, never fixed) for the\r\nCohere reasoning parser path specifically. Other parsers that compose their own\r\ngrammars are out of scope (see the GLM case in #47175); the generic tool path in\r\n`vllm/tool_parsers/utils.py` already hoists `$defs` and is unaffected.\r\n\r\n**Root cause.** `collect_tool_schema` in\r\n`vllm/reasoning/cohere_command_reasoning_parser.py` builds the constrained-decoding\r\ngrammar for tool calls by nesting each tool's `parameters` schema inside a\r\n`{tool_call_id, tool_name, parameters}` envelope. The tool schema was spliced in\r\nverbatim, so a definitions block originally at the schema root ends up under\r\n`properties.parameters`, while its `$ref` pointers (`#/$defs/X`) remain\r\nroot-anchored. xgrammar then correctly rejects the dangling JSON pointer:\r\n\r\n```text\r\nRuntimeError: Cannot find field $defs in #/$defs/X\r\n```\r\n\r\nThe request fails during preprocessing, before generation. Agentic frameworks such as pydantic-ai emit `$defs`\r\nfor any nested model, so this breaks effectively all tools defined via such\r\nframeworks (see user reports in #16467).\r\n\r\n**Minimal repro** against a Cohere model served with\r\n`--reasoning-parser cohere_command4 --tool-call-parser cohere_command4 --enable-auto-tool-choice`\r\n(any tool schema whose parameters carry `$defs` + `$ref`; a flat schema without\r\n`$defs` does not reproduce):\r\n\r\n```bash\r\ncurl -s http://localhost:8000/v1/chat/completions \\\r\n  -H \"Content-Type: application/json\" \\\r\n  -d '{\r\n    \"model\": \"CohereLabs/North-Mini-Code-1.0\",\r\n    \"messages\": [{\"role\": \"user\", \"content\": \"Weather in Prague?\"}],\r\n    \"tool_choice\": \"auto\",\r\n    \"tools\": [{\r\n      \"type\": \"function\",\r\n      \"function\": {\r\n        \"name\": \"get_weather\",\r\n        \"",
-    "author": "vaclavcadek",
-    "state": "open",
-    "labels": [
-      "bug",
-      "needs-rebase",
-      "tool-calling",
-      "cohere"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/49602",
-    "createdAt": "2026-07-23T15:04:30.000Z",
-    "updatedAt": "2026-08-21T23:53:18.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:f88774d15ff8499cc2757ea69bc89f00084bd853da1a9b67a27eea9b99b46615",
-    "category": "FIX",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "修复 Cohere 工具 schema 的 $defs 引用错误",
-      "summaryZh": "修复 Cohere parser 工具 schema 组合逻辑，将根级 $defs/definitions 提升到组合后的 schema 根部，保持 $ref 的根路径有效，解决使用 cohere_command3 或 cohere_command4 reasoning parser 时，工具参数 schema 包含 $defs/definitions 与 $ref 会在 /v1/chat/completions 预处理阶段触发 HTTP 500，xgrammar 报错“Cannot find field $defs in #/$defs/X”；修复 Cohere 模型工具调用对嵌套模型 schema 的支持；不影响通用工具路径，其他自定义 grammar 的 parser 不在范围内",
-      "models": [
-        "CohereLabs/North-Mini-Code-1.0"
-      ],
-      "hardware": [],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "FIX",
-      "severity": "HIGH",
-      "impactScopeZh": "Cohere reasoning parser 的工具调用请求。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[Bugfix] Hoist $defs/definitions in Cohere parser tool schema composition",
-        "【正文】any /v1/chat/completions request with tools whose JSON Schema contains $defs/definitions fails with HTTP 500 on Cohere"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
     "id": "vllm-pr-50382",
     "nodeId": "PR_kwDOI7xefs74VkqF",
     "repository": "vllm-project/vllm",
@@ -302,64 +535,6 @@
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T10:27:08.865Z"
-    }
-  },
-  {
-    "id": "vllm-pr-50415",
-    "nodeId": "PR_kwDOI7xefs74bojp",
-    "repository": "vllm-project/vllm",
-    "number": 50415,
-    "type": "pr",
-    "title": "Add MoNe experts pruning support",
-    "bodyExcerpt": "## Purpose\r\n\r\nMixture of Novices and Experts (MoNe) is an expert pruning method accepted at ICLR-2026 https://arxiv.org/pdf/2507.00390\r\n \r\nThe method computes statistics (access frequency and output variance) about experts during calibration, identifies redundant experts and replaces them with constant vectors which are their unbiased estimators. MoNe is planned to be supported in the llm-compressor https://github.com/vllm-project/llm-compressor/pull/2906 \r\n\r\nGiven MoNe replaces redundant expert's MLP blocks with constant vectors, it requires custom support in vllm. \r\nThis PR adds an initial implementation with generalized MoNE support to the shared fused MoE stack. Replaced experts use learned constant vectors, retained expert weights are stored compactly, and replacement routes are excluded from Triton GEMMs.\r\nSupports MiniMax M2, DeepSeek V2/V3—including GLM-5/5.2—and OLMoE (old model, but was used to reproduce paper results).\r\n\r\nSee the [MoNE design documentation](https://github.com/ieBoytsov/vllm/blob/mone_pruning_support/docs/design/mone.md) for more details. I would appreciate feedback and any proposals on how to better implement it.\r\n\r\n## Test Plan\r\npytest -q tests/transformers_utils/test_mone_config.py \\\r\n  tests/kernels/moe/test_expert_replacement.py\r\n## Test Result\r\n12 tests passed.\r\nValidated serving and evaluation with MiniMax M2, DeepSeek V2 Lite, and GLM-5.2 MoNE checkpoints.",
-    "author": "ieBoytsov",
-    "state": "open",
-    "labels": [
-      "documentation",
-      "new-model",
-      "needs-rebase",
-      "deepseek",
-      "minimax"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/50415",
-    "createdAt": "2026-07-30T09:13:46.000Z",
-    "updatedAt": "2026-08-21T15:13:31.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:014c4a2042e57a38b7b40dc5e7d6bc2a0d8ce7163e26f166564c4603054fee45",
-    "category": "NEW_SUPPORT",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "vLLM 新增 MoNE 专家剪枝支持",
-      "summaryZh": "新增共享融合 MoE 栈的通用 MoNE 支持：将冗余专家替换为学习到的常量向量，紧凑存储保留专家权重，并在 Triton GEMM 中排除替换路由。支持 MiniMax M2、DeepSeek V2/V3（包括 GLM-5/5.2）和 OLMoE；12 项测试通过，并验证了 MiniMax M2、DeepSeek V2 Lite 和 GLM-5.2 MoNE 检查点的服务与评估",
-      "models": [
-        "MiniMax M2",
-        "DeepSeek V2",
-        "DeepSeek V3",
-        "GLM-5",
-        "GLM-5.2",
-        "OLMoE"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE",
-        "EVALUATION"
-      ],
-      "category": "NEW_SUPPORT",
-      "severity": "INFO",
-      "impactScopeZh": "覆盖共享融合 MoE 栈及列出的 MoNE 模型检查点。",
-      "attention": "ROUTINE",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】Add MoNe experts pruning support",
-        "【正文】This PR adds an initial implementation with generalized MoNE support to the shared fused MoE stack."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
     }
   },
   {
@@ -525,82 +700,6 @@
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T10:27:08.865Z"
-    }
-  },
-  {
-    "id": "vllm-pr-48726",
-    "nodeId": "PR_kwDOI7xefs7x-6o7",
-    "repository": "vllm-project/vllm",
-    "number": 48726,
-    "type": "pr",
-    "title": "[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
-    "bodyExcerpt": "## 📌 Description\r\n\r\nHi @youkaichao @WoosukKwon @mgoin @hmellor @njhill @Isotr0py @DarkLight1337, could you please take a look at this PR when you have a chance?\r\n\r\nThis PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA):\r\n\r\n- **LiteTopK** accelerates the indexer by fusing MQA scoring, online filtering, and TopK selection without materializing the `[num_q, seq_len]` score matrix.\r\n- **LiteDSA** further accelerates the subsequent sparse-attention computation by packing multiple neighboring queries into one larger masked attention GEMM, reusing their heavily overlapping KV sets.\r\n\r\nTo the best of our knowledge, LiteTopk is the first Indexer-Topk implementation that avoids to store the score matrix, and LiteDSA is the first that converts multiple small per-token sparse-attention GEMMs into a grouped masked GEMM while preserving each query's original attend set. The corresponding paper is available on [arXiv](https://arxiv.org/abs/2607.11976).\r\n\r\n**At 1M-token prefill, LiteTopK accelerates GLM-5.2 and DeepSeek-V4-Flash by 1.29× and 1.08×, respectively. LiteDSA increases the end-to-end speedups to 1.40× and 1.25×, with no accuracy loss.**\r\n\r\nThanks to my collaborators Jianyang Gao ([@gaoj0017](https://github.com/gaoj0017)) from ETH Zurich, Peiqi Yin ([@yinpeiqi](https://github.com/yinpeiqi)) from CUHK, and Jiangneng Li ([@gravesprite](https://github.com/gravesprite)) from NTU.\r\n\r\n### Motivation\r\n\r\nDSA models such as **DeepSeek-V3.2/DeepSeek-V4**, **GLM-4.6/GLM-5.2**, and **LongCat-2.0** use a sparse-attention indexer during prefill. The current indexer computes an FP8 MQA score for every query/KV pair, materializes a `[num_q, seq_len]` matrix in HBM, and then runs a per-row TopK:\r\n\r\n```python\r\nlogits = fp8_fp4_mqa_logits(...)        # materializes [num_q, seq_len] in HBM\r\nops.top_k_per_row_prefill(logits, ...)  # TopK over the materialized matrix\r\n```\r\n\r\nAt 256K–1M context, this transient matrix is both large and expensive to ",
-    "author": "Heisenberg-Yin",
-    "state": "open",
-    "labels": [
-      "documentation",
-      "performance",
-      "new-model",
-      "rocm",
-      "structured-output",
-      "frontend",
-      "intel-gpu",
-      "speculative-decoding",
-      "needs-rebase",
-      "ci/build",
-      "multi-modality",
-      "tool-calling",
-      "llama",
-      "qwen",
-      "deepseek",
-      "cpu",
-      "gpt-oss",
-      "kv-connector",
-      "nvidia",
-      "quantization",
-      "mrv2",
-      "DSv4",
-      "rust",
-      "kimi"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/48726",
-    "createdAt": "2026-07-15T10:48:12.000Z",
-    "updatedAt": "2026-08-21T02:58:00.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:fe6143a2f91f84b24baf9e7880acdcd26c716d889ebaf27463efa6e00a9e0b0e",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "新增DSA LiteTopK与LiteDSA预填充优化",
-      "summaryZh": "新增LiteTopK与LiteDSA两项SM100预填充优化：LiteTopK融合MQA评分、在线过滤和TopK选择，避免物化[num_q, seq_len]评分矩阵；LiteDSA将相邻查询的多个小型稀疏注意力GEMM打包为带掩码的分组GEMM，并保留各查询原有的注意力集合；在1M-token预填充下，LiteTopK使GLM-5.2和DeepSeek-V4-Flash分别加速1.29倍和1.08倍；结合LiteDSA后端到端加速分别达到1.40倍和1.25倍，且无精度损失",
-      "models": [
-        "GLM-5.2",
-        "DeepSeek-V4-Flash",
-        "DeepSeek-V3.2",
-        "DeepSeek-V4",
-        "GLM-4.6",
-        "LongCat-2.0"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "TRAINING"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "面向SM100平台的DSA模型预填充性能优化。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
-        "【正文】This PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA)"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
     }
   },
   {

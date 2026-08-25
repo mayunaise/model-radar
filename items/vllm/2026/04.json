@@ -1,5 +1,105 @@
 [
   {
+    "id": "vllm-pr-38947",
+    "nodeId": "PR_kwDOI7xefs7P4FGB",
+    "repository": "vllm-project/vllm",
+    "number": 38947,
+    "type": "pr",
+    "title": "[ROCm][Perf] Add AITER MLA prefill kernel for dense MLA backend",
+    "bodyExcerpt": "## Summary\r\n\r\nIntegrate AITER's `mla_prefill_fwd` assembly kernel into vLLM's dense MLA backend (`AiterMLAImpl`), replacing the base class's chunk-by-chunk prefill context path with a single kernel call that avoids expensive KV expansion.\r\n\r\n### What this changes\r\n\r\nThe base class (`MLACommonImpl._compute_prefill_context`) computes context attention by:\r\n1. Gathering cached KV per chunk\r\n2. Expanding through `kv_b_proj` to materialize full K/V heads\r\n3. Running `flash_attn_varlen` per chunk\r\n4. Merging chunk results\r\n\r\nThis is expensive because `kv_b_proj` expansion materializes `O(context_len * num_heads * head_dim)` intermediate tensors.\r\n\r\nThe new path instead:\r\n1. **Absorbs Q** through `W_UK^T` (extracted from `kv_b_proj` weights) to produce compressed queries in the latent space `[T, N, L+R]`\r\n2. **Runs `mla_prefill_fwd`** directly against the paged KV cache in a single assembly kernel call — no KV expansion needed\r\n3. **Projects output** through `W_UV` to recover full V dimensions\r\n\r\nThis eliminates the per-chunk KV expansion loop and replaces it with a single kernel dispatch.\r\n\r\n### Fallback behavior\r\n\r\n- **FP8 prefill**: Falls back to base class (AITER `mla_prefill_fwd` does not yet accept `q_scale`/`kv_scale`)\r\n- **AITER unavailable**: Falls back to base class via `ImportError` guard\r\n\r\n### Part of the GLM-5 on ROCm performance series\r\n\r\nThis PR is part of a series of optimizations to bring GLM-5 inference on ROCm (MI355X) closer to ATOM performance:\r\n\r\n| PR | Description | Status |\r\n|---|---|---|\r\n| #38665 | Dual-stream shared experts + Quark MXFP4 + GLM-5-FP8 weight loading fix | Open |\r\n| #36855 | Sparse MLA head repeat for < 16 heads + FP8 KV cache support | Open |\r\n| **This PR** | MLA prefill kernel integration (eliminates KV expansion) | **New** |\r\n\r\nRelated upstream:\r\n- [ROCm/aiter#2563](https://github.com/ROCm/aiter/issues/2563) — AITER sparse MLA ZeroDivisionError with < 16 heads\r\n- [ROCm/aiter#2577](https://github.com/ROCm/aiter/pull/2577) — AITER",
+    "author": "ChuanLi1101",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "needs-rebase",
+      "stale",
+      "v1"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/38947",
+    "createdAt": "2026-04-03T21:33:39.000Z",
+    "updatedAt": "2026-08-25T02:03:11.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-25T03:09:28.557Z",
+    "contentHash": "sha256:4053182498f645b5d6dad5357e44d43bdca530975c50473377dee06ddde56da0",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "ROCm 集成 AITER MLA prefill 内核",
+      "summaryZh": "新增 AITER 的 mla_prefill_fwd 汇编内核，通过单次内核调用直接处理分页 KV 缓存，替换逐块 KV 扩展与注意力计算路径；同时保留 FP8 预填充和 AITER 不可用时的基类回退；消除逐块 KV 扩展循环，避免物化大规模中间张量，面向 ROCm MI355X 上 GLM-5 推理性能优化",
+      "models": [
+        "GLM-5"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 ROCm 平台 vLLM dense MLA 后端的预填充推理路径；FP8 预填充或 AITER 不可用时不启用新路径。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】[ROCm][Perf] Add AITER MLA prefill kernel for dense MLA backend",
+        "【正文】Integrate AITER's `mla_prefill_fwd` assembly kernel into vLLM's dense MLA backend (`AiterMLAImpl`), replacing the base …"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-25T03:09:28.557Z"
+    }
+  },
+  {
+    "id": "vllm-issue-40345",
+    "nodeId": "I_kwDOI7xefs8AAAABAAKW9g",
+    "repository": "vllm-project/vllm",
+    "number": 40345,
+    "type": "issue",
+    "title": "[Bug]: MTP draft head TP allgather deadlock under sustained long-context load (GLM-5.1-FP8)",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\n\nCollecting environment information...\nuv is set\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 24.04.3 LTS (x86_64)\nGCC version                  : (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\nClang version                : Could not collect\nCMake version                : version 3.28.3\nLibc version                 : glibc-2.39\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.11.0+cu130\nIs debug build               : False\nCUDA used to build PyTorch   : 13.0\nROCM used to build PyTorch   : N/A\nXPU used to build PyTorch    : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0] (64-bit runtime)\nPython platform              : Linux-6.8.0-88-generic-x86_64-with-glibc2.39\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.9.86\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration :\nGPU 0: NVIDIA H200\nGPU 1: NVIDIA H200\nGPU 2: NVIDIA H200\nGPU 3: NVIDIA H200\nGPU 4: NVIDIA H200\nGPU 5: NVIDIA H200\nGPU 6: NVIDIA H200\nGPU 7: NVIDIA H200\n\nNvidia driver version        : 580.105.08\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                         x86_64\nCPU op-mode(s):                       32-bit, 64-bit\nAddress sizes:                        46 bits physical, 57 bits virtual\nByte Order:                           Little Endian\nCPU(s):                               192\nOn-line CPU(s) list:              ",
+    "author": "archit-spec",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/40345",
+    "createdAt": "2026-04-20T10:59:26.000Z",
+    "updatedAt": "2026-08-25T02:01:27.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:e046eebf5d6fad01d6aac2d8bef4d6607f3427059664692133151ae9ff41d565",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.1-FP8 MTP 草稿头 TP allgather 死锁",
+      "summaryZh": "GLM-5.1-FP8 在持续长上下文负载下的 MTP 草稿头张量并行 allgather：持续长上下文负载下，MTP 草稿头的张量并行 allgather 发生死锁",
+      "models": [
+        "GLM-5.1-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响使用 8 张 NVIDIA H200 GPU 的相关推理负载。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】MTP draft head TP allgather deadlock under sustained long-context load (GLM-5.1-FP8)",
+        "【正文】GPU models and configuration: GPU 0–7: NVIDIA H200"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-25T03:09:28.557Z"
+    }
+  },
+  {
     "id": "vllm-pr-39001",
     "nodeId": "PR_kwDOI7xefs7P_mq4",
     "repository": "vllm-project/vllm",
@@ -427,55 +527,6 @@
       "capabilityCandidate": false,
       "evidence": [
         "【标题】GLM-5.1-NVFP4 RuntimeError: The size of tensor a (3072) must match the size of tensor b (6144) at non-singleton"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-40345",
-    "nodeId": "I_kwDOI7xefs8AAAABAAKW9g",
-    "repository": "vllm-project/vllm",
-    "number": 40345,
-    "type": "issue",
-    "title": "[Bug]: MTP draft head TP allgather deadlock under sustained long-context load (GLM-5.1-FP8)",
-    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\n\nCollecting environment information...\nuv is set\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 24.04.3 LTS (x86_64)\nGCC version                  : (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\nClang version                : Could not collect\nCMake version                : version 3.28.3\nLibc version                 : glibc-2.39\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.11.0+cu130\nIs debug build               : False\nCUDA used to build PyTorch   : 13.0\nROCM used to build PyTorch   : N/A\nXPU used to build PyTorch    : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0] (64-bit runtime)\nPython platform              : Linux-6.8.0-88-generic-x86_64-with-glibc2.39\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.9.86\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration :\nGPU 0: NVIDIA H200\nGPU 1: NVIDIA H200\nGPU 2: NVIDIA H200\nGPU 3: NVIDIA H200\nGPU 4: NVIDIA H200\nGPU 5: NVIDIA H200\nGPU 6: NVIDIA H200\nGPU 7: NVIDIA H200\n\nNvidia driver version        : 580.105.08\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                         x86_64\nCPU op-mode(s):                       32-bit, 64-bit\nAddress sizes:                        46 bits physical, 57 bits virtual\nByte Order:                           Little Endian\nCPU(s):                               192\nOn-line CPU(s) list:              ",
-    "author": "archit-spec",
-    "state": "open",
-    "labels": [
-      "bug",
-      "stale"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/40345",
-    "createdAt": "2026-04-20T10:59:26.000Z",
-    "updatedAt": "2026-07-23T02:16:17.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:b8aa33fcdcda184310aa0fca476ac41b2717b622f5663dfbec64cf8843de72b9",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5.1-FP8 MTP draft head TP allgather 死锁",
-      "summaryZh": "GLM-5.1-FP8 在持续长上下文负载下的 MTP draft head 张量并行 allgather：持续长上下文负载下，MTP draft head 的 TP allgather 发生死锁",
-      "models": [
-        "GLM-5.1-FP8"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "影响使用 8 张 NVIDIA H200 GPU 的推理环境。",
-      "attention": "IMMEDIATE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】MTP draft head TP allgather deadlock under sustained long-context load (GLM-5.1-FP8)",
-        "【正文】GPU models and configuration: GPU 0–7: NVIDIA H200"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
