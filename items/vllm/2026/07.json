@@ -1,5 +1,158 @@
 [
   {
+    "id": "vllm-pr-49678",
+    "nodeId": "PR_kwDOI7xefs71sxER",
+    "repository": "vllm-project/vllm",
+    "number": 49678,
+    "type": "pr",
+    "title": "[Perf][GLM-5.2] Reuse Sparse Physical Indices via Attention Metadata （throughput +3.76%）",
+    "bodyExcerpt": "FIX https://github.com/vllm-project/vllm/pull/48597#discussion_r3586833876\r\n\r\n## Purpose\r\nThe optimization caches the converted sparse physical indices in attention metadata, allowing subsequent layers that reuse the same top-k indices to skip calling `triton_convert_req_index_to_global_index`.\r\n\r\n  The conversion is performed only when a layer produces fresh top-k indices. Layers using IndexCache directly reuse the cached physical indices and valid counts.\r\n## Test Plan\r\n\r\n### Test Environment\r\n\r\n- GPUs: 8 x NVIDIA H20-3e\r\n- Model: `zai-org/GLM-5.2-FP8`\r\n- Tensor parallel size: 8\r\n- Attention backend: `FLASHMLA_SPARSE`\r\n- Model configuration: `index_topk_freq=4`, `index_topk=2048`\r\n- Input/output length: 8,000 / 1,024 tokens\r\n- Number of prompts: 128\r\n- Maximum concurrency: 32\r\n\r\n\r\n\r\n### Server Command\r\n\r\n```bash\r\n vllm serve \\\r\n  ZhipuAI/GLM-5.2-FP8 \\\r\n  --load-format instanttensor \\\r\n  --tensor-parallel-size 8 \\\r\n  --max-model-len 16384 \\\r\n  --gpu-memory-utilization 0.9 \\\r\n  --trust-remote-code \\\r\n  --attention-backend FLASHMLA_SPARSE \\\r\n  --port 8000\r\n```\r\n\r\n### Benchmark Command\r\n\r\n```bash\r\nvllm bench serve \\\r\n  --backend openai \\\r\n  --modelZhipuAI/GLM-5.2-FP8 \\\r\n  --endpoint /v1/completions \\\r\n  --dataset-name random \\\r\n  --random-input-len 8000 \\\r\n  --random-output-len 1024 \\\r\n  --num-prompts 128 \\\r\n  --request-rate inf \\\r\n  --max-concurrency 32 \\\r\n  --seed 1234 \\\r\n  --port 8000\r\n```\r\n\r\n### Results\r\n\r\nAll 128 requests completed successfully, and both runs generated 131,072\r\noutput tokens.\r\n\r\n| Metric | Before | After | Change |\r\n|---|---:|---:|---:|\r\n| Benchmark duration | 372.98 s | 359.46 s | **-3.62%** |\r\n| Request throughput | 0.343 req/s | 0.356 req/s | **+3.76%** |\r\n| Output throughput | 351.42 tok/s | 364.64 tok/s | **+3.76%** |\r\n| Total token throughput | 3,096.91 tok/s | 3,213.37 tok/s | **+3.76%** |\r\n| Mean TTFT | 13,470.43 ms | 13,281.72 ms | **-1.40%** |\r\n| Mean TPOT | 77.88 ms | 74.76 ms | **-4.00%** |\r\n| Mean ITL | 77.88 ms | 74.76 ms | **-4.00%",
+    "author": "chaunceyjiang",
+    "state": "open",
+    "labels": [
+      "v1",
+      "nvidia",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49678",
+    "createdAt": "2026-07-24T05:27:46.000Z",
+    "updatedAt": "2026-08-25T15:10:21.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:3f22471bc1fbf9bbd78c264cae718a745365cca3f731d8192c78274e06809526",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.2复用稀疏物理索引提速3.76%",
+      "summaryZh": "优化注意力元数据中的稀疏物理索引缓存：仅在层生成新的 top-k 索引时执行转换，使用 IndexCache 的后续层直接复用缓存的物理索引和有效计数；在8张NVIDIA H20、GLM-5.2-FP8及指定基准配置下，请求、输出和总令牌吞吐量均提升3.76%，平均TPOT和ITL降低4.00%",
+      "models": [
+        "GLM-5.2-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响采用FLASHMLA_SPARSE后端、稀疏索引复用场景的推理性能。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Reuse Sparse Physical Indices via Attention Metadata （throughput +3.76%）",
+        "【正文】The optimization caches the converted sparse physical indices in attention metadata"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T10:27:08.865Z"
+    }
+  },
+  {
+    "id": "vllm-pr-49030",
+    "nodeId": "PR_kwDOI7xefs7zUYSp",
+    "repository": "vllm-project/vllm",
+    "number": 49030,
+    "type": "pr",
+    "title": "[Bugfix][Multimodal] Fix video temporal padding estimates",
+    "bodyExcerpt": "# Fix Video Temporal Padding Token Estimates\r\n\r\n## Summary\r\n\r\nFix incorrect video token estimation when `temporal_patch_size > 2`.\r\nFix #47866\r\n## Root Cause\r\n\r\nSeveral multimodal models used:\r\n\r\n```python\r\npadded_num_frames = num_frames + num_frames % temporal_patch_size\r\n```\r\n\r\nThis only works reliably for `temporal_patch_size` 1 or 2. For example:\r\n\r\n```text\r\nnum_frames = 17\r\ntemporal_patch_size = 4\r\n\r\ncurrent:  17 + 17 % 4 = 18\r\nexpected: 20\r\n```\r\n\r\nThe incorrect padding can make `grid_t` and the estimated video token count too\r\nsmall. This affects vLLM-side budget estimation, dummy input sizing, and\r\nwarmup.\r\n\r\n## Changes\r\n\r\nReplace the formula with:\r\n\r\n```python\r\npadded_num_frames = num_frames + (-num_frames % temporal_patch_size)\r\n```\r\n\r\nUpdated model paths:\r\n\r\n- Qwen2-VL\r\n- GLM4V\r\n- Kanana-V\r\n- Keye\r\n- LLaVA-OneVision2\r\n- MiMo-V2-Omni\r\n\r\nMiMo additionally converts the padded frame count to `int`, because its\r\n`effective_frames` is calculated from `num_frames * tokens_per_second`.\r\n\r\nNo shared helper or `math_utils` changes are introduced.\r\n\r\n## Tests\r\n\r\ntest video and image in `GLM-OCR` and `Qwen2-VL-7B-Instruct` model\r\n\r\nAdded a CPU-only regression test covering:\r\n`python -m pytest  tests/models/multimodal/processing/test_glm4_1v.py -k test_vision_info_rounds_up_temporal_frames  -v`\r\n\r\n```text\r\ntemporal_patch_size=2: 17 frames -> grid_t=9\r\ntemporal_patch_size=4: 17 frames -> grid_t=5\r\ntemporal_patch_size=8: 17 frames -> grid_t=3\r\n```\r\n\r\n\r\n\r\nThe change only affects vLLM token estimation. Hugging Face preprocessing,\r\nvision encoder computation, model weights, and generated outputs are unchanged.\r\n\r\n## Related Issues and PRs\r\n\r\n- Fixes [vllm-project/vllm#47866](https://github.com/vllm-project/vllm/issues/47866).\r\n- This is a minimal alternative to draft PR   \r\n  [vllm-project/vllm#47876](https://github.com/vllm-project/vllm/pull/47876):\r\n  it changes only the six call sites and adds focused regression coverage,\r\n  without introducing a shared helper or modifyi",
+    "author": "labAxiaoming",
+    "state": "merged",
+    "labels": [
+      "bug",
+      "ready",
+      "multi-modality",
+      "qwen"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49030",
+    "createdAt": "2026-07-18T11:56:12.000Z",
+    "updatedAt": "2026-08-25T04:21:56.000Z",
+    "mergedAt": "2026-07-28T17:57:32.000Z",
+    "firstSeenAt": "2026-08-26T02:09:14.386Z",
+    "contentHash": "sha256:fe8b00109445857f70013093fd931e7c95477619a42709e470a2a66189708c24",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-48729",
+    "nodeId": "PR_kwDOI7xefs7yAJEs",
+    "repository": "vllm-project/vllm",
+    "number": 48729,
+    "type": "pr",
+    "title": "[Bugfix][GLM4V] Fix video dummy profiling and memory usage",
+    "bodyExcerpt": "# [Bugfix][GLM4V] Fix video dummy profiling and memory usage\r\n\r\n## Purpose\r\n\r\nThis PR fixes GLM4V video profiling during multimodal startup. It addresses an\r\nunbounded frame search, incorrect selection on a non-monotonic token curve,\r\nvideo pixel-budget mismatch, and excessive dummy video memory usage.\r\n\r\nThis follow-up was discovered while validating\r\n[PR #47155](https://github.com/vllm-project/vllm/pull/47155). Startup was fast\r\nwhen video inputs were disabled:\r\n\r\n```bash\r\n--limit-mm-per-prompt '{\"image\": 1, \"video\": 0}'\r\n```\r\n\r\nAfter enabling one video per prompt, APIServer multimodal warmup became much\r\nslower and consumed substantially more host memory:\r\n\r\n```bash\r\n--limit-mm-per-prompt '{\"image\": 1, \"video\": 1}'\r\n```\r\n\r\nTracing this difference exposed the unbounded `_get_max_video_frames` search\r\nand the 600-frame dummy video allocation fixed by this PR. With `video: 0`, the\r\nvideo dummy path is not exercised, so this issue remains hidden.\r\n\r\n### Problem\r\n\r\nThe non-monotonic estimation happens in the vLLM\r\n[`_get_vision_info()`](https://github.com/vllm-project/vllm/blob/v0.25.1/vllm/model_executor/models/glm4_1v.py#L1057-L1096)\r\npath:\r\n\r\n```text\r\n_get_max_video_frames()\r\n-> _get_vision_info(num_frames=...)\r\n-> smart_resize(num_frames, height, width, ...)\r\n-> grid_t * grid_h * grid_w / merge_size**2\r\n```\r\n\r\nFor every candidate frame count, `_get_vision_info()` calls `smart_resize`.\r\nAdding frames can reduce the resized height and width, so the calculated vision\r\ntoken count can increase, remain unchanged, or decrease.\r\n\r\nThe resize formula is implemented at\r\n[`image_processing_glm46v.py#L50-L83`](https://github.com/huggingface/transformers/blob/v5.13.1/src/transformers/models/glm46v/image_processing_glm46v.py#L50-L83).\r\n\r\nThe previous `_get_max_video_frames` implementation assumed monotonic growth\r\nand stopped at the first token-budget violation. With the instrumented\r\nconfiguration from the issue analysis:\r\n\r\n```text\r\nmax_model_len:            131,072\r\nimage t",
+    "author": "labAxiaoming",
+    "state": "merged",
+    "labels": [
+      "bug",
+      "ready",
+      "multi-modality"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/48729",
+    "createdAt": "2026-07-15T11:43:42.000Z",
+    "updatedAt": "2026-08-25T04:21:55.000Z",
+    "mergedAt": "2026-07-17T17:44:46.000Z",
+    "firstSeenAt": "2026-08-26T02:09:14.386Z",
+    "contentHash": "sha256:da2f2767e3feb3716d3cb93a97e6ce3f772cd5e48194029a2b9ea9553b081639",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-47927",
+    "nodeId": "PR_kwDOI7xefs7vCttX",
+    "repository": "vllm-project/vllm",
+    "number": 47927,
+    "type": "pr",
+    "title": "Preserve DeepSeek sigmoid grouped routing metadata",
+    "bodyExcerpt": "\r\n\r\n\r\n## Purpose\r\n\r\nGLM-style DeepSeekV4/DSA models can use sigmoid routing with an expert-score correction bias, norm_topk_prob=True, n_group/topk_group metadata, and a non-unit routed scaling factor. With no group metadata passed to FusedMoE, the router is classified as RoutingMethodType.Unspecified: the bias-aware top-k router has no way to distinguish an explicit grouped DeepSeek router from not-a-grouped-router at all.\r\n\r\nThat classification matters for NVFP4 FlashInfer TRTLLM MoE. The monolithic TRTLLM expert path supports RoutingMethodType.DeepSeekV3, but intentionally does not claim Unspecified. Losing grouped routing metadata can therefore push the model onto a modular/pre-routed path instead of the monolithic from-logits path, bypassing FlashInfer fixes that are specific to DeepSeekV3 routing.\r\n\r\nPropagate the model n_group and topk_group into FusedMoE for valid sigmoid routers only. A one-group router is semantically equivalent to selecting top-k over all experts, but it preserves the DeepSeekV3 routing contract for kernel selection and for backends that consume the routing metadata directly. Do not apply this to sqrtsoftplus DeepSeekV4 routing, which is a different routing method with different kernel support.\r\n\r\n## Test Plan\r\n\r\nAdd CPU model tests that monkeypatch FusedMoE and verify valid sigmoid grouped routing metadata is preserved for both single-group and ordinary grouped cases. The tests also verify invalid group metadata is cleared and non-sigmoid routing still clears the same metadata.\r\n\r\n## Test Result\r\n\r\nnew unit test cases passes, this PR combined with https://github.com/flashinfer-ai/flashinfer/pull/3875 also seems to resolve https://github.com/vllm-project/vllm/issues/42426#issuecomment-4908867521 in our real world usage\r\n\r\n---\r\n<details>\r\n<summary> Essential Elements of an Effective PR Description Checklist </summary>\r\n\r\n- [x] The purpose of the PR, such as \"Fix some issue (link existing issues this PR will resolve)\".\r\n- [x] The test plan,",
+    "author": "alexeldeib",
+    "state": "open",
+    "labels": [
+      "deepseek",
+      "DSv4"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/47927",
+    "createdAt": "2026-07-07T23:00:27.000Z",
+    "updatedAt": "2026-08-25T03:32:22.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-25T03:09:28.557Z",
+    "contentHash": "sha256:770da6a20cd3c748d31a0b8730255e9cfb8113829c919316d6101ce9e6790a23",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "保留 DeepSeek sigmoid 分组路由元数据",
+      "summaryZh": "将有效 sigmoid 路由器的 n_group 和 topk_group 元数据传递至 FusedMoE，覆盖单组和普通分组场景；清除无效分组元数据及非 sigmoid 路由的相同元数据，不应用于 sqrtsoftplus DeepSeekV4 路由，解决FusedMoE 未接收 n_group 和 topk_group 时，路由会被分类为 RoutingMethodType.Unspecified，可能使 NVFP4 FlashInfer TRTLLM MoE 走模块化或预路由路径，绕过 DeepSeekV3 专用修复；保留 DeepSeekV3 路由契约，支持内核选择及直接消费路由元数据的后端；新增 CPU 模型测试验证相关行为",
+      "models": [
+        "DeepSeekV4/DSA",
+        "DeepSeekV3"
+      ],
+      "hardware": [
+        "GPU",
+        "CPU"
+      ],
+      "scenarios": [
+        "INFERENCE",
+        "EVALUATION"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 NVFP4 FlashInfer TRTLLM MoE 的路由路径选择及相关 DeepSeek 模型推理。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【正文】Propagate the model n_group and topk_group into FusedMoE for valid sigmoid routers only.",
+        "【正文】Losing grouped routing metadata can therefore push the model onto a modular/pre-routed path instead of the monolithic从​​"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-25T03:09:28.557Z"
+    }
+  },
+  {
     "id": "vllm-pr-50005",
     "nodeId": "PR_kwDOI7xefs72_VW5",
     "repository": "vllm-project/vllm",
@@ -49,59 +202,6 @@
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T10:27:08.865Z"
-    }
-  },
-  {
-    "id": "vllm-pr-47927",
-    "nodeId": "PR_kwDOI7xefs7vCttX",
-    "repository": "vllm-project/vllm",
-    "number": 47927,
-    "type": "pr",
-    "title": "Preserve DeepSeek sigmoid grouped routing metadata",
-    "bodyExcerpt": "\r\n\r\n\r\n## Purpose\r\n\r\nGLM-style DeepSeekV4/DSA models can use sigmoid routing with an expert-score correction bias, norm_topk_prob=True, n_group/topk_group metadata, and a non-unit routed scaling factor. With no group metadata passed to FusedMoE, the router is classified as RoutingMethodType.Unspecified: the bias-aware top-k router has no way to distinguish an explicit grouped DeepSeek router from not-a-grouped-router at all.\r\n\r\nThat classification matters for NVFP4 FlashInfer TRTLLM MoE. The monolithic TRTLLM expert path supports RoutingMethodType.DeepSeekV3, but intentionally does not claim Unspecified. Losing grouped routing metadata can therefore push the model onto a modular/pre-routed path instead of the monolithic from-logits path, bypassing FlashInfer fixes that are specific to DeepSeekV3 routing.\r\n\r\nPropagate the model n_group and topk_group into FusedMoE for valid sigmoid routers only. A one-group router is semantically equivalent to selecting top-k over all experts, but it preserves the DeepSeekV3 routing contract for kernel selection and for backends that consume the routing metadata directly. Do not apply this to sqrtsoftplus DeepSeekV4 routing, which is a different routing method with different kernel support.\r\n\r\n## Test Plan\r\n\r\nAdd CPU model tests that monkeypatch FusedMoE and verify valid sigmoid grouped routing metadata is preserved for both single-group and ordinary grouped cases. The tests also verify invalid group metadata is cleared and non-sigmoid routing still clears the same metadata.\r\n\r\n## Test Result\r\n\r\nnew unit test cases passes, this PR combined with https://github.com/flashinfer-ai/flashinfer/pull/3875 also seems to resolve https://github.com/vllm-project/vllm/issues/42426#issuecomment-4908867521 in our real world usage\r\n\r\n---\r\n<details>\r\n<summary> Essential Elements of an Effective PR Description Checklist </summary>\r\n\r\n- [x] The purpose of the PR, such as \"Fix some issue (link existing issues this PR will resolve)\".\r\n- [x] The test plan,",
-    "author": "alexeldeib",
-    "state": "open",
-    "labels": [
-      "needs-rebase",
-      "deepseek",
-      "DSv4"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/47927",
-    "createdAt": "2026-07-07T23:00:27.000Z",
-    "updatedAt": "2026-08-25T00:27:10.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-25T03:09:28.557Z",
-    "contentHash": "sha256:5bf445ee7cfafa3bf8e2c92b3b848961ab6f482b9e124a77c67c806f679427ca",
-    "category": "FIX",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "保留 DeepSeek sigmoid 分组路由元数据",
-      "summaryZh": "将有效 sigmoid 路由器的 n_group 和 topk_group 元数据传递至 FusedMoE，覆盖单组和普通分组场景；清除无效分组元数据及非 sigmoid 路由的相同元数据，不应用于 sqrtsoftplus DeepSeekV4 路由，解决FusedMoE 未接收 n_group 和 topk_group 时，路由会被分类为 RoutingMethodType.Unspecified，可能使 NVFP4 FlashInfer TRTLLM MoE 走模块化或预路由路径，绕过 DeepSeekV3 专用修复；保留 DeepSeekV3 路由契约，支持内核选择及直接消费路由元数据的后端；新增 CPU 模型测试验证相关行为",
-      "models": [
-        "DeepSeekV4/DSA",
-        "DeepSeekV3"
-      ],
-      "hardware": [
-        "GPU",
-        "CPU"
-      ],
-      "scenarios": [
-        "INFERENCE",
-        "EVALUATION"
-      ],
-      "category": "FIX",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 NVFP4 FlashInfer TRTLLM MoE 的路由路径选择及相关 DeepSeek 模型推理。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【正文】Propagate the model n_group and topk_group into FusedMoE for valid sigmoid routers only.",
-        "【正文】Losing grouped routing metadata can therefore push the model onto a modular/pre-routed path instead of the monolithic从​​"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-25T03:09:28.557Z"
     }
   },
   {
@@ -331,56 +431,6 @@
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-49678",
-    "nodeId": "PR_kwDOI7xefs71sxER",
-    "repository": "vllm-project/vllm",
-    "number": 49678,
-    "type": "pr",
-    "title": "[Perf][GLM-5.2] Reuse Sparse Physical Indices via Attention Metadata （throughput +3.76%）",
-    "bodyExcerpt": "FIX https://github.com/vllm-project/vllm/pull/48597#discussion_r3586833876\r\n\r\n## Purpose\r\nThe optimization caches the converted sparse physical indices in attention metadata, allowing subsequent layers that reuse the same top-k indices to skip calling `triton_convert_req_index_to_global_index`.\r\n\r\n  The conversion is performed only when a layer produces fresh top-k indices. Layers using IndexCache directly reuse the cached physical indices and valid counts.\r\n## Test Plan\r\n\r\n### Test Environment\r\n\r\n- GPUs: 8 x NVIDIA H20\r\n- Model: `zai-org/GLM-5.2-FP8`\r\n- Tensor parallel size: 8\r\n- Attention backend: `FLASHMLA_SPARSE`\r\n- Model configuration: `index_topk_freq=4`, `index_topk=2048`\r\n- Input/output length: 8,000 / 1,024 tokens\r\n- Number of prompts: 128\r\n- Maximum concurrency: 32\r\n\r\n\r\n\r\n### Server Command\r\n\r\n```bash\r\n vllm serve \\\r\n  ZhipuAI/GLM-5.2-FP8 \\\r\n  --load-format instanttensor \\\r\n  --tensor-parallel-size 8 \\\r\n  --max-model-len 16384 \\\r\n  --gpu-memory-utilization 0.9 \\\r\n  --trust-remote-code \\\r\n  --attention-backend FLASHMLA_SPARSE \\\r\n  --port 8000\r\n```\r\n\r\n### Benchmark Command\r\n\r\n```bash\r\nvllm bench serve \\\r\n  --backend openai \\\r\n  --modelZhipuAI/GLM-5.2-FP8 \\\r\n  --endpoint /v1/completions \\\r\n  --dataset-name random \\\r\n  --random-input-len 8000 \\\r\n  --random-output-len 1024 \\\r\n  --num-prompts 128 \\\r\n  --request-rate inf \\\r\n  --max-concurrency 32 \\\r\n  --seed 1234 \\\r\n  --port 8000\r\n```\r\n\r\n### Results\r\n\r\nAll 128 requests completed successfully, and both runs generated 131,072\r\noutput tokens.\r\n\r\n| Metric | Before | After | Change |\r\n|---|---:|---:|---:|\r\n| Benchmark duration | 372.98 s | 359.46 s | **-3.62%** |\r\n| Request throughput | 0.343 req/s | 0.356 req/s | **+3.76%** |\r\n| Output throughput | 351.42 tok/s | 364.64 tok/s | **+3.76%** |\r\n| Total token throughput | 3,096.91 tok/s | 3,213.37 tok/s | **+3.76%** |\r\n| Mean TTFT | 13,470.43 ms | 13,281.72 ms | **-1.40%** |\r\n| Mean TPOT | 77.88 ms | 74.76 ms | **-4.00%** |\r\n| Mean ITL | 77.88 ms | 74.76 ms | **-4.00%** ",
-    "author": "chaunceyjiang",
-    "state": "open",
-    "labels": [
-      "v1",
-      "nvidia",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/49678",
-    "createdAt": "2026-07-24T05:27:46.000Z",
-    "updatedAt": "2026-08-24T03:45:20.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:34b6bd7a232d98ce19db906218aee69a96dbcc266814b4896ff4c79f5697f511",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5.2复用稀疏物理索引提速3.76%",
-      "summaryZh": "优化注意力元数据中的稀疏物理索引缓存：仅在层生成新的 top-k 索引时执行转换，使用 IndexCache 的后续层直接复用缓存的物理索引和有效计数；在8张NVIDIA H20、GLM-5.2-FP8及指定基准配置下，请求、输出和总令牌吞吐量均提升3.76%，平均TPOT和ITL降低4.00%",
-      "models": [
-        "GLM-5.2-FP8"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "影响采用FLASHMLA_SPARSE后端、稀疏索引复用场景的推理性能。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】Reuse Sparse Physical Indices via Attention Metadata （throughput +3.76%）",
-        "【正文】The optimization caches the converted sparse physical indices in attention metadata"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T10:27:08.865Z"
     }
   },
   {
