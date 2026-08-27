@@ -1,5 +1,54 @@
 [
   {
+    "id": "vllm-pr-43739",
+    "nodeId": "PR_kwDOI7xefs7fqNgK",
+    "repository": "vllm-project/vllm",
+    "number": 43739,
+    "type": "pr",
+    "title": "multi-turn support reasoning mode",
+    "bodyExcerpt": "\r\n\r\n\r\n## Purpose\r\nFix a issue where the multi-turn benchmark tool does not support reasoning mode. \r\n\r\n## Test Plan\r\nStart a model with argument \"--reasoning-parser\", then use the multi-turn tool to test. \r\n\r\n## Test Result\r\nwithout my modification, the output number of tokens / TPOT cannot be correctly counted\r\n```\r\n----------------------------------------------------------------------------------------------------\r\nParameters:\r\nmodel=/data/GLM-4.7-w8a8/\r\nnum_clients=1\r\nnum_conversations=1\r\nactive_conversations=1\r\nseed=0\r\nConversations Generation Parameters:\r\ntext_files=pg1184.txt\r\ninput_num_turns=Constant[4]\r\ninput_common_prefix_num_tokens=Constant[0]\r\ninput_prefix_num_tokens=Constant[1024]\r\ninput_num_tokens=Constant[1024]\r\noutput_num_tokens=Constant[1024]\r\n----------------------------------------------------------------------------------------------------\r\nStatistics summary:\r\nruntime_sec = 44.406\r\nrequests_per_sec = 0.045\r\n----------------------------------------------------------------------------------------------------\r\n                   count      mean      std      min       25%       50%       75%      90%       max\r\nttft_ms              2.0  22195.78  1065.29  21442.5  21819.14  22195.78  22572.41  22798.4  22949.05\r\ntpot_ms              2.0      0.00     0.00      0.0      0.00      0.00      0.00      0.0      0.00\r\nlatency_ms           2.0  22195.78  1065.29  21442.5  21819.14  22195.78  22572.41  22798.4  22949.05\r\ninput_num_turns      2.0      2.00     1.41      1.0      1.50      2.00      2.50      2.8      3.00\r\ninput_num_tokens     2.0   2560.00   722.66   2049.0   2304.50   2560.00   2815.50   2968.8   3071.00\r\noutput_num_tokens    2.0      0.00     0.00      0.0      0.00      0.00      0.00      0.0      0.00\r\noutput_num_chunks    2.0      0.00     0.00      0.0      0.00      0.00      0.00      0.0      0.00\r\n----------------------------------------------------------------------------------------------------\r\n```\r\n\r\nwith my modification, th",
+    "author": "SanyueHan",
+    "state": "open",
+    "labels": [
+      "performance",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/43739",
+    "createdAt": "2026-05-27T03:14:16.000Z",
+    "updatedAt": "2026-08-27T03:09:54.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-27T10:07:19.897Z",
+    "contentHash": "sha256:b394001e2899b25d726e0fa9b87d64f57a99d3ac9cb5efe8657a1881ff541a57",
+    "category": "PERFORMANCE",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-42644",
+    "nodeId": "PR_kwDOI7xefs7bjF82",
+    "repository": "vllm-project/vllm",
+    "number": 42644,
+    "type": "pr",
+    "title": "[Bugfix] Thread kv_transfer_params into engine for /inference/v1/generate (disagg)",
+    "bodyExcerpt": "## Summary\n\n`ServingTokens.serve_tokens` (in `vllm/entrypoints/scale_out/token_in_token_out/serving.py`) parses connector transfer parameters from the request body but never forwards them to `engine_client.generate(...)`. The connectors read these values from `sampling_params.extra_args`, so dropping them silently degrades disaggregated serving.\n\nFor P/D, the prefill response carries `kv_transfer_params=None`, the decode worker receives an empty NIXL handshake, and it re-prefills the prompt locally instead of pulling KV cache from prefill. This PR forwards both the existing `kv_transfer_params` and `ec_transfer_params` fields, matching the OpenAI-compatible request paths.\n\n## Repro\n\n`vllm serve` in PD disagg mode (NIXL connector), prefill on port 8100, decode on port 8200. Direct POST to a prefill worker:\n\n```bash\ncurl -sX POST http://prefill:8100/inference/v1/generate -H 'Content-Type: application/json' -d '{\n  \"model\": \"...\",\n  \"token_ids\": [1,2,3,4,5,6,7,8,9,10],\n  \"sampling_params\": {\"max_tokens\": 1, \"temperature\": 1.0, \"stop_token_ids\": []},\n  \"kv_transfer_params\": {\"do_remote_decode\": true, \"do_remote_prefill\": false}\n}'\n```\n\n**Before this PR:** response carries `\"kv_transfer_params\": null`. Decode (if invoked) has no handshake info and re-prefills locally.\n\n**After this PR:** response carries the populated handshake:\n\n```json\n{\"do_remote_prefill\": true, \"do_remote_decode\": false,\n \"remote_engine_id\": \"1e5ac09e-...\", \"remote_block_ids\": [[2]],\n \"remote_host\": \"10.20.0.51\", \"remote_port\": 5603, \"tp_size\": 1}\n```\n\nThe same payload sent to the chat-completion endpoint (with `kv_transfer_params` at top level) already returns the populated handshake on `main`, confirming the engine-side wiring is correct—only the request→engine bridge was missing on the generate path.\n\n## Numbers (GLM-5.1-FP8, 2P+2D disagg, vllm-router consistent_hash, c=256, max_tokens=1, 256-token prompt)\n\n| Endpoint | Before | After |\n|---|---|---|\n| `/v1/chat/completions/tokens` total | 8.86 s ",
+    "author": "hallerite",
+    "state": "merged",
+    "labels": [
+      "bug",
+      "frontend",
+      "ready"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/42644",
+    "createdAt": "2026-05-14T14:07:22.000Z",
+    "updatedAt": "2026-08-26T15:42:53.000Z",
+    "mergedAt": "2026-08-26T15:42:52.000Z",
+    "firstSeenAt": "2026-08-27T10:07:19.897Z",
+    "contentHash": "sha256:cbd5332a25c811c69fb81124aae3e7904b1951aac3cef63392ee40754e89f349",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-issue-43497",
     "nodeId": "I_kwDOI7xefs8AAAABDMyDzA",
     "repository": "vllm-project/vllm",

@@ -1,5 +1,152 @@
 [
   {
+    "id": "vllm-pr-47335",
+    "nodeId": "PR_kwDOI7xefs7s2Udb",
+    "repository": "vllm-project/vllm",
+    "number": 47335,
+    "type": "pr",
+    "title": "[ROCm][Perf] Enable fused indexer-Q RoPE+quant kernel for DeepSeek/GLM sparse attention",
+    "bodyExcerpt": "## Summary\r\n\r\nEnables the existing fused indexer-Q kernel (`fused_indexer_q_rope_quant`) on\r\nROCm for the DeepSeek Sparse Attention (DSA) indexer used by GLM-5.2 /\r\nDeepSeek-V3.2-style models. On CUDA this kernel already collapses the indexer's\r\nquery-side RoPE + FP8 quantization + weight-scale fold into a single launch; on\r\nROCm the same work was falling back to a chain of small Triton/elementwise\r\nkernels per sparse layer per decode token.\r\n\r\nThis is a low-risk, 2-line enablement — the kernel is already on vllm and is\r\narchitecture-aware. It **removes redundant kernels and HBM round-trips** on the\r\nROCm decode path (4 Q-side kernels → 1), yielding a small but consistent decode\r\nimprovement with **no CUDA-side change** and no measured regression.\r\n\r\n## Kernel-level evidence (torch.profiler, GLM-5.2-FP8, MI325X / gfx942, TP8, rank 0)\r\n\r\nBefore/after self-CUDA over the same steady-state decode capture. The indexer\r\ndecode kernels are the ones with ~21.5k calls (per decoded token × sparse\r\nlayers).\r\n\r\n**Fused away** (present in baseline, gone after):\r\n\r\n| Kernel | Role | Self CUDA | Calls |\r\n|---|---|---|---|\r\n| `per_token_group_quant_8bit_kernel` | q → FP8 (ue8m0) quant | 99.8 ms | 21546 |\r\n| `triton_poi_fused_3` | RoPE/cat elementwise | 95.8 ms | 21526 |\r\n| `triton_poi_fused_2` | RoPE/cat elementwise | 89.0 ms | 20521 |\r\n| `triton_poi_fused_mul_slice_unsqueeze_view_4` | weights scale-fold | 85.3 ms | 20500 |\r\n\r\n**Introduced**:\r\n\r\n| Kernel | Role | Self CUDA | Calls |\r\n|---|---|---|---|\r\n| `_fused_indexer_q_rope_quant_kernel` | fused q RoPE + FP8 quant + weight-fold (decode) | 103.7 ms | 21546 |\r\n| `_fused_indexer_q_rope_quant_kernel_0` | same, prefill variant | 6.3 ms | 42 |\r\n| `triton_poi_fused_add_copy_index_select_mul_slice_…` | residual K-side RoPE (now its own kernel) | 90.6 ms | 20500 |\r\n\r\nThe Q-side collapses from **4 dedicated kernels → 1** (the two `triton_poi_fused_2/_3`\r\nRoPE kernels did q *and* k together; after the change q's RoPE is absorbed and\r\nonly ",
+    "author": "xaguilar-amd",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "ready",
+      "deepseek",
+      "quantization",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/47335",
+    "createdAt": "2026-07-01T20:26:21.000Z",
+    "updatedAt": "2026-08-26T20:12:11.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:f6148af2d87345cd0c61f28974391ee4a6f5a9140b35cec6828e25a6daaf6f2d",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "ROCm启用GLM-5.2融合索引器Q内核",
+      "summaryZh": "启用现有 fused_indexer_q_rope_quant 内核，在ROCm上融合索引器查询侧的RoPE、FP8量化和权重缩放折叠，将4个Q侧内核合并为1个；减少冗余内核和HBM往返；GLM-5.2-FP8在MI325X/gfx942、TP8解码测试中获得小幅且稳定的解码改善，无CUDA侧变更或测得回归",
+      "models": [
+        "GLM-5.2",
+        "DeepSeek-V3.2"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响ROCm上的DSA索引器解码路径，CUDA侧不变。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[ROCm][Perf] Enable fused indexer-Q RoPE+quant kernel for DeepSeek/GLM sparse attention",
+        "【正文】Enables the existing fused indexer-Q kernel (fused_indexer_q_rope_quant) on ROCm for the DeepSeek Sparse Attention (DSA)"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T10:27:08.865Z"
+    }
+  },
+  {
+    "id": "vllm-pr-47555",
+    "nodeId": "PR_kwDOI7xefs7tlWg4",
+    "repository": "vllm-project/vllm",
+    "number": 47555,
+    "type": "pr",
+    "title": "[Bugfix] Coerce scalar tool call arguments and reject malformed JSON in _postprocess_messages",
+    "bodyExcerpt": "## Purpose\n\nFixes #46328\n\nAn assistant message whose `tool_calls[].function.arguments` JSON-decodes to a scalar (e.g. `\"\\\"escaped string\\\"\"`, the exact repro payload from the issue) was stored as-is by `_postprocess_messages`, so chat templates that call `arguments.items()` (GLM among others) crash with `'str' object has no attribute 'items'` and the server returns a 500. A malformed JSON string in `arguments` similarly raised an uncaught `json.JSONDecodeError` → 500.\n\nThis PR:\n- coerces parsed JSON scalars (`str`/number/bool — and `null`, as before) to `{}`, the same treatment #43862 applied to the `\"null\"` case, so templates expecting dict arguments don't crash;\n- raises `VLLMValidationError` (→ 400 with a clear message) for malformed JSON instead of an unhandled 500.\n\nDict and list arguments are preserved unchanged.\n\n## Why this is not duplicating an existing PR\n\nChecked before starting and again before opening this PR: the issue timeline has zero cross-referenced PRs, and `gh pr list --search \"46328 in:body\" --state all` returns empty. The related merged PR #43862 only handled `arguments=\"null\"`; this covers the remaining non-dict cases plus malformed JSON.\n\n## Test Plan\n\nNew unit tests in `tests/entrypoints/unit_tests/test_chat_utils.py`: parametrized scalar cases (`'\"escaped string\"'`, `\"42\"`, `\"true\"`) assert coercion to `{}`, and a malformed-JSON case asserts `VLLMValidationError`. Also verified the exact repro payload from #46328 end-to-end through `_postprocess_messages` and that dict arguments are preserved.\n\n```\n$ .venv/bin/python -m pytest tests/entrypoints/unit_tests/test_chat_utils.py -k \"postprocess_messages\" -v\n5 passed, 61 deselected\n\n$ pre-commit run --files vllm/entrypoints/chat_utils.py tests/entrypoints/unit_tests/test_chat_utils.py\nruff check / ruff format / mypy: Passed\n```\n\n## Test Result\n\nAll new and existing `postprocess_messages` tests pass on macOS CPU (source build, `VLLM_TARGET_DEVICE=cpu`).\n\n---\n\nThis PR was authored with AI assistanc",
+    "author": "JaynouOliver",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "frontend",
+      "needs-rebase"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/47555",
+    "createdAt": "2026-07-03T12:28:16.000Z",
+    "updatedAt": "2026-08-26T17:33:49.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-27T10:07:19.897Z",
+    "contentHash": "sha256:f7f1ae0469bd4de79dc0fa90479d050111fe85c5876b5f687d75f03a506fac6f",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-47722",
+    "nodeId": "I_kwDOI7xefs8AAAABHy6GSg",
+    "repository": "vllm-project/vllm",
+    "number": 47722,
+    "type": "issue",
+    "title": "RuntimeError: shape mismatch during KV cache init with EP + DP on MoE model",
+    "bodyExcerpt": "## Bug\n\nEngineCore fails to start on DP rank 2 with:\n\n```\nRuntimeError: Worker failed with error 'shape '[128, 64, 576]' is invalid for input of size 5373952'\n```\n\nCrash occurs in `_initialize_kv_caches` → `determine_available_memory` during the `collective_rpc` call to workers.\n\nLast working nightly: `2dfaae752b4db0d43cfc0715c780e33be030d0f1`\n\n## How to reproduce\n\n- **Image:** `vllm/vllm-openai:nightly`\n- **Model:** `zai-org/GLM-5.2-FP8`\n- **Config:** 8× GPU, TP=1, DP=8, expert parallel enabled, DeepEP (`deepep_low_latency` for decode, `deepep_high_throughput` for prefill), `deep_gemm` MOE backend, FP8 KV cache, NixlConnector KV transfer, disaggregated prefill/decode\n\nRelevant flags:\n```\n--enable-expert-parallel \\\n--tensor-parallel-size 1 \\\n--data-parallel-size 8 \\\n--data-parallel-size-local 8 \\\n--moe-backend deep_gemm \\\n--all2all-backend deepep_low_latency \\  # decode; prefill uses deepep_high_throughput\n--kv-cache-dtype fp8\n```\n\n## Full traceback\n\n```\n(Worker_DP2_EP2 pid=6222) ERROR 07-05 10:53:13 [multiproc_executor.py:1004] RuntimeError: shape '[128, 64, 576]' is invalid for input of size 5373952\n(Worker_DP2_EP2 pid=6222) ERROR 07-05 10:53:13 [multiproc_executor.py:1004] Traceback (most recent call last):\n(Worker_DP2_EP2 pid=6222) ERROR 07-05 10:53:13 [multiproc_executor.py:1004]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py\", line 996, in worker_busy_loop\n(Worker_DP2_EP2 pid=6222) ERROR 07-05 10:53:13 [multiproc_executor.py:1004]     output = func(*args, **kwargs)\n(Worker_DP2_EP2 pid=6222) ERROR 07-05 10:53:13 [multiproc_executor.py:1004]              ^^^^^^^^^^^^^^^^^^^^^\n(Worker_DP2_EP2 pid=6222) ERROR 07-05 10:53:13 [multiproc_executor.py:1004]   File \"/usr/local/lib/python3.12/dist-packages/torch/utils/_contextlib.py\", line 124, in decorate_context\n(Worker_DP2_EP2 pid=6222) ERROR 07-05 10:53:13 [multiproc_executor.py:1004]     return func(*args, **kwargs)\n(Worker_DP2_EP2 pid=6222) ERROR 07-05 10:53:13 [multiproc_exe",
+    "author": "elvircrn",
+    "state": "open",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/issues/47722",
+    "createdAt": "2026-07-06T10:12:29.000Z",
+    "updatedAt": "2026-08-26T15:19:58.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-27T10:07:19.897Z",
+    "contentHash": "sha256:d8e0eaec5d518449fc4b6961e2d49d3ba978beacd38dbad4c058caef2806b90e",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-49977",
+    "nodeId": "I_kwDOI7xefs8AAAABKUaF1Q",
+    "repository": "vllm-project/vllm",
+    "number": 49977,
+    "type": "issue",
+    "title": "[Feature]: Add SM90 W4AFP8 grouped MoE support",
+    "bodyExcerpt": "## Feature, motivation, and pitch\n\nAdd support for the W4AFP8 checkpoint format used by\n[PhalaCloud/GLM-5.2-W4AFP8](https://huggingface.co/PhalaCloud/GLM-5.2-W4AFP8).\nIts routed experts use packed signed INT4 weights with group size 128, BF16\ngroup scales, and statically scaled FP8 E4M3 activations.\n\nThe proposed implementation is split into two reviewable changes:\n\n1. Add an SM90 CUTLASS grouped-MoE operator and synthetic correctness and\n   performance coverage.\n2. Add the W4AFP8 quantization config, checkpoint loader, scale mapping, and\n   Modular FusedMoE integration in a follow-up change.\n\nThe initial scope is:\n\n- NVIDIA Hopper SM90;\n- weight group size 128;\n- expert parallel size 1;\n- no batched-expert checkpoint format;\n- no input-side router-weight application.\n\nThe kernel change does not modify the KV-cache path. The `fp8_ds_mla`\nper-spec cache layout issue is independently covered by #48907.\n\n## Alternatives\n\nThe existing CUTLASS W4A8 MoE operator uses a different activation and scale\ncontract and does not directly consume this checkpoint layout. A single PR\ncontaining the CUTLASS templates, operator, loader, and model integration would\nalso be substantially harder to review, so the kernel and integration are\nproposed as separate changes.\n\n## Additional context\n\nThe grouped-MoE implementation is derived from the Apache-2.0 SGLang W4A8\nimplementation introduced in\n[SGLang PR #7772](https://github.com/sgl-project/sglang/pull/7772). The SM90\nmixed-input CUTLASS building blocks entered SGLang through the same PR and\ntrace back to\n[TensorRT-LLM PR #5027](https://github.com/NVIDIA/TensorRT-LLM/pull/5027).\nThe upstream NVIDIA license headers are retained.\n\nSynthetic validation has been completed on NVIDIA H20 (SM90), CUDA 12.9:\n\n- GEMM1 `(N=512, K=6144)` and GEMM2 `(N=6144, K=256)`;\n- top-k 8, uneven expert rows, and an empty expert;\n- packed INT4 and BF16 scale reference comparison;\n- identical BF16 outputs against the SGLang implementation for\n  `M={1,2,4,16,64,",
+    "author": "AnimulaChoragus",
+    "state": "open",
+    "labels": [
+      "quantization"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/49977",
+    "createdAt": "2026-07-27T11:38:06.000Z",
+    "updatedAt": "2026-08-26T06:23:50.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-27T10:07:19.897Z",
+    "contentHash": "sha256:04e64a610ed37d2282b80c88d9f79e25a3e1539e5e12a7916ae650c1ab83a31e",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-49979",
+    "nodeId": "PR_kwDOI7xefs724dOC",
+    "repository": "vllm-project/vllm",
+    "number": 49979,
+    "type": "pr",
+    "title": "[Kernel] Add SM90 W4AFP8 grouped MoE CUTLASS operator",
+    "bodyExcerpt": "## Purpose\n\nThis PR adds an SM90 CUTLASS grouped-MoE operator for packed signed INT4\nweights, BF16 group scales, and statically scaled FP8 E4M3 activations. It is\nthe kernel layer for W4AFP8 checkpoints such as\n[PhalaCloud/GLM-5.2-W4AFP8](https://huggingface.co/PhalaCloud/GLM-5.2-W4AFP8).\n\nThe initial operator scope is NVIDIA Hopper SM90, group size 128, top-k 8, and\nexpert parallel size 1. Batched-expert checkpoint layouts and input-side\nrouter-weight application are not supported.\n\nThis is intentionally limited to the CUTLASS building blocks, registered\ncustom operator, bindings, synthetic correctness tests, and benchmark. The\nW4AFP8 quantization config, checkpoint loader, scale mapping, and Modular\nFusedMoE integration will follow separately. Consequently, this operator-only\nPR does not claim end-to-end model validation.\n\nThe grouped-MoE implementation is derived from the Apache-2.0 SGLang W4A8\nimplementation introduced in\n[SGLang PR #7772](https://github.com/sgl-project/sglang/pull/7772). The SM90\nmixed-input CUTLASS building blocks entered SGLang through the same PR and\ntrace back to\n[TensorRT-LLM PR #5027](https://github.com/NVIDIA/TensorRT-LLM/pull/5027).\nThe upstream NVIDIA Apache-2.0 and BSD-3-Clause headers are retained.\n\nThis does not duplicate an open implementation PR. #36048 adds tests for the\nexisting CUTLASS MoE path. The `fp8_ds_mla` KV-cache layout fix is independently\ncovered by #48907 and is not included here.\n\nAI assistance was used while preparing this change. The human submitter\nreviewed the changed lines and ran the validation below.\n\nRelated to https://github.com/vllm-project/vllm/issues/49977\n\n## Test Plan\n\nBuild the CUDA extension for SM90:\n\n```bash\nTORCH_CUDA_ARCH_LIST=9.0 uv pip install -e . \\\n  --torch-backend=auto --reinstall\n```\n\nRun the related correctness suite:\n\n```bash\n.venv/bin/python -m pytest \\\n  tests/kernels/quantization/test_cutlass_w4a8_moe.py -v\n```\n\nRun lint and formatting checks:\n\n```bash\npre-commit run --from-ref upstre",
+    "author": "AnimulaChoragus",
+    "state": "closed",
+    "labels": [
+      "performance",
+      "ci/build",
+      "nvidia"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49979",
+    "createdAt": "2026-07-27T11:43:28.000Z",
+    "updatedAt": "2026-08-26T06:22:28.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-27T10:07:19.897Z",
+    "contentHash": "sha256:7ae7a3434e6a4dc00f06ce2ab91a021f5d9d6505346a4c523501510cc1362a21",
+    "category": "PERFORMANCE",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-49678",
     "nodeId": "PR_kwDOI7xefs71sxER",
     "repository": "vllm-project/vllm",
@@ -697,59 +844,6 @@
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-47335",
-    "nodeId": "PR_kwDOI7xefs7s2Udb",
-    "repository": "vllm-project/vllm",
-    "number": 47335,
-    "type": "pr",
-    "title": "[ROCm][Perf] Enable fused indexer-Q RoPE+quant kernel for DeepSeek/GLM sparse attention",
-    "bodyExcerpt": "## Summary\r\n\r\nEnables the existing fused indexer-Q kernel (`fused_indexer_q_rope_quant`) on\r\nROCm for the DeepSeek Sparse Attention (DSA) indexer used by GLM-5.2 /\r\nDeepSeek-V3.2-style models. On CUDA this kernel already collapses the indexer's\r\nquery-side RoPE + FP8 quantization + weight-scale fold into a single launch; on\r\nROCm the same work was falling back to a chain of small Triton/elementwise\r\nkernels per sparse layer per decode token.\r\n\r\nThis is a low-risk, 2-line enablement — the kernel is already on vllm and is\r\narchitecture-aware. It **removes redundant kernels and HBM round-trips** on the\r\nROCm decode path (4 Q-side kernels → 1), yielding a small but consistent decode\r\nimprovement with **no CUDA-side change** and no measured regression.\r\n\r\n## Kernel-level evidence (torch.profiler, GLM-5.2-FP8, MI325X / gfx942, TP8, rank 0)\r\n\r\nBefore/after self-CUDA over the same steady-state decode capture. The indexer\r\ndecode kernels are the ones with ~21.5k calls (per decoded token × sparse\r\nlayers).\r\n\r\n**Fused away** (present in baseline, gone after):\r\n\r\n| Kernel | Role | Self CUDA | Calls |\r\n|---|---|---|---|\r\n| `per_token_group_quant_8bit_kernel` | q → FP8 (ue8m0) quant | 99.8 ms | 21546 |\r\n| `triton_poi_fused_3` | RoPE/cat elementwise | 95.8 ms | 21526 |\r\n| `triton_poi_fused_2` | RoPE/cat elementwise | 89.0 ms | 20521 |\r\n| `triton_poi_fused_mul_slice_unsqueeze_view_4` | weights scale-fold | 85.3 ms | 20500 |\r\n\r\n**Introduced**:\r\n\r\n| Kernel | Role | Self CUDA | Calls |\r\n|---|---|---|---|\r\n| `_fused_indexer_q_rope_quant_kernel` | fused q RoPE + FP8 quant + weight-fold (decode) | 103.7 ms | 21546 |\r\n| `_fused_indexer_q_rope_quant_kernel_0` | same, prefill variant | 6.3 ms | 42 |\r\n| `triton_poi_fused_add_copy_index_select_mul_slice_…` | residual K-side RoPE (now its own kernel) | 90.6 ms | 20500 |\r\n\r\nThe Q-side collapses from **4 dedicated kernels → 1** (the two `triton_poi_fused_2/_3`\r\nRoPE kernels did q *and* k together; after the change q's RoPE is absorbed and\r\nonly ",
-    "author": "xaguilar-amd",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "ready",
-      "deepseek",
-      "quantization",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/47335",
-    "createdAt": "2026-07-01T20:26:21.000Z",
-    "updatedAt": "2026-08-21T08:25:13.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:ea0c126359d63ec355aaef7419ce34daa623929ad78dcbd81ca78133a4a56553",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "ROCm启用GLM-5.2融合索引器Q内核",
-      "summaryZh": "启用现有 fused_indexer_q_rope_quant 内核，在ROCm上融合索引器查询侧的RoPE、FP8量化和权重缩放折叠，将4个Q侧内核合并为1个；减少冗余内核和HBM往返；GLM-5.2-FP8在MI325X/gfx942、TP8解码测试中获得小幅且稳定的解码改善，无CUDA侧变更或测得回归",
-      "models": [
-        "GLM-5.2",
-        "DeepSeek-V3.2"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "影响ROCm上的DSA索引器解码路径，CUDA侧不变。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[ROCm][Perf] Enable fused indexer-Q RoPE+quant kernel for DeepSeek/GLM sparse attention",
-        "【正文】Enables the existing fused indexer-Q kernel (fused_indexer_q_rope_quant) on ROCm for the DeepSeek Sparse Attention (DSA)"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T10:27:08.865Z"
     }
   },
   {
