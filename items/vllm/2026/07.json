@@ -1,5 +1,263 @@
 [
   {
+    "id": "vllm-pr-50415",
+    "nodeId": "PR_kwDOI7xefs74bojp",
+    "repository": "vllm-project/vllm",
+    "number": 50415,
+    "type": "pr",
+    "title": "Add MoNe experts pruning support",
+    "bodyExcerpt": "## Purpose\r\n\r\nMixture of Novices and Experts (MoNe) is an expert pruning method accepted at ICLR-2026 https://arxiv.org/pdf/2507.00390\r\n \r\nThe method computes statistics (access frequency and output variance) about experts during calibration, identifies redundant experts and replaces them with constant vectors which are their unbiased estimators. MoNe is planned to be supported in the llm-compressor https://github.com/vllm-project/llm-compressor/pull/2906 \r\n\r\nGiven MoNe replaces redundant expert's MLP blocks with constant vectors, it requires custom support in vllm. \r\n\r\nThis PR is the first self-contained step toward broader MoNE support. It introduces an algorithm-independent expert-substitution checkpoint contract and implements the minimal constant-v1 inference path for unquantized DeepSeek/GLM models using the Triton backend and tensor parallelism. It intentionally does not support additional model families, replacement formats, quantized experts, expert/data parallelism, or other MoE backends. ",
+    "author": "ieBoytsov",
+    "state": "open",
+    "labels": [
+      "documentation",
+      "new-model",
+      "deepseek",
+      "minimax"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/50415",
+    "createdAt": "2026-07-30T09:13:46.000Z",
+    "updatedAt": "2026-08-28T11:11:33.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:a4ad2c2921df1fdfbc115e4d8f039cb32f6fc03f63df0250e0d07539ad2e08e0",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "vLLM 新增 MoNE 专家剪枝支持",
+      "summaryZh": "新增共享融合 MoE 栈的通用 MoNE 支持：将冗余专家替换为学习到的常量向量，紧凑存储保留专家权重，并在 Triton GEMM 中排除替换路由。支持 MiniMax M2、DeepSeek V2/V3（包括 GLM-5/5.2）和 OLMoE；12 项测试通过，并验证了 MiniMax M2、DeepSeek V2 Lite 和 GLM-5.2 MoNE 检查点的服务与评估",
+      "models": [
+        "MiniMax M2",
+        "DeepSeek V2",
+        "DeepSeek V3",
+        "GLM-5",
+        "GLM-5.2",
+        "OLMoE"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE",
+        "EVALUATION"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "INFO",
+      "impactScopeZh": "覆盖共享融合 MoE 栈及列出的 MoNE 模型检查点。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】Add MoNe experts pruning support",
+        "【正文】This PR adds an initial implementation with generalized MoNE support to the shared fused MoE stack."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-49678",
+    "nodeId": "PR_kwDOI7xefs71sxER",
+    "repository": "vllm-project/vllm",
+    "number": 49678,
+    "type": "pr",
+    "title": "[Perf][GLM-5.2] Reuse Sparse Physical Indices via Attention Metadata （throughput +3.76%）",
+    "bodyExcerpt": "FIX https://github.com/vllm-project/vllm/pull/48597#discussion_r3586833876\r\n\r\n## Purpose\r\nThe optimization caches the converted sparse physical indices in attention metadata, allowing subsequent layers that reuse the same top-k indices to skip calling `triton_convert_req_index_to_global_index`.\r\n\r\n  The conversion is performed only when a layer produces fresh top-k indices. Layers using IndexCache directly reuse the cached physical indices and valid counts.\r\n## Test Plan\r\n\r\n### Test Environment\r\n\r\n- GPUs: 8 x NVIDIA H20-3e\r\n- Model: `zai-org/GLM-5.2-FP8`\r\n- Tensor parallel size: 8\r\n- Attention backend: `FLASHMLA_SPARSE`\r\n- Model configuration: `index_topk_freq=4`, `index_topk=2048`\r\n- Input/output length: 8,000 / 1,024 tokens\r\n- Number of prompts: 128\r\n- Maximum concurrency: 32\r\n\r\n\r\n\r\n### Server Command\r\n\r\n```bash\r\n vllm serve \\\r\n  ZhipuAI/GLM-5.2-FP8 \\\r\n  --load-format instanttensor \\\r\n  --tensor-parallel-size 8 \\\r\n  --max-model-len 16384 \\\r\n  --gpu-memory-utilization 0.9 \\\r\n  --trust-remote-code \\\r\n  --attention-backend FLASHMLA_SPARSE \\\r\n  --port 8000\r\n```\r\n\r\n### Benchmark Command\r\n\r\n```bash\r\nvllm bench serve \\\r\n  --backend openai \\\r\n  --modelZhipuAI/GLM-5.2-FP8 \\\r\n  --endpoint /v1/completions \\\r\n  --dataset-name random \\\r\n  --random-input-len 8000 \\\r\n  --random-output-len 1024 \\\r\n  --num-prompts 128 \\\r\n  --request-rate inf \\\r\n  --max-concurrency 32 \\\r\n  --seed 1234 \\\r\n  --port 8000\r\n```\r\n\r\n### Results\r\n\r\nAll 128 requests completed successfully, and both runs generated 131,072\r\noutput tokens.\r\n\r\n| Metric | Before | After | Change |\r\n|---|---:|---:|---:|\r\n| Benchmark duration | 372.98 s | 359.46 s | **-3.62%** |\r\n| Request throughput | 0.343 req/s | 0.356 req/s | **+3.76%** |\r\n| Output throughput | 351.42 tok/s | 364.64 tok/s | **+3.76%** |\r\n| Total token throughput | 3,096.91 tok/s | 3,213.37 tok/s | **+3.76%** |\r\n| Mean TTFT | 13,470.43 ms | 13,281.72 ms | **-1.40%** |\r\n| Mean TPOT | 77.88 ms | 74.76 ms | **-4.00%** |\r\n| Mean ITL | 77.88 ms | 74.76 ms | **-4.00%",
+    "author": "chaunceyjiang",
+    "state": "open",
+    "labels": [
+      "needs-rebase",
+      "v1",
+      "nvidia",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49678",
+    "createdAt": "2026-07-24T05:27:46.000Z",
+    "updatedAt": "2026-08-28T06:29:07.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:546157e6252672b694d9923eb17e007baa9473c529b7807fd52548e8be4b259f",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.2复用稀疏物理索引提速3.76%",
+      "summaryZh": "优化注意力元数据中的稀疏物理索引缓存：仅在层生成新的 top-k 索引时执行转换，使用 IndexCache 的后续层直接复用缓存的物理索引和有效计数；在8张NVIDIA H20、GLM-5.2-FP8及指定基准配置下，请求、输出和总令牌吞吐量均提升3.76%，平均TPOT和ITL降低4.00%",
+      "models": [
+        "GLM-5.2-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响采用FLASHMLA_SPARSE后端、稀疏索引复用场景的推理性能。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Reuse Sparse Physical Indices via Attention Metadata （throughput +3.76%）",
+        "【正文】The optimization caches the converted sparse physical indices in attention metadata"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T10:27:08.865Z"
+    }
+  },
+  {
+    "id": "vllm-pr-47629",
+    "nodeId": "PR_kwDOI7xefs7t_LWZ",
+    "repository": "vllm-project/vllm",
+    "number": 47629,
+    "type": "pr",
+    "title": "[Attention] TRITON_MLA_SPARSE backend for SM80/SM121 sparse MLA (rebase & takeover of #38476)",
+    "bodyExcerpt": "# [Attention] TRITON_MLA_SPARSE backend for SM80/SM121 sparse MLA (rebase & takeover of #38476)\n\n## Purpose\n\nRebase and continuation of #38476 by @haosdent, which adds a Triton-based sparse MLA\nattention backend (`TRITON_MLA_SPARSE`) so DSA sparse-MLA models (DeepSeek-V3.2,\nGLM-5.x) can run on GPUs where DeepGEMM and FlashMLA-Sparse are unavailable —\nSM80 (A100/A800) and SM121 (GB10/DGX Spark).\n\nPer the discussion in #38476 (see comments from 2026-06-29 onward): #43477 has merged,\nmaintainers indicated openness to merging this backend after a rebase, and the original\nauthor has been inactive since mid-May. This PR takes over that work as invited in the\nthread, crediting the original author (the main commit retains @haosdent's authorship).\n\n## Changes vs the original #38476\n\n- **Rebased onto current main.** The indexer dispatch in `sparse_attn_indexer.py` is now a\n  three-way `is_xpu() → DeepGEMM → Triton fallback` chain, preserving main's XPU path,\n  `skip_topk_buffer_clear` optimization, and DCP handling.\n- **Backend priority (maintainer request):** `TRITON_MLA_SPARSE` is appended *after*\n  `FLASH_ATTN_MLA_SPARSE` and `FLASHMLA_SPARSE` in the SM8x/9x candidate list, so SM90+\n  keeps native sparse backends and only SM80/SM121 fall through to Triton.\n- **New fix:** gate `use_fused_indexer_q` (from #46862) on SM89+ — its Triton kernel\n  stores fp8e4nv, which does not compile on SM80; older archs use the pre-existing\n  unfused rope + `per_token_group_quant_fp8` path.\n\n## Relationship to other PRs\n\n- #39594 forces *dense* attention on unsupported targets via an env var (a correctness\n  workaround that gives up sparse attention); this PR keeps sparse attention with Triton\n  kernels. The two are complementary.\n- #40929 / #41834 target DeepSeek-V4 on SM120 specifically; this PR is about the\n  DSA sparse-MLA indexer/attention path for V3.2/GLM-5.x on SM80/SM121.\n\n## Test Plan / Test Result\n\nAll on 8× NVIDIA A800-80GB PCIe (SM80), driver 580.95.05, this branch installed with",
+    "author": "thomaslwang",
+    "state": "open",
+    "labels": [
+      "documentation",
+      "needs-rebase",
+      "v1",
+      "deepseek",
+      "nvidia"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/47629",
+    "createdAt": "2026-07-05T05:41:29.000Z",
+    "updatedAt": "2026-08-28T02:07:39.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-28T11:38:19.166Z",
+    "contentHash": "sha256:8343527bc2aa8242503bc75fe439b6ed3544e9e1622a7d4c477a68a2f75a5849",
+    "category": "DOCS",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-48726",
+    "nodeId": "PR_kwDOI7xefs7x-6o7",
+    "repository": "vllm-project/vllm",
+    "number": 48726,
+    "type": "pr",
+    "title": "[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
+    "bodyExcerpt": "## 📌 Description\r\n\r\nHi @youkaichao @WoosukKwon @mgoin @hmellor @njhill @Isotr0py @DarkLight1337, could you please take a look at this PR when you have a chance?\r\n\r\nThis PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA):\r\n\r\n- **LiteTopK** accelerates the indexer by fusing MQA scoring, online filtering, and TopK selection without materializing the `[num_q, seq_len]` score matrix.\r\n- **LiteDSA** further accelerates the subsequent sparse-attention computation by packing multiple neighboring queries into one larger masked attention GEMM, reusing their heavily overlapping KV sets.\r\n\r\nTo the best of our knowledge, LiteTopk is the first Indexer-Topk implementation that avoids to store the score matrix, and LiteDSA is the first that converts multiple small per-token sparse-attention GEMMs into a grouped masked GEMM while preserving each query's original attend set. The corresponding paper is available on [arXiv](https://arxiv.org/abs/2607.11976).\r\n\r\n**At 1M-token prefill, LiteTopK accelerates GLM-5.2 and DeepSeek-V4-Flash by 1.29× and 1.08×, respectively. LiteDSA increases the end-to-end speedups to 1.40× and 1.25×, with no accuracy loss.**\r\n\r\nThanks to my collaborators Jianyang Gao ([@gaoj0017](https://github.com/gaoj0017)) from ETH Zurich, Peiqi Yin ([@yinpeiqi](https://github.com/yinpeiqi)) from CUHK, and Jiangneng Li ([@gravesprite](https://github.com/gravesprite)) from NTU.\r\n\r\n### Motivation\r\n\r\nDSA models such as **DeepSeek-V3.2/DeepSeek-V4**, **GLM-4.6/GLM-5.2**, and **LongCat-2.0** use a sparse-attention indexer during prefill. The current indexer computes an FP8 MQA score for every query/KV pair, materializes a `[num_q, seq_len]` matrix in HBM, and then runs a per-row TopK:\r\n\r\n```python\r\nlogits = fp8_fp4_mqa_logits(...)        # materializes [num_q, seq_len] in HBM\r\nops.top_k_per_row_prefill(logits, ...)  # TopK over the materialized matrix\r\n```\r\n\r\nAt 256K–1M context, this transient matrix is both large and expensive to ",
+    "author": "Heisenberg-Yin",
+    "state": "open",
+    "labels": [
+      "documentation",
+      "performance",
+      "new-model",
+      "rocm",
+      "structured-output",
+      "frontend",
+      "intel-gpu",
+      "speculative-decoding",
+      "needs-rebase",
+      "ci/build",
+      "multi-modality",
+      "tool-calling",
+      "llama",
+      "qwen",
+      "deepseek",
+      "cpu",
+      "gpt-oss",
+      "kv-connector",
+      "nvidia",
+      "quantization",
+      "mrv2",
+      "DSv4",
+      "rust",
+      "kimi"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/48726",
+    "createdAt": "2026-07-15T10:48:12.000Z",
+    "updatedAt": "2026-08-27T23:19:21.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:7c0cb74394781efde7708fc901ccf4d263113d464c6d01e8c17e9fa014693b4e",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "新增DSA LiteTopK与LiteDSA预填充优化",
+      "summaryZh": "新增LiteTopK与LiteDSA两项SM100预填充优化：LiteTopK融合MQA评分、在线过滤和TopK选择，避免物化[num_q, seq_len]评分矩阵；LiteDSA将相邻查询的多个小型稀疏注意力GEMM打包为带掩码的分组GEMM，并保留各查询原有的注意力集合；在1M-token预填充下，LiteTopK使GLM-5.2和DeepSeek-V4-Flash分别加速1.29倍和1.08倍；结合LiteDSA后端到端加速分别达到1.40倍和1.25倍，且无精度损失",
+      "models": [
+        "GLM-5.2",
+        "DeepSeek-V4-Flash",
+        "DeepSeek-V3.2",
+        "DeepSeek-V4",
+        "GLM-4.6",
+        "LongCat-2.0"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "TRAINING"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "面向SM100平台的DSA模型预填充性能优化。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
+        "【正文】This PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA)"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-50459",
+    "nodeId": "PR_kwDOI7xefs74qknr",
+    "repository": "vllm-project/vllm",
+    "number": 50459,
+    "type": "pr",
+    "title": "[ROCm] optimize memory for GLM 5.2",
+    "bodyExcerpt": "",
+    "author": "Concurrensee",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "needs-rebase",
+      "v1",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/50459",
+    "createdAt": "2026-07-30T18:15:41.000Z",
+    "updatedAt": "2026-08-27T20:15:54.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:ba816641ab478ca48f511132fc24d8e1373a72be07699fd38c3aab2be4397100",
+    "category": "PERFORMANCE",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-50332",
+    "nodeId": "I_kwDOI7xefs8AAAABKtiOCQ",
+    "repository": "vllm-project/vllm",
+    "number": 50332,
+    "type": "issue",
+    "title": "[Bug]: DeepGemm accuracy auto-disable (_DEEPGEMM_BLACKWELL_EXCLUDED_MODEL_TYPES) does not apply to the FP8 MoE path",
+    "bodyExcerpt": "\n### Your current environment\n\n- Hardware: NVIDIA GB10, **SM121 / compute capability 12.1** (also relevant to SM120 generally)\n- vLLM **0.26.0** (standard PyPI wheel, aarch64), torch 2.11.0+cu130, `--enforce-eager`, TP=1\n- Model: `Qwen3.6-35B-A3B-FP8` — `model_type: **qwen3_5_moe_text**`, 256-expert FP8 MoE\n\n### 🐛 Describe the bug\n\nvLLM correctly identifies that DeepGemm is inaccurate for this model type and logs so at startup:\n\n```\nWARNING [vllm.py:1008] Auto-disabled DeepGemm for model_type=qwen3_5_moe_text on Blackwell.\n  DeepGemm E8M0 scale format causes accuracy degradation for this architecture.\n  Falling back to CUTLASS. To disable DeepGemm globally, set VLLM_USE_DEEP_GEMM=0.\n```\n\n…and then **selects DeepGemm anyway for the MoE layers**:\n\n```\nINFO [fp8.py:405] Using DEEPGEMM Fp8 MoE backend out of potential backends:\n  ['AITER', 'FLASHINFER_TRTLLM', 'FLASHINFER_CUTLASS', 'DEEPGEMM', 'TRITON', 'MARLIN', ...]\n```\n\nThe auto-disable sets `quant_config.use_deep_gemm = False` (`vllm/config/vllm.py`), and\n`qwen3_5_moe_text` **is** present in `_DEEPGEMM_BLACKWELL_EXCLUDED_MODEL_TYPES`\n(`vllm/utils/deep_gemm.py`) — so the denylist is doing its job. But `use_deep_gemm` appears to have\n**no references anywhere under `vllm/model_executor/layers/fused_moe/`**; the FP8 MoE backend\nselector honors only the `VLLM_USE_DEEP_GEMM` / `VLLM_MOE_USE_DEEP_GEMM` env vars. Net effect: the\ndenylist covers dense linear layers only, and the MoE layers — where the accuracy concern for an MoE\nmodel actually matters most — still run DeepGemm.\n\nSo the warning is truthful about dense layers and silently wrong about MoE.\n\n### Why this surfaced now\n\n**PR #43477** (\"Enable DeepSeek V4 and GLM-5.1 on SM120\", shipped v0.24.0) added\n`is_device_capability_family(120)` to `deep_gemm.py`. Prior to that, the SM100-family gate meant\nDeepGemm was never *eligible* on SM121, so this gap was latent. The FP8 MoE backend priority list\nitself is unchanged — DeepGemm simply became eligible and started winning",
+    "author": "ryansummerskill",
+    "state": "open",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/issues/50332",
+    "createdAt": "2026-07-29T21:38:50.000Z",
+    "updatedAt": "2026-08-27T12:42:33.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-28T11:38:19.166Z",
+    "contentHash": "sha256:b431ec5eda12e1bf8a2ebe2af8cd3615fd9f00fc4f5037fb5bee38be532fe2be",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-47335",
     "nodeId": "PR_kwDOI7xefs7s2Udb",
     "repository": "vllm-project/vllm",
@@ -145,56 +403,6 @@
     "category": "PERFORMANCE",
     "categorySource": "rules",
     "summary": null
-  },
-  {
-    "id": "vllm-pr-49678",
-    "nodeId": "PR_kwDOI7xefs71sxER",
-    "repository": "vllm-project/vllm",
-    "number": 49678,
-    "type": "pr",
-    "title": "[Perf][GLM-5.2] Reuse Sparse Physical Indices via Attention Metadata （throughput +3.76%）",
-    "bodyExcerpt": "FIX https://github.com/vllm-project/vllm/pull/48597#discussion_r3586833876\r\n\r\n## Purpose\r\nThe optimization caches the converted sparse physical indices in attention metadata, allowing subsequent layers that reuse the same top-k indices to skip calling `triton_convert_req_index_to_global_index`.\r\n\r\n  The conversion is performed only when a layer produces fresh top-k indices. Layers using IndexCache directly reuse the cached physical indices and valid counts.\r\n## Test Plan\r\n\r\n### Test Environment\r\n\r\n- GPUs: 8 x NVIDIA H20-3e\r\n- Model: `zai-org/GLM-5.2-FP8`\r\n- Tensor parallel size: 8\r\n- Attention backend: `FLASHMLA_SPARSE`\r\n- Model configuration: `index_topk_freq=4`, `index_topk=2048`\r\n- Input/output length: 8,000 / 1,024 tokens\r\n- Number of prompts: 128\r\n- Maximum concurrency: 32\r\n\r\n\r\n\r\n### Server Command\r\n\r\n```bash\r\n vllm serve \\\r\n  ZhipuAI/GLM-5.2-FP8 \\\r\n  --load-format instanttensor \\\r\n  --tensor-parallel-size 8 \\\r\n  --max-model-len 16384 \\\r\n  --gpu-memory-utilization 0.9 \\\r\n  --trust-remote-code \\\r\n  --attention-backend FLASHMLA_SPARSE \\\r\n  --port 8000\r\n```\r\n\r\n### Benchmark Command\r\n\r\n```bash\r\nvllm bench serve \\\r\n  --backend openai \\\r\n  --modelZhipuAI/GLM-5.2-FP8 \\\r\n  --endpoint /v1/completions \\\r\n  --dataset-name random \\\r\n  --random-input-len 8000 \\\r\n  --random-output-len 1024 \\\r\n  --num-prompts 128 \\\r\n  --request-rate inf \\\r\n  --max-concurrency 32 \\\r\n  --seed 1234 \\\r\n  --port 8000\r\n```\r\n\r\n### Results\r\n\r\nAll 128 requests completed successfully, and both runs generated 131,072\r\noutput tokens.\r\n\r\n| Metric | Before | After | Change |\r\n|---|---:|---:|---:|\r\n| Benchmark duration | 372.98 s | 359.46 s | **-3.62%** |\r\n| Request throughput | 0.343 req/s | 0.356 req/s | **+3.76%** |\r\n| Output throughput | 351.42 tok/s | 364.64 tok/s | **+3.76%** |\r\n| Total token throughput | 3,096.91 tok/s | 3,213.37 tok/s | **+3.76%** |\r\n| Mean TTFT | 13,470.43 ms | 13,281.72 ms | **-1.40%** |\r\n| Mean TPOT | 77.88 ms | 74.76 ms | **-4.00%** |\r\n| Mean ITL | 77.88 ms | 74.76 ms | **-4.00%",
-    "author": "chaunceyjiang",
-    "state": "open",
-    "labels": [
-      "v1",
-      "nvidia",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/49678",
-    "createdAt": "2026-07-24T05:27:46.000Z",
-    "updatedAt": "2026-08-25T15:10:21.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:3f22471bc1fbf9bbd78c264cae718a745365cca3f731d8192c78274e06809526",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5.2复用稀疏物理索引提速3.76%",
-      "summaryZh": "优化注意力元数据中的稀疏物理索引缓存：仅在层生成新的 top-k 索引时执行转换，使用 IndexCache 的后续层直接复用缓存的物理索引和有效计数；在8张NVIDIA H20、GLM-5.2-FP8及指定基准配置下，请求、输出和总令牌吞吐量均提升3.76%，平均TPOT和ITL降低4.00%",
-      "models": [
-        "GLM-5.2-FP8"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "影响采用FLASHMLA_SPARSE后端、稀疏索引复用场景的推理性能。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】Reuse Sparse Physical Indices via Attention Metadata （throughput +3.76%）",
-        "【正文】The optimization caches the converted sparse physical indices in attention metadata"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T10:27:08.865Z"
-    }
   },
   {
     "id": "vllm-pr-49030",
@@ -400,63 +608,6 @@
     }
   },
   {
-    "id": "vllm-pr-50415",
-    "nodeId": "PR_kwDOI7xefs74bojp",
-    "repository": "vllm-project/vllm",
-    "number": 50415,
-    "type": "pr",
-    "title": "Add MoNe experts pruning support",
-    "bodyExcerpt": "## Purpose\r\n\r\nMixture of Novices and Experts (MoNe) is an expert pruning method accepted at ICLR-2026 https://arxiv.org/pdf/2507.00390\r\n \r\nThe method computes statistics (access frequency and output variance) about experts during calibration, identifies redundant experts and replaces them with constant vectors which are their unbiased estimators. MoNe is planned to be supported in the llm-compressor https://github.com/vllm-project/llm-compressor/pull/2906 \r\n\r\nGiven MoNe replaces redundant expert's MLP blocks with constant vectors, it requires custom support in vllm. \r\n\r\nThis PR is the first self-contained step toward broader MoNE support. It introduces an algorithm-independent expert-substitution checkpoint contract and implements the minimal constant-v1 inference path for unquantized DeepSeek/GLM models using the Triton backend and tensor parallelism. It intentionally does not support additional model families, replacement formats, quantized experts, expert/data parallelism, or other MoE backends. ",
-    "author": "ieBoytsov",
-    "state": "open",
-    "labels": [
-      "documentation",
-      "new-model",
-      "deepseek",
-      "minimax"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/50415",
-    "createdAt": "2026-07-30T09:13:46.000Z",
-    "updatedAt": "2026-08-24T17:53:43.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:ad054c2451a7e4fc5f20c5be041642cd8f8997b2e2a6ded31cdc63d75bfdd507",
-    "category": "NEW_SUPPORT",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "vLLM 新增 MoNE 专家剪枝支持",
-      "summaryZh": "新增共享融合 MoE 栈的通用 MoNE 支持：将冗余专家替换为学习到的常量向量，紧凑存储保留专家权重，并在 Triton GEMM 中排除替换路由。支持 MiniMax M2、DeepSeek V2/V3（包括 GLM-5/5.2）和 OLMoE；12 项测试通过，并验证了 MiniMax M2、DeepSeek V2 Lite 和 GLM-5.2 MoNE 检查点的服务与评估",
-      "models": [
-        "MiniMax M2",
-        "DeepSeek V2",
-        "DeepSeek V3",
-        "GLM-5",
-        "GLM-5.2",
-        "OLMoE"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE",
-        "EVALUATION"
-      ],
-      "category": "NEW_SUPPORT",
-      "severity": "INFO",
-      "impactScopeZh": "覆盖共享融合 MoE 栈及列出的 MoNE 模型检查点。",
-      "attention": "ROUTINE",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】Add MoNe experts pruning support",
-        "【正文】This PR adds an initial implementation with generalized MoNE support to the shared fused MoE stack."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
     "id": "vllm-pr-49602",
     "nodeId": "PR_kwDOI7xefs71bnT9",
     "repository": "vllm-project/vllm",
@@ -497,82 +648,6 @@
       "evidence": [
         "【标题】[Bugfix] Hoist $defs/definitions in Cohere parser tool schema composition",
         "【正文】any /v1/chat/completions request with tools whose JSON Schema contains $defs/definitions fails with HTTP 500 on Cohere"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-48726",
-    "nodeId": "PR_kwDOI7xefs7x-6o7",
-    "repository": "vllm-project/vllm",
-    "number": 48726,
-    "type": "pr",
-    "title": "[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
-    "bodyExcerpt": "## 📌 Description\r\n\r\nHi @youkaichao @WoosukKwon @mgoin @hmellor @njhill @Isotr0py @DarkLight1337, could you please take a look at this PR when you have a chance?\r\n\r\nThis PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA):\r\n\r\n- **LiteTopK** accelerates the indexer by fusing MQA scoring, online filtering, and TopK selection without materializing the `[num_q, seq_len]` score matrix.\r\n- **LiteDSA** further accelerates the subsequent sparse-attention computation by packing multiple neighboring queries into one larger masked attention GEMM, reusing their heavily overlapping KV sets.\r\n\r\nTo the best of our knowledge, LiteTopk is the first Indexer-Topk implementation that avoids to store the score matrix, and LiteDSA is the first that converts multiple small per-token sparse-attention GEMMs into a grouped masked GEMM while preserving each query's original attend set. The corresponding paper is available on [arXiv](https://arxiv.org/abs/2607.11976).\r\n\r\n**At 1M-token prefill, LiteTopK accelerates GLM-5.2 and DeepSeek-V4-Flash by 1.29× and 1.08×, respectively. LiteDSA increases the end-to-end speedups to 1.40× and 1.25×, with no accuracy loss.**\r\n\r\nThanks to my collaborators Jianyang Gao ([@gaoj0017](https://github.com/gaoj0017)) from ETH Zurich, Peiqi Yin ([@yinpeiqi](https://github.com/yinpeiqi)) from CUHK, and Jiangneng Li ([@gravesprite](https://github.com/gravesprite)) from NTU.\r\n\r\n### Motivation\r\n\r\nDSA models such as **DeepSeek-V3.2/DeepSeek-V4**, **GLM-4.6/GLM-5.2**, and **LongCat-2.0** use a sparse-attention indexer during prefill. The current indexer computes an FP8 MQA score for every query/KV pair, materializes a `[num_q, seq_len]` matrix in HBM, and then runs a per-row TopK:\r\n\r\n```python\r\nlogits = fp8_fp4_mqa_logits(...)        # materializes [num_q, seq_len] in HBM\r\nops.top_k_per_row_prefill(logits, ...)  # TopK over the materialized matrix\r\n```\r\n\r\nAt 256K–1M context, this transient matrix is both large and expensive to ",
-    "author": "Heisenberg-Yin",
-    "state": "open",
-    "labels": [
-      "documentation",
-      "performance",
-      "new-model",
-      "rocm",
-      "structured-output",
-      "frontend",
-      "intel-gpu",
-      "speculative-decoding",
-      "needs-rebase",
-      "ci/build",
-      "multi-modality",
-      "tool-calling",
-      "llama",
-      "qwen",
-      "deepseek",
-      "cpu",
-      "gpt-oss",
-      "kv-connector",
-      "nvidia",
-      "quantization",
-      "mrv2",
-      "DSv4",
-      "rust",
-      "kimi"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/48726",
-    "createdAt": "2026-07-15T10:48:12.000Z",
-    "updatedAt": "2026-08-24T13:58:36.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:ae3e71b16879bb457e26271022293a043411047863acaed7380a4507d6ca5b0d",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "新增DSA LiteTopK与LiteDSA预填充优化",
-      "summaryZh": "新增LiteTopK与LiteDSA两项SM100预填充优化：LiteTopK融合MQA评分、在线过滤和TopK选择，避免物化[num_q, seq_len]评分矩阵；LiteDSA将相邻查询的多个小型稀疏注意力GEMM打包为带掩码的分组GEMM，并保留各查询原有的注意力集合；在1M-token预填充下，LiteTopK使GLM-5.2和DeepSeek-V4-Flash分别加速1.29倍和1.08倍；结合LiteDSA后端到端加速分别达到1.40倍和1.25倍，且无精度损失",
-      "models": [
-        "GLM-5.2",
-        "DeepSeek-V4-Flash",
-        "DeepSeek-V3.2",
-        "DeepSeek-V4",
-        "GLM-4.6",
-        "LongCat-2.0"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "TRAINING"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "面向SM100平台的DSA模型预填充性能优化。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
-        "【正文】This PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA)"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
@@ -1037,55 +1112,6 @@
       "evidence": [
         "【标题】[ROCm] Don't re-quantize bf16 MLA kv_b_proj to fp4/fp8 for GLM MoE DSA",
         "【正文】This PR skips fp4/fp8 MLA quantization for GLM MoE DSA"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-50459",
-    "nodeId": "PR_kwDOI7xefs74qknr",
-    "repository": "vllm-project/vllm",
-    "number": 50459,
-    "type": "pr",
-    "title": "optimize memory for GLM 5.2",
-    "bodyExcerpt": "",
-    "author": "Concurrensee",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "needs-rebase",
-      "v1",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/50459",
-    "createdAt": "2026-07-30T18:15:41.000Z",
-    "updatedAt": "2026-08-19T21:55:20.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:2f0c419ef88eaf8b7a994a2df84829774b345450e67120452dff14f78c319692",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "优化 GLM 5.2 内存",
-      "summaryZh": "优化 GLM 5.2 的内存使用",
-      "models": [
-        "GLM 5.2"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [],
-      "category": "PERFORMANCE",
-      "severity": "INFO",
-      "impactScopeZh": "涉及 ROCm 环境。",
-      "attention": "ROUTINE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】optimize memory for GLM 5.2",
-        "【正文】rocm"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",

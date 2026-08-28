@@ -1,5 +1,29 @@
 [
   {
+    "id": "vllm-issue-40822",
+    "nodeId": "I_kwDOI7xefs8AAAABAcPzcw",
+    "repository": "vllm-project/vllm",
+    "number": 40822,
+    "type": "issue",
+    "title": "[RFC]: [RL - WIP] Checkpoint -> Kernel Format transition graph",
+    "bodyExcerpt": "# Motivation.\n\n### Why?\n\nWith growing size of models, inference becoming faster, one thing is stagnating. Weight transfer in RL workloads is usually done with a single NCCL broadcast where every rank loads the full model weights through an iterator and does the whole post-processing logic itself. This is wasteful and also can become a bottleneck. This requires creating a global process group, requires a lot of synchronization and utilizes at most 1 NIC (50GB/s). A lot of work has been done on using RDMA-like transport for weight reloading. This process is (almost) synchronization free and utilizes direct memory writes/reads from remote GPU memory, through IB/EFA/etc. This can significantly speedup the transfer, as there is no synchronization involved, trainers exchange metadata with inference and then either trainers push, or inference engines pull the required weights from its corresponding memory addresses. The issue here becomes the knowledge of how the weights are laid out in inference/trainer memory.\n\n### Checkpoint x Kernel format\n\nCurrently, weights get loaded from disk from a `HF`-like checkpoint, go through processing and end up in a so-called `kernel format`. This format is how the weights exist during the engine life-time. Some notable examples being\n\n- quantized into FP8, scales rearranged into TMA friendly format\n- `qkv`/`gate_up` fusion\n- `ColumnLinear` for TP\n\nThis itself seems okay, but the issue is deeper - this format depends on the runtime configuration. Let's say you want to inference GLM5 FP8. Depending on if you end up using `DeepGemm` FP8 MoE or `Cutlass` FP8 MoE, your gate-up projection might end up like `w1w3` or `w3w1` - and this is just a single example, there is way more of them that I'm not familiar with. You might see the issue here, trainer needs to know the layout of the inference weights, if they were quantized, if they were padded, etc (endless options here) to be able to either directly load them or directly write them to the infer",
+    "author": "S1ro1",
+    "state": "closed",
+    "labels": [
+      "RFC",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/40822",
+    "createdAt": "2026-04-24T17:35:09.000Z",
+    "updatedAt": "2026-08-28T04:17:47.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-28T11:38:19.166Z",
+    "contentHash": "sha256:b11a1f2de2418e68db1a6b1655dabd23d7fac154d34f4ebb0c111f40147f36b7",
+    "category": "OTHER",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-38947",
     "nodeId": "PR_kwDOI7xefs7P4FGB",
     "repository": "vllm-project/vllm",
