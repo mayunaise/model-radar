@@ -1,5 +1,59 @@
 [
   {
+    "id": "vllm-pr-42349",
+    "nodeId": "PR_kwDOI7xefs7acp4A",
+    "repository": "vllm-project/vllm",
+    "number": 42349,
+    "type": "pr",
+    "title": "[Spec Decode] Fix EAGLE3 MRoPE decode-step position computation to use per-request delta",
+    "bodyExcerpt": "## Purpose\r\n\r\nIn the EAGLE3 proposer, `_update_positions_dependent_metadata` computes MRoPE decode-step positions by replicating dimension 0 into dims 1 and 2:\r\n\r\n```python\r\nself.mrope_positions[1:, :batch_size] = self.mrope_positions[0, :batch_size]\r\n```\r\n\r\nThe target model uses a per-request `mrope_position_delta` in `MRotaryEmbedding.get_next_input_positions_tensor` to compute decode positions as `delta + context_len`, writing the same value to all 3 dims. For standard text decode tokens this is numerically equivalent to dim-replication, so acceptance rate is unaffected in the common case.\r\n\r\nHowever, when multimodal pruning is enabled, `recompute_mrope_positions` can update `req_state.mrope_position_delta` mid-request. `_gather_mm_embeddings` is called from within the speculative decode path, so a pruning event during spec decode causes the proposer's positions to advance from a stale base rather than the updated delta — a mismatch with the target model.\r\n\r\nThis fix maintains a persistent pinned CPU buffer of per-request deltas in `GPUModelRunner`, kept current by `_update_states` (on batch changes) and `_gather_mm_embeddings` (on pruning events). A dirty flag gates a CPU→GPU copy at the start of each `propose()` call, so steady-state decode steps pay no allocation or copy cost. The `[batch_size]` delta slice is passed into `_update_positions_dependent_metadata`, computing all 3 dims as:\r\n\r\n```\r\ndecode_pos = delta + seq_lens_after_kernel - 1 = delta + context_len\r\n```\r\n\r\nThis matches the target model's formula and remains correct after any delta update. Non-MRoPE models take a separate code path and are unaffected.\r\n\r\nAffects all `SupportsMRoPE` models (Qwen2/2.5/3-VL, GLM4V, and others) when used with EAGLE3 speculative decoding in vLLM V1.\r\n\r\nNo open PR addresses this fix (searched `vllm-project/vllm` for `mrope eagle speculative` and `mrope_position_delta proposer`).\r\n\r\nDeveloped with AI assistance (Claude, Anthropic). Every changed line has been reviewed by ",
+    "author": "eppaneamd",
+    "state": "open",
+    "labels": [
+      "speculative-decoding",
+      "v1",
+      "mrv1-only"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/42349",
+    "createdAt": "2026-05-11T22:27:26.000Z",
+    "updatedAt": "2026-08-28T19:18:26.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:37f76b05dcb75fed5e1792280581f7be19b4cff0e6c1dac860f51f55465e686e",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 EAGLE3 MRoPE 解码位置偏移",
+      "summaryZh": "修复 EAGLE3 proposer 的 MRoPE 解码步位置计算，按请求使用持久化的 mrope_position_delta；在状态更新或剪枝事件后同步偏移，并在 propose() 开始时按需复制到 GPU，使三维位置与目标模型公式一致，解决多模态剪枝在投机解码期间更新 mrope_position_delta 后，EAGLE3 proposer 仍基于过期偏移计算位置，导致与目标模型不匹配；覆盖 Qwen2/2.5/3-VL、GLM4V 等 SupportsMRoPE 模型在 vLLM V1 EAGLE3 投机解码中的多模态剪枝场景；非 MRoPE 模型不受影响",
+      "models": [
+        "Qwen2-VL",
+        "Qwen2.5-VL",
+        "Qwen3-VL",
+        "GLM4V"
+      ],
+      "hardware": [
+        "GPU",
+        "CPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 vLLM V1 中启用 EAGLE3 投机解码和多模态剪枝的 MRoPE 模型。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Fix EAGLE3 MRoPE decode-step position computation to use per-request delta",
+        "【正文】multimodal pruning ... causes the proposer's positions to advance from a stale base rather than the updated delta"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-issue-43967",
     "nodeId": "I_kwDOI7xefs8AAAABDwvfWg",
     "repository": "vllm-project/vllm",
@@ -205,59 +259,6 @@
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T10:27:08.865Z"
-    }
-  },
-  {
-    "id": "vllm-pr-42349",
-    "nodeId": "PR_kwDOI7xefs7acp4A",
-    "repository": "vllm-project/vllm",
-    "number": 42349,
-    "type": "pr",
-    "title": "[Spec Decode] Fix EAGLE3 MRoPE decode-step position computation to use per-request delta",
-    "bodyExcerpt": "## Purpose\r\n\r\nIn the EAGLE3 proposer, `_update_positions_dependent_metadata` computes MRoPE decode-step positions by replicating dimension 0 into dims 1 and 2:\r\n\r\n```python\r\nself.mrope_positions[1:, :batch_size] = self.mrope_positions[0, :batch_size]\r\n```\r\n\r\nThe target model uses a per-request `mrope_position_delta` in `MRotaryEmbedding.get_next_input_positions_tensor` to compute decode positions as `delta + context_len`, writing the same value to all 3 dims. For standard text decode tokens this is numerically equivalent to dim-replication, so acceptance rate is unaffected in the common case.\r\n\r\nHowever, when multimodal pruning is enabled, `recompute_mrope_positions` can update `req_state.mrope_position_delta` mid-request. `_gather_mm_embeddings` is called from within the speculative decode path, so a pruning event during spec decode causes the proposer's positions to advance from a stale base rather than the updated delta — a mismatch with the target model.\r\n\r\nThis fix maintains a persistent pinned CPU buffer of per-request deltas in `GPUModelRunner`, kept current by `_update_states` (on batch changes) and `_gather_mm_embeddings` (on pruning events). A dirty flag gates a CPU→GPU copy at the start of each `propose()` call, so steady-state decode steps pay no allocation or copy cost. The `[batch_size]` delta slice is passed into `_update_positions_dependent_metadata`, computing all 3 dims as:\r\n\r\n```\r\ndecode_pos = delta + seq_lens_after_kernel - 1 = delta + context_len\r\n```\r\n\r\nThis matches the target model's formula and remains correct after any delta update. Non-MRoPE models take a separate code path and are unaffected.\r\n\r\nAffects all `SupportsMRoPE` models (Qwen2/2.5/3-VL, GLM4V, and others) when used with EAGLE3 speculative decoding in vLLM V1.\r\n\r\nNo open PR addresses this fix (searched `vllm-project/vllm` for `mrope eagle speculative` and `mrope_position_delta proposer`).\r\n\r\nDeveloped with AI assistance (Claude, Anthropic). Every changed line has been reviewed by ",
-    "author": "eppaneamd",
-    "state": "open",
-    "labels": [
-      "speculative-decoding",
-      "v1"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/42349",
-    "createdAt": "2026-05-11T22:27:26.000Z",
-    "updatedAt": "2026-08-21T20:04:50.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:59d6d527ed89e5a998f5bf66a2e9cbb52750a38572736f3acccf3180e81b0288",
-    "category": "FIX",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "修复 EAGLE3 MRoPE 解码位置偏移",
-      "summaryZh": "修复 EAGLE3 proposer 的 MRoPE 解码步位置计算，按请求使用持久化的 mrope_position_delta；在状态更新或剪枝事件后同步偏移，并在 propose() 开始时按需复制到 GPU，使三维位置与目标模型公式一致，解决多模态剪枝在投机解码期间更新 mrope_position_delta 后，EAGLE3 proposer 仍基于过期偏移计算位置，导致与目标模型不匹配；覆盖 Qwen2/2.5/3-VL、GLM4V 等 SupportsMRoPE 模型在 vLLM V1 EAGLE3 投机解码中的多模态剪枝场景；非 MRoPE 模型不受影响",
-      "models": [
-        "Qwen2-VL",
-        "Qwen2.5-VL",
-        "Qwen3-VL",
-        "GLM4V"
-      ],
-      "hardware": [
-        "GPU",
-        "CPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "FIX",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 vLLM V1 中启用 EAGLE3 投机解码和多模态剪枝的 MRoPE 模型。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】Fix EAGLE3 MRoPE decode-step position computation to use per-request delta",
-        "【正文】multimodal pruning ... causes the proposer's positions to advance from a stale base rather than the updated delta"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
     }
   },
   {

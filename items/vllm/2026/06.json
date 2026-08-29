@@ -1,5 +1,30 @@
 [
   {
+    "id": "vllm-pr-45324",
+    "nodeId": "PR_kwDOI7xefs7lg2jO",
+    "repository": "vllm-project/vllm",
+    "number": 45324,
+    "type": "pr",
+    "title": "[ROCm] Fix sparse MLA invalid token kernel returning 0 instead of -1",
+    "bodyExcerpt": "## Purpose\r\n\r\nFix a bug in `_convert_req_index_to_global_index_kernel` (ROCm sparse MLA) where invalid token slots returned `0` instead of `-1`, causing corrupted KV cache reads and repeated `!` token output during decode.\r\n\r\nFixes: invalid decode positions attending to real KV data from block 0 of the cache, producing hidden states that autoregressively decode as exclamation mark tokens (`!!!`).\r\n\r\n## Root Cause\r\n\r\nThe downstream masking logic uses:\r\n```python\r\ninvalid_indices_mask = (indices < 0) | (indices >= skv)\r\n```\r\nBecause invalid slots returned `0` (a valid block index), the mask never fired. The kernel's own docstring already states the correct intent — *\"Only when token_indices == -1 do we output -1\"* — but the implementation contradicted it.\r\n\r\n## Fix\r\n\r\nOne-line change in `vllm/v1/attention/backends/mla/rocm_aiter_mla_sparse.py`:\r\n\r\n```python\r\n# Before (bug):\r\n`out_val = tl.where(is_invalid_tok | (~valid_block), 0, base * BLOCK_SIZE + inblock_off)`\r\n\r\n# After (fix):\r\n`out_val = tl.where(is_invalid_tok | (~valid_block), -1, base * BLOCK_SIZE + inblock_off)`\r\n```\r\n\r\n## Test Plan\r\n\r\nValidated on 8× AMD MI300X (gfx942), TP=8, using `vllm/vllm-openai-rocm:v0.22.1` with `zai-org/GLM-5.1-FP8` (705B sparse MoE, FP8).\r\n\r\n## Test Result\r\n\r\n| Test | Before fix | After fix |\r\n|------|-----------|-----------|\r\n| Basic inference (\"What is 2+2?\") | `\"reasoning\": \"!!!!!!!!!!!!!!!!\"`, `finish_reason: length` | ✅ Correct reasoning output, `finish_reason: stop` |\r\n| Tool-call routing | `tool_calls: []`, `finish_reason: length` | ✅ `finish_reason: tool_calls`, correct `bash({command: ls})` |\r\n\r\nNote: this bug is latent on a cold empty KV cache (block 0 is zeros, so the corruption is minimal). It manifests reliably once the cache has real data from prior requests.",
+    "author": "psakhamo",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "v1",
+      "mrv1-only"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/45324",
+    "createdAt": "2026-06-11T21:44:42.000Z",
+    "updatedAt": "2026-08-28T19:16:57.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-29T07:16:20.199Z",
+    "contentHash": "sha256:c02e3506e68c5d5ff25f84474999dba230699d3a3f4b5a05d6c757289d70d531",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-issue-44545",
     "nodeId": "I_kwDOI7xefs8AAAABEZHAvw",
     "repository": "vllm-project/vllm",

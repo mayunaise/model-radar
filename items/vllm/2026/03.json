@@ -1,5 +1,82 @@
 [
   {
+    "id": "vllm-pr-37667",
+    "nodeId": "PR_kwDOI7xefs7MGPM0",
+    "repository": "vllm-project/vllm",
+    "number": 37667,
+    "type": "pr",
+    "title": "[Spec Decode][Quantization] fallback quant_config to None for unquantized MTP draft model",
+    "bodyExcerpt": "## Purpose\r\nWhen a quantized model checkpoint has backbone quantized but MTP layers unquantized, the MTP model is constructed using the target model's `quant_config`. The MTP layers are built expecting quantized weight formats, but the weights are never loaded, leaving the MTP block randomly initialized. This results in 0% speculative token acceptance — MTP provides zero speedup while still consuming extra compute.\r\n\r\nThis PR allows users to specify a separate (unquantized, pretrained) checkpoint for the MTP model via `--speculative-config '{\"model\": \"/path/to/pretrained\"}'`. When the draft model path differs from the target, `_get_model()` clears `quant_config` so the MTP layers are built as BF16 modules and loaded from the pretrained checkpoint.\r\n\r\n## Test Plan\r\nTest model: amd/GLM-4.7-MXFP4\r\nScript:\r\n```bash\r\nvllm serve amd/GLM-4.7-MXFP4 \\\r\n  --tensor-parallel-size 4 \\\r\n  --speculative-config '{\"method\": \"mtp\", \"num_speculative_tokens\": 1, \"model\": \"zai-org/GLM-4.7\"}' \\\r\n  --tool-call-parser glm47 \\\r\n  --reasoning-parser glm45 \\\r\n  --enable-auto-tool-choice\r\n```\r\n\r\nWhen `\"model\"` is not specified, MTP defaults to the target model path (existing\r\nbehavior, no change). The fix only activates when the two paths differ.\r\n\r\n## Test Result\r\n### Accuracy: gsm8k_platinum (lm_eval, 5-shot, greedy)\r\n\r\n| Config | flexible-extract | strict-match |\r\n|---|---|---|\r\n| No MTP (baseline) | 0.9669 | 0.9611 |\r\n| MTP=1 (fixed) | 0.9611 | 0.9586 |\r\n| MTP=2 (fixed) | 0.9620 | 0.9595 |\r\n\r\nAll within error margin (SE ~0.005). No accuracy regression.\r\n\r\n### Speculative Decoding Metrics (before vs after fix)\r\n\r\n| Setting | Before: Acceptance Rate | After: Acceptance Rate |\r\n|---|---|---|\r\n| MTP=1, pos 1 | 0% | **~96%** |\r\n| MTP=2, pos 1 / pos 2 | 0% / 0% | **~97% / ~63%** |\r\n\r\n| Setting | Before: Mean Acceptance Length | After: Mean Acceptance Length |\r\n|---|---|---|\r\n| MTP=1 | 1.00 | **1.96** |\r\n| MTP=2 | 1.00 | **2.60** |\r\n\r\nPost-fix acceptance rates match the BF16 pretrained model (MTP",
+    "author": "xuebwang-amd",
+    "state": "open",
+    "labels": [
+      "speculative-decoding",
+      "needs-rebase",
+      "unstale",
+      "v1",
+      "quantization",
+      "mrv1-only"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/37667",
+    "createdAt": "2026-03-20T09:47:03.000Z",
+    "updatedAt": "2026-08-29T01:36:48.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-29T07:16:20.199Z",
+    "contentHash": "sha256:a5b492c7c67e64502984103c072a2e255a6a4f1ed19729bc069cc2685d445c83",
+    "category": "OTHER",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-37551",
+    "nodeId": "I_kwDOI7xefs70bt2a",
+    "repository": "vllm-project/vllm",
+    "number": 37551,
+    "type": "issue",
+    "title": "[Bug] vLLM 0.17.1: `zai-org/GLM-OCR` has `mtp_graph < no_mtp_graph` despite high acceptance",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nClang version                : Could not collect\nCMake version                : Could not collect\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.10.0+cu128\nIs debug build               : False\nCUDA used to build PyTorch   : 12.8\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.11.14 (main, Dec 17 2025, 21:07:37) [Clang 21.1.4 ] (64-bit runtime)\nPython platform              : Linux-6.8.0-1052-gcp-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.8.61\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration :\nGPU 0: NVIDIA A100-SXM4-40GB\nGPU 1: NVIDIA A100-SXM4-40GB\n\nNvidia driver version        : 570.211.01\n\n==============================\nVersions of relevant libraries\n==============================\n[pip3] flashinfer-python==0.6.4\n[pip3] torch==2.10.0\n[pip3] transformers==5.3.0\n[pip3] triton==3.6.0\n\n==============================\n         vLLM Info\n==============================\nvLLM Version                 : 0.17.1\n```\n\n</details>\n\n\n### 🐛 Describe the bug\n\n\nFor `zai-org/GLM-OCR`, I observe:\n\n- `mtp_eager > no_mtp_eager` (expected)\n- but `mtp_graph < no_mtp_graph` (unexpected to me), even with relatively high MTP acceptance.\n\nThis is a fairness-matched comparison (`graph` vs `graph`) with the same prompt, image set, `max_tokens`, and TP.\n\n## Minimal reproducible e",
+    "author": "AlejandroBaron",
+    "state": "open",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/37551",
+    "createdAt": "2026-03-19T10:56:52.000Z",
+    "updatedAt": "2026-08-29T01:36:20.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:9e845eb8f09ce840507ad9f2d484d8e1209f3c210d25cfc2d9a0bdc813c2cfac",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-OCR 出现 mtp_graph 低于 no_mtp_graph",
+      "summaryZh": "vLLM 0.17.1 中 zai-org/GLM-OCR 的 MTP graph 与 no-MTP graph 性能比较：在相同提示词、图像集、max_tokens 和张量并行配置的公平对比中，GLM-OCR 的 mtp_eager 高于 no_mtp_eager，但 mtp_graph 低于 no_mtp_graph；即使 MTP 接受率相对较高，仍观察到 graph 模式表现异常；影响 vLLM 0.17.1 使用 NVIDIA A100 GPU 运行 GLM-OCR 的 MTP graph 场景",
+      "models": [
+        "zai-org/GLM-OCR"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "GLM-OCR 的 MTP graph 推理性能比较",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】vLLM 0.17.1: `zai-org/GLM-OCR` has `mtp_graph < no_mtp_graph` despite high acceptance",
+        "【正文】`mtp_eager > no_mtp_eager` (expected)；but `mtp_graph < no_mtp_graph` (unexpected to me)"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-pr-35694",
     "nodeId": "PR_kwDOI7xefs7HNgcT",
     "repository": "vllm-project/vllm",
@@ -853,54 +930,6 @@
       "evidence": [
         "【标题】[ROCm] Enable dual-stream MoE shared experts, AITER sparse MLA workaround, and GLM-5-FP8 weight loading fix",
         "【正文】Targeted changes to improve GLM-5 MXFP4/FP8 inference on ROCm (AMD MI355X)"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-37551",
-    "nodeId": "I_kwDOI7xefs70bt2a",
-    "repository": "vllm-project/vllm",
-    "number": 37551,
-    "type": "issue",
-    "title": "[Bug] vLLM 0.17.1: `zai-org/GLM-OCR` has `mtp_graph < no_mtp_graph` despite high acceptance",
-    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nClang version                : Could not collect\nCMake version                : Could not collect\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.10.0+cu128\nIs debug build               : False\nCUDA used to build PyTorch   : 12.8\nROCM used to build PyTorch   : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.11.14 (main, Dec 17 2025, 21:07:37) [Clang 21.1.4 ] (64-bit runtime)\nPython platform              : Linux-6.8.0-1052-gcp-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.8.61\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration :\nGPU 0: NVIDIA A100-SXM4-40GB\nGPU 1: NVIDIA A100-SXM4-40GB\n\nNvidia driver version        : 570.211.01\n\n==============================\nVersions of relevant libraries\n==============================\n[pip3] flashinfer-python==0.6.4\n[pip3] torch==2.10.0\n[pip3] transformers==5.3.0\n[pip3] triton==3.6.0\n\n==============================\n         vLLM Info\n==============================\nvLLM Version                 : 0.17.1\n```\n\n</details>\n\n\n### 🐛 Describe the bug\n\n\nFor `zai-org/GLM-OCR`, I observe:\n\n- `mtp_eager > no_mtp_eager` (expected)\n- but `mtp_graph < no_mtp_graph` (unexpected to me), even with relatively high MTP acceptance.\n\nThis is a fairness-matched comparison (`graph` vs `graph`) with the same prompt, image set, `max_tokens`, and TP.\n\n## Minimal reproducible e",
-    "author": "AlejandroBaron",
-    "state": "open",
-    "labels": [
-      "bug"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/37551",
-    "createdAt": "2026-03-19T10:56:52.000Z",
-    "updatedAt": "2026-05-28T12:49:41.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:c61739259a53ee6c3fface6ae8f49e08163e3a8cb071eb61ef27ba892d67eaf7",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-OCR 出现 mtp_graph 低于 no_mtp_graph",
-      "summaryZh": "vLLM 0.17.1 中 zai-org/GLM-OCR 的 MTP graph 与 no-MTP graph 性能比较：在相同提示词、图像集、max_tokens 和张量并行配置的公平对比中，GLM-OCR 的 mtp_eager 高于 no_mtp_eager，但 mtp_graph 低于 no_mtp_graph；即使 MTP 接受率相对较高，仍观察到 graph 模式表现异常；影响 vLLM 0.17.1 使用 NVIDIA A100 GPU 运行 GLM-OCR 的 MTP graph 场景",
-      "models": [
-        "zai-org/GLM-OCR"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "GLM-OCR 的 MTP graph 推理性能比较",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】vLLM 0.17.1: `zai-org/GLM-OCR` has `mtp_graph < no_mtp_graph` despite high acceptance",
-        "【正文】`mtp_eager > no_mtp_eager` (expected)；but `mtp_graph < no_mtp_graph` (unexpected to me)"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
