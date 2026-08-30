@@ -1,5 +1,136 @@
 [
   {
+    "id": "vllm-pr-47883",
+    "nodeId": "PR_kwDOI7xefs7u5KIW",
+    "repository": "vllm-project/vllm",
+    "number": 47883,
+    "type": "pr",
+    "title": "[Rust Frontend] [Parser]Add roundtrip fixtures for more chat parsers",
+    "bodyExcerpt": "\r\n\r\n\r\n## Purpose\r\n\r\n  Add Rust chat roundtrip coverage for additional existing parser routes:\r\n\r\n  - `MiniMaxAI/MiniMax-M3`: reasoning + tool calls\r\n  - `zai-org/GLM-4.5`: reasoning + tool calls\r\n  - `zai-org/GLM-4.6`: reasoning + tool calls\r\n  - `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16`: reasoning\r\n\r\n## Test Plan\r\n\r\n```\r\n  cargo test -p vllm-chat --test roundtrip roundtrip_minimax_m3 -- --exact\r\n  cargo test -p vllm-chat --test roundtrip roundtrip_glm45 -- --exact\r\n  cargo test -p vllm-chat --test roundtrip roundtrip_glm46 -- --exact\r\n  cargo test -p vllm-chat --test roundtrip roundtrip_nemotron_v3 -- --exact\r\n  cargo test -p vllm-chat --test roundtrip\r\n```\r\n\r\n## Test Result\r\n\r\n---\r\n<details>\r\n<summary> Essential Elements of an Effective PR Description Checklist </summary>\r\n\r\n- [ ] The purpose of the PR, such as \"Fix some issue (link existing issues this PR will resolve)\".\r\n- [ ] The test plan, such as providing test command.\r\n- [ ] The test results, such as pasting the results comparison before and after, or e2e results\r\n- [ ] (Optional) The necessary documentation update, such as updating `supported_models.md` and `examples` for a new model.\r\n</details>\r\n\r\n",
+    "author": "reidliu41",
+    "state": "merged",
+    "labels": [
+      "ready",
+      "rust"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/47883",
+    "createdAt": "2026-07-07T15:24:51.000Z",
+    "updatedAt": "2026-08-30T05:28:57.000Z",
+    "mergedAt": "2026-07-10T10:03:59.000Z",
+    "firstSeenAt": "2026-08-30T05:39:24.275Z",
+    "contentHash": "sha256:d857e15cff72e56324c7144d84507d33b1110f97810f6cfde63a53b2b7e0a1f2",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-48392",
+    "nodeId": "PR_kwDOI7xefs7wtq0D",
+    "repository": "vllm-project/vllm",
+    "number": 48392,
+    "type": "pr",
+    "title": "[Spec Decode] DFlash/DSpark draft support under decode context parallelism",
+    "bodyExcerpt": "### What\n\nMake dense (GQA/MHA) DFlash/DSpark drafts work under `decode_context_parallel_size > 1`\nby caching the whole DCP group's KV heads on every rank.\n\nRebased on `main` after #52188. That PR landed the DCP-aware draft slot mapping this\nbranch used to carry (`cp_local_slot` / `prepare_dcp_local_seq_lens` in\n`vllm/v1/worker/gpu/cp_utils.py`), and its version is strictly better: it also handles\nthe null block and the rejected context suffix. That commit is dropped here in favour\nof upstream's, leaving the part #52188 does not cover.\n\n#52188 enables the MLA draft path (Kimi-K3, one latent KV head, no head-gather). This\nPR enables the dense path, where the head-gather is exactly what breaks.\n\n### Why (root cause)\n\nReported by @Leoyzen in #46514: DFlash/DSpark acceptance collapses to ~0% under DCP.\n\nThe dense flash DCP path (`_forward_with_dcp`: all-gather query heads across the DCP\ngroup, attend against the rank-local KV shard, LSE-merge) is only correct when a rank's\nKV shard holds the KV heads for all gathered query heads, i.e. KV heads replicated\nacross the DCP group. `verify_with_parallel_config` enforces this for dense *targets*;\nnothing checked the *draft*. The GLM-5.2 DSpark draft is MHA (64q/64kv), so under TP4\neach rank has a 16-head shard and the gathered 64 query heads are GQA-remapped 4:1 onto\nthe wrong KV heads.\n\n### How\n\nCache the whole DCP group's KV heads on every rank (replicated) for that rank's\ninterleaved positions:\n\n- `cache_num_kv_heads` decouples the KV-cache spec from the impl's head count\n  (`Attention.__init__`, defaults to `num_kv_heads`, only larger for this case).\n- The draft precompute all-gathers K/V across the DCP group in the same rank order the\n  query gather uses, so MHA maps 1:1 and GQA stays contiguous.\n- The query block's K/V is not slotted into such a cache: the DCP path attends it\n  against the freshly computed K/V, and at input-prep time the rank holds only its\n  local heads, so writing them would corrupt the replicated layou",
+    "author": "drakosha",
+    "state": "open",
+    "labels": [
+      "speculative-decoding",
+      "needs-rebase",
+      "v1",
+      "qwen",
+      "mrv2",
+      "dflash"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/48392",
+    "createdAt": "2026-07-12T09:24:11.000Z",
+    "updatedAt": "2026-08-29T18:54:56.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:603f9791423f1401df3f7a95621578323f0e276c6b74ce6b11ea23bb1397ebbf",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "DFlash/DSpark支持DCP解码上下文并行",
+      "summaryZh": "新增密集型 GQA/MHA DFlash/DSpark 草稿在 DCP 下的支持：在每个 rank 缓存整个 DCP 组的 KV 头，并让草稿预计算按查询聚合顺序跨组聚合 K/V，解决DFlash/DSpark 在 DCP 下的接受率降至约 0%；密集型路径聚合查询头后使用本地 KV 分片，导致 MHA/GQA 的查询头映射到错误的 KV 头；覆盖 decode_context_parallel_size > 1 的密集型草稿路径；GLM-5.2 DSpark 的 MHA 场景可避免错误 KV 头映射",
+      "models": [
+        "DFlash",
+        "DSpark",
+        "GLM-5.2 DSpark"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "HIGH",
+      "impactScopeZh": "影响采用 DCP 的密集型推测解码草稿路径。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】DFlash/DSpark draft support under decode context parallelism",
+        "【正文】DFlash/DSpark acceptance collapses to ~0% under DCP；Make dense (GQA/MHA) DFlash/DSpark drafts work under decode_context_"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-48381",
+    "nodeId": "PR_kwDOI7xefs7wqmLW",
+    "repository": "vllm-project/vllm",
+    "number": 48381,
+    "type": "pr",
+    "title": "[Bugfix][Spec Decode] DSpark: store draft KV cache in model dtype for MLA-only cache layouts; fail fast on DCP",
+    "bodyExcerpt": "FIX #48380\n\nTwo DSpark fixes for DSA-family targets:\n\n1. **Draft cache dtype.** With `--kv-cache-dtype fp8_ds_mla` the DSpark draft — a dense (non-MLA) Qwen3-style transformer — inherited the target's `cache_config` and tried to use the MLA-only fp8_ds_mla layout, which no dense attention backend accepts (`ValueError: No valid attention backend found for cuda ...`). `load_dspark_model` now falls back to the model dtype for the draft's KV cache; the draft cache is a few dense layers, so the memory cost is negligible.\n2. **DCP fail-fast.** The DFlash/DSpark draft slot mapping is DCP-blind (`ctx_pos // block_size`), so with `decode_context_parallel_size > 1` the draft reads wrong KV blocks and acceptance silently collapses to ~0% (reported by @Leoyzen in #46514). Config validation now rejects the combination instead of degrading silently.\n\n**Not a duplicate:** #47934 (FP4 target on B300) and #47626 (H20 fp8) crash later, in FlashInfer draft attention; no open PR touches the draft cache-config inheritance or adds a DCP guard for dflash/dspark.\n\n**Testing** (4×H200, GLM-5.2-NVFP4 target, RedHatAI/GLM-5.2-speculator.dspark):\n- Before: the repro from #48380 fails at draft load with the ValueError above.\n- After: server boots, output coherent end-to-end; 95 tok/s N=1, 341 tok/s aggregate N=8, mean accepted length ~2.4 (metrics: 4065 accepted / 2999 drafts / 20993 draft tokens).\n- DCP guard: same command + `--decode-context-parallel-size 2` now fails at config validation with a clear NotImplementedError (previously: silent ~0% acceptance).\n\nAI assistance was used for this change (Claude); the submitter reviewed every line and ran the tests above.\n",
+    "author": "drakosha",
+    "state": "open",
+    "labels": [
+      "bug",
+      "speculative-decoding",
+      "needs-rebase",
+      "v1",
+      "mrv2",
+      "dflash"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/48381",
+    "createdAt": "2026-07-12T03:04:40.000Z",
+    "updatedAt": "2026-08-29T18:54:48.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-30T05:39:24.275Z",
+    "contentHash": "sha256:beecf9782dd8cf2f7b1691c28f5b38f06fe8d7dda8d7dc6ea9c27b1c7cfcd648",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-50617",
+    "nodeId": "PR_kwDOI7xefs75KtKm",
+    "repository": "vllm-project/vllm",
+    "number": 50617,
+    "type": "pr",
+    "title": "[Quantization][ModelOpt] Serve modelopt_mixed checkpoints with FP8_PB layers",
+    "bodyExcerpt": "## Summary\r\n\r\nServes `modelopt_mixed` checkpoints containing FP8_PB layers. Rebased onto #49381.\r\n\r\nFP8_PB and FP8_PB_WO are the same quantization scheme — per-block FP8 with dynamic\r\nper-token activation quant — resolving to the same QuantKey pair and the same block-FP8\r\nkernel. They differ only in scale serialization: FP8_PB_WO exports ModelOpt's 4-D\r\n`weight_scale` [out_blk, 1, in_blk, 1], which requires every partition to be\r\nblock-aligned; FP8_PB uses DeepSeek's 2-D `weight_scale_inv`, sized by ceiling division,\r\nso a partition may end in a partial block.\r\n\r\nGLM-5.2 needs the latter. `q_a_proj` (2048) + `kv_a_proj_with_mqa` (576) fuse to a\r\n2624-wide `fused_qkv_a_proj`; `2624 % 128 = 64`, and the layer is replicated, so no TP\r\ndegree makes it block-aligned. Previously this failed with\r\n`KeyError: '...weight_scale_inv'`.\r\n\r\n## Design\r\n\r\nSince the layout can't live in the QuantKey, it rides on `CkptCtx.block_scale_deepseek`\r\n— the per-checkpoint carrier #49381 already provides — and `KFp8Block128` branches on it.\r\n`FormatScheme` is the wrong seam: it composes *around* the key schemes and can't replace\r\nwhat the weight scheme registers, and a secondpossible for the\r\nsame key.\r\n\r\nAdding FP8_PB is one `LINEAR_ALGOS` row plus one `resolve()` row. No new sub-config —\r\n`resolve()` only reads `subcfg` for the NVFP4 LinearKernel`\r\nalready reads whichever scale name is present, so no kernel change.\r\n\r\n`kFp8Static128BlockSym` is 128x128, so a checkpoint declaring another `group_size` is\r\nrejected at config time rather than silently m\r\n\r\n## Two fixes to existing behavior\r\n\r\n1. `ModelOptMixedPrecisionConfig` never implems()`, which\r\n   `VllmConfig` uses to enable `+quant_fp8`. Without it `QuantFP8` runs `forward_native`,\r\n   emitting unpacked fp32 group scales where Dwants them\r\n   UE8M0-packed into int32 — the model serves NaN logits. Resolving it per layer fixes\r\n   FP8_PB_WO mixed checkpoints too, not just F\r\n\r\n2. `deep_gemm_warmup` discovered layers via `ip8LinearMethod)",
+    "author": "cboddeti-nv",
+    "state": "open",
+    "labels": [
+      "needs-rebase",
+      "quantization"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/50617",
+    "createdAt": "2026-07-31T19:20:16.000Z",
+    "updatedAt": "2026-08-29T18:26:45.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-30T05:39:24.275Z",
+    "contentHash": "sha256:13a125cb59e7f37feeb8d9ad6e1a713af82e00c42a7c9a39ac5aaa037c6aaa54",
+    "category": "OTHER",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-48726",
     "nodeId": "PR_kwDOI7xefs7x-6o7",
     "repository": "vllm-project/vllm",
@@ -912,60 +1043,6 @@
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T10:27:08.865Z"
-    }
-  },
-  {
-    "id": "vllm-pr-48392",
-    "nodeId": "PR_kwDOI7xefs7wtq0D",
-    "repository": "vllm-project/vllm",
-    "number": 48392,
-    "type": "pr",
-    "title": "[Spec Decode] DFlash/DSpark draft support under decode context parallelism",
-    "bodyExcerpt": "### What\n\nMake dense (GQA/MHA) DFlash/DSpark drafts work under `decode_context_parallel_size > 1`\nby caching the whole DCP group's KV heads on every rank.\n\nRebased on `main` after #52188. That PR landed the DCP-aware draft slot mapping this\nbranch used to carry (`cp_local_slot` / `prepare_dcp_local_seq_lens` in\n`vllm/v1/worker/gpu/cp_utils.py`), and its version is strictly better: it also handles\nthe null block and the rejected context suffix. That commit is dropped here in favour\nof upstream's, leaving the part #52188 does not cover.\n\n#52188 enables the MLA draft path (Kimi-K3, one latent KV head, no head-gather). This\nPR enables the dense path, where the head-gather is exactly what breaks.\n\n### Why (root cause)\n\nReported by @Leoyzen in #46514: DFlash/DSpark acceptance collapses to ~0% under DCP.\n\nThe dense flash DCP path (`_forward_with_dcp`: all-gather query heads across the DCP\ngroup, attend against the rank-local KV shard, LSE-merge) is only correct when a rank's\nKV shard holds the KV heads for all gathered query heads, i.e. KV heads replicated\nacross the DCP group. `verify_with_parallel_config` enforces this for dense *targets*;\nnothing checked the *draft*. The GLM-5.2 DSpark draft is MHA (64q/64kv), so under TP4\neach rank has a 16-head shard and the gathered 64 query heads are GQA-remapped 4:1 onto\nthe wrong KV heads.\n\n### How\n\nCache the whole DCP group's KV heads on every rank (replicated) for that rank's\ninterleaved positions:\n\n- `cache_num_kv_heads` decouples the KV-cache spec from the impl's head count\n  (`Attention.__init__`, defaults to `num_kv_heads`, only larger for this case).\n- The draft precompute all-gathers K/V across the DCP group in the same rank order the\n  query gather uses, so MHA maps 1:1 and GQA stays contiguous.\n- The query block's K/V is not slotted into such a cache: the DCP path attends it\n  against the freshly computed K/V, and at input-prep time the rank holds only its\n  local heads, so writing them would corrupt the replicated layou",
-    "author": "drakosha",
-    "state": "open",
-    "labels": [
-      "speculative-decoding",
-      "v1",
-      "qwen",
-      "mrv2",
-      "dflash"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/48392",
-    "createdAt": "2026-07-12T09:24:11.000Z",
-    "updatedAt": "2026-08-21T13:30:32.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:bf16d9e1e5564b88ec0eddc7887f4858553d6adb5253f7a2d225200e9c5daaa0",
-    "category": "NEW_SUPPORT",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "DFlash/DSpark支持DCP解码上下文并行",
-      "summaryZh": "新增密集型 GQA/MHA DFlash/DSpark 草稿在 DCP 下的支持：在每个 rank 缓存整个 DCP 组的 KV 头，并让草稿预计算按查询聚合顺序跨组聚合 K/V，解决DFlash/DSpark 在 DCP 下的接受率降至约 0%；密集型路径聚合查询头后使用本地 KV 分片，导致 MHA/GQA 的查询头映射到错误的 KV 头；覆盖 decode_context_parallel_size > 1 的密集型草稿路径；GLM-5.2 DSpark 的 MHA 场景可避免错误 KV 头映射",
-      "models": [
-        "DFlash",
-        "DSpark",
-        "GLM-5.2 DSpark"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "NEW_SUPPORT",
-      "severity": "HIGH",
-      "impactScopeZh": "影响采用 DCP 的密集型推测解码草稿路径。",
-      "attention": "WATCH",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】DFlash/DSpark draft support under decode context parallelism",
-        "【正文】DFlash/DSpark acceptance collapses to ~0% under DCP；Make dense (GQA/MHA) DFlash/DSpark drafts work under decode_context_"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
     }
   },
   {

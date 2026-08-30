@@ -1,5 +1,26 @@
 [
   {
+    "id": "llamafactory-pr-10650",
+    "nodeId": "PR_kwDOJodxvs7yLeYc",
+    "repository": "hiyouga/LlamaFactory",
+    "number": 10650,
+    "type": "pr",
+    "title": "fix(data): GLM4-MOE tool_extractor never overridden, round-trip fails",
+    "bodyExcerpt": "## What does this PR do?\n\n`GLM4MOEToolUtils` overrides `tool_formatter`/`function_formatter` to produce its own XML-ish format (`<tool_call>{name}\\n<arg_key>...</arg_key>\\n<arg_value>...</arg_value>...`, matching `GLM4_MOE_TOOL_PROMPT`), but never overrides `tool_extractor` — it inherits `QwenToolUtils.tool_extractor`, which does `json.loads()` on the `<tool_call>...</tool_call>` body. That body is never valid JSON for this format, so extraction always fails and falls through to returning the raw, unparsed string instead of `list[FunctionCall]`.\n\nSeparately, `function_formatter` never emitted the closing `</tool_call>` tag that `GLM4_MOE_TOOL_PROMPT` itself documents (`\"\\n...\\n</tool_call>\\n\"`), which the new extractor needs to delimit consecutive tool calls when the model emits more than one.\n\n```python\ntu = get_tool_utils(\"glm4_moe\")\nformatted = tu.function_formatter([FunctionCall(\"get_weather\", '{\"city\": \"Paris\"}')])\ntu.tool_extractor(formatted)\n# before: returns the same raw string unchanged (not parsed)\n# after:  [FunctionCall(name='get_weather', arguments='{\"city\": \"Paris\"}')]\n```\n\nConfirmed this is live, registered code: `\"glm4_moe\"` is in the `TOOLS` registry and wired into multiple real templates in `src/llamafactory/data/template.py` — not experimental/dead code. Any chat inference using a glm4_moe-family template with tool calling currently cannot parse the model's own generated tool calls back into structured `FunctionCall`s.\n\n## Fix\n\n- Add a `tool_extractor` override to `GLM4MOEToolUtils`, mirroring the regex-based extraction pattern already used by sibling classes (`MiniMaxM2ToolUtils`/`Qwen35ToolUtils`) for their own XML-ish formats: match `<tool_call>NAME ... </tool_call>` blocks, then pull `<arg_key>/<arg_value>` pairs out of each block (with a `json.loads` attempt per value, falling back to the raw string — same convention as the sibling extractors).\n- Add the missing closing `</tool_call>` tag in `function_formatter`.\n\n## Tests\n\nAdded to `tests/da",
+    "author": "chuenchen309",
+    "state": "open",
+    "labels": [],
+    "url": "https://github.com/hiyouga/LlamaFactory/pull/10650",
+    "createdAt": "2026-07-15T19:14:17.000Z",
+    "updatedAt": "2026-08-29T08:34:19.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-30T05:39:24.275Z",
+    "contentHash": "sha256:6fd17a4f1297c742952d7761d7e8babe71a37771881f210963c45787fb759019",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "llamafactory-pr-10648",
     "nodeId": "PR_kwDOJodxvs7x6lpi",
     "repository": "hiyouga/LlamaFactory",

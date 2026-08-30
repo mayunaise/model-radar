@@ -1,5 +1,31 @@
 [
   {
+    "id": "vllm-pr-45144",
+    "nodeId": "PR_kwDOI7xefs7kz-X3",
+    "repository": "vllm-project/vllm",
+    "number": 45144,
+    "type": "pr",
+    "title": "Combined configuration of Multi-Token Prediction (MTP), fp8 KV cache, and AITER's Shuffle KV (SKV) layout",
+    "bodyExcerpt": "## Purpose\r\nBring up the combined configuration of Multi-Token Prediction (MTP), fp8 KV cache, and AITER's Shuffle KV (SKV) layout in vLLM on ROCm. The three features had each been validated in isolation, but had not been run together end-to-end.\r\n\r\nRelated issue:\r\nDuring integration, we uncovered an issue making ROCM_AITER_FA unusable as an MTP drafter at concurrency > 1. When running the MTP drafter with ROCM_AITER_FA, the metadata builder initialized the quantization scale as a scalar instead of the required [num_blocks, num_kv_heads, block_size] tensor. At low concurrency this was masked (HIP path), but at higher concurrency dispatch switched to ASM, causing out-of-bounds reads and SIGSEGV across TP workers.\r\n\r\n**Changes:**\r\n1. **Direct routing in the decode forward path** – In `AiterFlashAttentionImpl.forward`, the multi-token decode branch (`decode_max_query_len > 1` AND `is_shuffle_kv_cache_enabled()`) now bypasses `paged_attention_common` and calls `aiter.pa_fwd_asm` directly. This is necessary because `paged_attention_common`'s CU-count heuristic can select the HIP kernel for small batches, which has `mtp=1` hardcoded and silently processes only the first query token.\r\n2. **Wrapper API extensions in `_aiter_ops.py`** – `rocm_aiter_ops.pa_fwd_asm` and `rocm_aiter_ops.paged_attention_common` now forward `max_qlen` and `qo_indptr` (and `high_precision` for the dispatcher) to the underlying AITER functions, which already accepted them.\r\n3. Fix scale allocation for drafter – Introduced shared _maybe_allocate_shuffle_scale() and applied it to both build() and build_for_drafting() so the drafter correctly provides the expected FP8 shuffle scale tensor. Change is gated and has no impact on non-SKV paths.\r\n\r\n\r\n## Test Commands & Benchmark Setup\r\n\r\nAll runs use **GLM-4.7-FP8** and **MTP=2** on 4 GPUs (`HIP_VISIBLE_DEVICES=4,5,6,7`). Only the attention backend / KV-cache layout changes between runs.\r\n\r\nFour backends were evaluated: **ROCM_AITER_FA (RAFA)**, **ROCM_AIT",
+    "author": "waqahmed-amd-fi",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "needs-rebase",
+      "v1",
+      "verified"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/45144",
+    "createdAt": "2026-06-10T10:56:37.000Z",
+    "updatedAt": "2026-08-29T07:41:10.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-30T05:39:24.275Z",
+    "contentHash": "sha256:20b4ec31fdd10e644f13740e851f4ee2bb27484b2ba7a5a46f4ad869ef6b7b02",
+    "category": "OTHER",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-45324",
     "nodeId": "PR_kwDOI7xefs7lg2jO",
     "repository": "vllm-project/vllm",
