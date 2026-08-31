@@ -1,5 +1,167 @@
 [
   {
+    "id": "vllm-issue-50095",
+    "nodeId": "I_kwDOI7xefs8AAAABKcR1dg",
+    "repository": "vllm-project/vllm",
+    "number": 50095,
+    "type": "issue",
+    "title": "[Bug][DCP] NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention bypasses DCP handling",
+    "bodyExcerpt": "# [Bug][DCP] DeepSeek-V3.2 / GLM-5.2 fused attention bypasses pure-DCP handling\n\n## Problem\n\nThe fused DeepSeek-V3.2 / GLM-5.2 path still has two pure-DCP correctness\ndefects:\n\n1. `vllm/models/deepseek_v32/common/kernels.py` checks owner-local KV slot\n   validity before query RMSNorm. A negative slot means another DCP rank owns\n   the token's KV entry; it does not remove this rank's query contribution.\n2. `vllm/models/deepseek_v32/attention.py` gathers query heads and combines\n   partial output/LSE only for PCP+DCP. Pure DCP therefore sends rank-local\n   query heads into attention over owner-local KV and never performs the\n   required cross-rank result merge.\n\nThe sparse-indexer DCP rank, world-size, and interleave plumbing mentioned in\nthe original report has landed independently on `main`; it is no longer part\nof this issue.\n\n## Observable regression\n\nA focused kernel reproducer uses an all-negative slot mapping, representing a\nDCP rank that owns no KV-cache slot for those tokens.\n\nExpected:\n\n- Query output matches reference RMSNorm.\n- MLA and indexer KV caches remain unchanged.\n- The Top-K buffer is cleared.\n\nActual on unpatched `main`:\n\n- Query output remains zero because the kernel returns before query RMSNorm.\n\nAt model level, @drakosha reproduced repeated-token output on unpatched\nGLM-5.2-NVFP4 with TP4/DCP4 and `fp8_ds_mla`. The patched path produced output\nbyte-identical to DCP1 for the tested deterministic greedy request.\n\n## Expected behavior\n\n- Query RMSNorm runs independently of owner-local KV-slot validity.\n- Negative slots continue to suppress MLA and indexer KV-cache writes.\n- Pure DCP gathers query heads before owner-local sparse attention.\n- Partial output/LSE is combined across DCP ranks through the existing DCP\n  manager.\n\n## Proposed fix and validation\n\nPR #50005 implements the fix and regression coverage.\n\nAt its current head:\n\n- The focused fused norm/RoPE suite passes all 67 tests on GB200.\n- All applicable changed-file pre-commit hooks pass.",
+    "author": "foraxe",
+    "state": "open",
+    "labels": [
+      "deepseek",
+      "nvidia",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/50095",
+    "createdAt": "2026-07-28T06:38:50.000Z",
+    "updatedAt": "2026-08-31T05:39:23.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:ef3d07edd5d9c7c45dea719c4e92ea4c64ff09dd7f874adb6114f4c6c17660f6",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "DCP 下 GLM-5.2 融合注意力结果错误",
+      "summaryZh": "DeepSeek-V3.2 / GLM-5.2 在纯 DCP 下的融合注意力路径：融合路径在查询 RMSNorm 前检查本地 KV 槽位有效性，导致负槽位时查询输出保持为零；纯 DCP 还未跨 rank 聚合查询头及部分输出/LSE，造成注意力结果错误；GLM-5.2-NVFP4 在 TP4/DCP4 与 fp8_ds_mla 下出现重复 token 输出；修复路径在测试的确定性贪心请求中与 DCP1 输出字节一致",
+      "models": [
+        "DeepSeek-V3.2",
+        "GLM-5.2"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响纯 DCP 推理中的融合注意力、查询输出及跨 rank 结果合并。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention bypasses DCP handling",
+        "【正文】Query output remains zero because the kernel returns before query RMSNorm；Pure DCP gathers query heads before owner\u0011ocal"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:38:12.714Z"
+    }
+  },
+  {
+    "id": "vllm-pr-50005",
+    "nodeId": "PR_kwDOI7xefs72_VW5",
+    "repository": "vllm-project/vllm",
+    "number": 50005,
+    "type": "pr",
+    "title": "[Bugfix][DCP] Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention",
+    "bodyExcerpt": "# [Bugfix][DCP] Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention\n\nFixes #50095.\n\n## Purpose\n\nFix two DCP correctness defects in the fused DeepSeek-V3.2 / GLM-5.2\nattention path:\n\n- The fused norm/RoPE kernel skipped query RMSNorm when a DCP rank had no\n  owner-local KV-cache slot. KV ownership does not remove that rank's query\n  contribution.\n- Pure DCP sent only rank-local query heads into attention over owner-local KV\n  and did not combine the resulting partial output/LSE across DCP ranks.\n\nThe sparse-indexer DCP rank, world-size, and interleave plumbing described in\nthe original version of this PR has since landed independently on `main`; this\nPR no longer changes that part.\n\n## Implementation\n\n- Run query RMSNorm before the owner-local slot check. Negative slots still\n  suppress MLA and indexer KV-cache writes.\n- For pure DCP, gather query heads through `MLADCPManager` before sparse MLA\n  attention. The manager keeps the direct-workspace fast path when supported\n  and falls back safely for oversized mixed batches.\n- Combine partial output/LSE through the existing `MLADCPManager` after\n  attention. For this NVIDIA pure-DCP mixed-batch path, pass no PCP-only decode\n  metadata; its sparse backend supplies neutral contributions for empty local\n  shards.\n- Extend the existing fused norm/RoPE test with an all-negative-slot regression\n  that checks valid query output, unchanged caches, and Top-K clearing.\n\n## Non-duplication\n\nI re-audited related open work on August 23, 2026. Searching for issue #50095\nfinds only this PR.\n\n- #52472 adds a separate TurboQuant sparse MLA backend and does not modify this\n  fused DeepSeek-V3.2 attention or norm/RoPE path.\n- #52377 has landed with generic sparse-MLA forced-MQA metadata and\n  direct-workspace fallback handling after the DCP-manager refactor; this PR\n  now consumes that manager path but still supplies the NVIDIA fused override\n  and negative-slot query-normalization fixes.\n- #47779 enables DCP in the SM120 FlashInfer sparse",
+    "author": "foraxe",
+    "state": "open",
+    "labels": [
+      "bug",
+      "ready",
+      "deepseek",
+      "nvidia",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/50005",
+    "createdAt": "2026-07-27T15:32:03.000Z",
+    "updatedAt": "2026-08-31T03:23:53.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:7a32249555e258f125d3ad728dab7b4581c7e80d4365e1d56dac86a34f06a8cc",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 NVIDIA DeepSeek-V3.2/GLM-5.2 融合注意力",
+      "summaryZh": "修复 query RMSNorm 被 KV-cache 槽位检查跳过的问题；纯 DCP 在稀疏 MLA 注意力前跨 DCP group 汇聚 query heads，并在注意力后通过 MLADCPManager 合并部分输出和 LSE；新增全负槽位回归测试，解决DCP 融合注意力存在两个正确性缺陷：无本地 KV-cache 槽位的 rank 会跳过 query RMSNorm；纯 DCP 仅使用本地 query heads 进行注意力计算，未跨 rank 合并部分输出和 LSE；修复 NVIDIA 纯 DCP 混合批处理路径的注意力正确性，同时保持负槽位对 MLA 和 indexer KV-cache 写入的抑制",
+      "models": [
+        "DeepSeek-V3.2",
+        "GLM-5.2"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 NVIDIA 上 DeepSeek-V3.2/GLM-5.2 的 DCP 融合注意力路径。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention",
+        "【正文】Fix two DCP correctness defects in the fused DeepSeek-V3.2 / GLM-5.2 attention path"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T10:27:08.865Z"
+    }
+  },
+  {
+    "id": "vllm-pr-50415",
+    "nodeId": "PR_kwDOI7xefs74bojp",
+    "repository": "vllm-project/vllm",
+    "number": 50415,
+    "type": "pr",
+    "title": "Add MoNe experts pruning support",
+    "bodyExcerpt": "## Purpose\r\n\r\nMixture of Novices and Experts (MoNe) is an expert pruning method accepted at ICLR-2026 https://arxiv.org/pdf/2507.00390\r\n \r\nThe method computes statistics (access frequency and output variance) about experts during calibration, identifies redundant experts and replaces them with constant vectors which are their unbiased estimators. MoNe is planned to be supported in the llm-compressor https://github.com/vllm-project/llm-compressor/pull/2906 \r\n\r\nGiven MoNe replaces redundant expert's MLP blocks with constant vectors, it requires custom support in vllm. \r\n\r\nThis PR is the first self-contained step toward broader MoNE support. It introduces an algorithm-independent expert-substitution checkpoint contract and implements the minimal constant-v1 inference path for unquantized DeepSeek/GLM models using the Triton backend and tensor parallelism. It intentionally does not support additional model families, replacement formats, quantized experts, expert/data parallelism, or other MoE backends. ",
+    "author": "ieBoytsov",
+    "state": "open",
+    "labels": [
+      "documentation",
+      "new-model",
+      "needs-rebase",
+      "deepseek",
+      "minimax"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/50415",
+    "createdAt": "2026-07-30T09:13:46.000Z",
+    "updatedAt": "2026-08-30T08:55:07.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:5f77c1b8ba7846f5a0f10bbe30b0f030115942c3e274ffbb20be16d277b8fbed",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "vLLM 新增 MoNE 专家剪枝支持",
+      "summaryZh": "新增共享融合 MoE 栈的通用 MoNE 支持：将冗余专家替换为学习到的常量向量，紧凑存储保留专家权重，并在 Triton GEMM 中排除替换路由。支持 MiniMax M2、DeepSeek V2/V3（包括 GLM-5/5.2）和 OLMoE；12 项测试通过，并验证了 MiniMax M2、DeepSeek V2 Lite 和 GLM-5.2 MoNE 检查点的服务与评估",
+      "models": [
+        "MiniMax M2",
+        "DeepSeek V2",
+        "DeepSeek V3",
+        "GLM-5",
+        "GLM-5.2",
+        "OLMoE"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE",
+        "EVALUATION"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "INFO",
+      "impactScopeZh": "覆盖共享融合 MoE 栈及列出的 MoNE 模型检查点。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】Add MoNe experts pruning support",
+        "【正文】This PR adds an initial implementation with generalized MoNE support to the shared fused MoE stack."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-pr-47883",
     "nodeId": "PR_kwDOI7xefs7u5KIW",
     "repository": "vllm-project/vllm",
@@ -310,63 +472,6 @@
     "category": "FIX",
     "categorySource": "rules",
     "summary": null
-  },
-  {
-    "id": "vllm-pr-50415",
-    "nodeId": "PR_kwDOI7xefs74bojp",
-    "repository": "vllm-project/vllm",
-    "number": 50415,
-    "type": "pr",
-    "title": "Add MoNe experts pruning support",
-    "bodyExcerpt": "## Purpose\r\n\r\nMixture of Novices and Experts (MoNe) is an expert pruning method accepted at ICLR-2026 https://arxiv.org/pdf/2507.00390\r\n \r\nThe method computes statistics (access frequency and output variance) about experts during calibration, identifies redundant experts and replaces them with constant vectors which are their unbiased estimators. MoNe is planned to be supported in the llm-compressor https://github.com/vllm-project/llm-compressor/pull/2906 \r\n\r\nGiven MoNe replaces redundant expert's MLP blocks with constant vectors, it requires custom support in vllm. \r\n\r\nThis PR is the first self-contained step toward broader MoNE support. It introduces an algorithm-independent expert-substitution checkpoint contract and implements the minimal constant-v1 inference path for unquantized DeepSeek/GLM models using the Triton backend and tensor parallelism. It intentionally does not support additional model families, replacement formats, quantized experts, expert/data parallelism, or other MoE backends. ",
-    "author": "ieBoytsov",
-    "state": "open",
-    "labels": [
-      "documentation",
-      "new-model",
-      "deepseek",
-      "minimax"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/50415",
-    "createdAt": "2026-07-30T09:13:46.000Z",
-    "updatedAt": "2026-08-28T11:11:33.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:a4ad2c2921df1fdfbc115e4d8f039cb32f6fc03f63df0250e0d07539ad2e08e0",
-    "category": "NEW_SUPPORT",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "vLLM 新增 MoNE 专家剪枝支持",
-      "summaryZh": "新增共享融合 MoE 栈的通用 MoNE 支持：将冗余专家替换为学习到的常量向量，紧凑存储保留专家权重，并在 Triton GEMM 中排除替换路由。支持 MiniMax M2、DeepSeek V2/V3（包括 GLM-5/5.2）和 OLMoE；12 项测试通过，并验证了 MiniMax M2、DeepSeek V2 Lite 和 GLM-5.2 MoNE 检查点的服务与评估",
-      "models": [
-        "MiniMax M2",
-        "DeepSeek V2",
-        "DeepSeek V3",
-        "GLM-5",
-        "GLM-5.2",
-        "OLMoE"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE",
-        "EVALUATION"
-      ],
-      "category": "NEW_SUPPORT",
-      "severity": "INFO",
-      "impactScopeZh": "覆盖共享融合 MoE 栈及列出的 MoNE 模型检查点。",
-      "attention": "ROUTINE",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】Add MoNe experts pruning support",
-        "【正文】This PR adds an initial implementation with generalized MoNE support to the shared fused MoE stack."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
   },
   {
     "id": "vllm-pr-49678",
@@ -744,58 +849,6 @@
     }
   },
   {
-    "id": "vllm-pr-50005",
-    "nodeId": "PR_kwDOI7xefs72_VW5",
-    "repository": "vllm-project/vllm",
-    "number": 50005,
-    "type": "pr",
-    "title": "[Bugfix][DCP] Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention",
-    "bodyExcerpt": "# [Bugfix][DCP] Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention\n\nFixes #50095.\n\n## Purpose\n\nFix two DCP correctness defects in the fused DeepSeek-V3.2 / GLM-5.2\nattention path:\n\n- The fused norm/RoPE kernel skipped query RMSNorm when a DCP rank had no\n  owner-local KV-cache slot. KV ownership does not remove that rank's query\n  contribution.\n- Pure DCP sent only rank-local query heads into attention over owner-local KV\n  and did not combine the resulting partial output/LSE across DCP ranks.\n\nThe sparse-indexer DCP rank, world-size, and interleave plumbing described in\nthe original version of this PR has since landed independently on `main`; this\nPR no longer changes that part.\n\n## Implementation\n\n- Run query RMSNorm before the owner-local slot check. Negative slots still\n  suppress MLA and indexer KV-cache writes.\n- For pure DCP, gather query heads through `MLADCPManager` before sparse MLA\n  attention. The manager keeps the direct-workspace fast path when supported\n  and falls back safely for oversized mixed batches.\n- Combine partial output/LSE through the existing `MLADCPManager` after\n  attention. For this NVIDIA pure-DCP mixed-batch path, pass no PCP-only decode\n  metadata; its sparse backend supplies neutral contributions for empty local\n  shards.\n- Extend the existing fused norm/RoPE test with an all-negative-slot regression\n  that checks valid query output, unchanged caches, and Top-K clearing.\n\n## Non-duplication\n\nI re-audited related open work on August 23, 2026. Searching for issue #50095\nfinds only this PR.\n\n- #52472 adds a separate TurboQuant sparse MLA backend and does not modify this\n  fused DeepSeek-V3.2 attention or norm/RoPE path.\n- #52377 has landed with generic sparse-MLA forced-MQA metadata and\n  direct-workspace fallback handling after the DCP-manager refactor; this PR\n  now consumes that manager path but still supplies the NVIDIA fused override\n  and negative-slot query-normalization fixes.\n- #47779 enables DCP in the SM120 FlashInfer sparse",
-    "author": "foraxe",
-    "state": "open",
-    "labels": [
-      "bug",
-      "deepseek",
-      "nvidia",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/50005",
-    "createdAt": "2026-07-27T15:32:03.000Z",
-    "updatedAt": "2026-08-25T02:58:19.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:8af4805d4c728138c4bb3c102b11c559fd91c10829b5479ca942610df3a37959",
-    "category": "FIX",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "修复 NVIDIA DeepSeek-V3.2/GLM-5.2 融合注意力",
-      "summaryZh": "修复 query RMSNorm 被 KV-cache 槽位检查跳过的问题；纯 DCP 在稀疏 MLA 注意力前跨 DCP group 汇聚 query heads，并在注意力后通过 MLADCPManager 合并部分输出和 LSE；新增全负槽位回归测试，解决DCP 融合注意力存在两个正确性缺陷：无本地 KV-cache 槽位的 rank 会跳过 query RMSNorm；纯 DCP 仅使用本地 query heads 进行注意力计算，未跨 rank 合并部分输出和 LSE；修复 NVIDIA 纯 DCP 混合批处理路径的注意力正确性，同时保持负槽位对 MLA 和 indexer KV-cache 写入的抑制",
-      "models": [
-        "DeepSeek-V3.2",
-        "GLM-5.2"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "FIX",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 NVIDIA 上 DeepSeek-V3.2/GLM-5.2 的 DCP 融合注意力路径。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention",
-        "【正文】Fix two DCP correctness defects in the fused DeepSeek-V3.2 / GLM-5.2 attention path"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T10:27:08.865Z"
-    }
-  },
-  {
     "id": "vllm-pr-47928",
     "nodeId": "PR_kwDOI7xefs7vCvwj",
     "repository": "vllm-project/vllm",
@@ -889,57 +942,6 @@
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-50095",
-    "nodeId": "I_kwDOI7xefs8AAAABKcR1dg",
-    "repository": "vllm-project/vllm",
-    "number": 50095,
-    "type": "issue",
-    "title": "[Bug][DCP] NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention bypasses DCP handling",
-    "bodyExcerpt": "# [Bug][DCP] DeepSeek-V3.2 / GLM-5.2 fused attention bypasses pure-DCP handling\n\n## Problem\n\nThe fused DeepSeek-V3.2 / GLM-5.2 path still has two pure-DCP correctness\ndefects:\n\n1. `vllm/models/deepseek_v32/common/kernels.py` checks owner-local KV slot\n   validity before query RMSNorm. A negative slot means another DCP rank owns\n   the token's KV entry; it does not remove this rank's query contribution.\n2. `vllm/models/deepseek_v32/attention.py` gathers query heads and combines\n   partial output/LSE only for PCP+DCP. Pure DCP therefore sends rank-local\n   query heads into attention over owner-local KV and never performs the\n   required cross-rank result merge.\n\nThe sparse-indexer DCP rank, world-size, and interleave plumbing mentioned in\nthe original report has landed independently on `main`; it is no longer part\nof this issue.\n\n## Observable regression\n\nA focused kernel reproducer uses an all-negative slot mapping, representing a\nDCP rank that owns no KV-cache slot for those tokens.\n\nExpected:\n\n- Query output matches reference RMSNorm.\n- MLA and indexer KV caches remain unchanged.\n- The Top-K buffer is cleared.\n\nActual on unpatched `main`:\n\n- Query output remains zero because the kernel returns before query RMSNorm.\n\nAt model level, @drakosha reproduced repeated-token output on unpatched\nGLM-5.2-NVFP4 with TP4/DCP4 and `fp8_ds_mla`. The patched path produced output\nbyte-identical to DCP1 for the tested deterministic greedy request.\n\n## Expected behavior\n\n- Query RMSNorm runs independently of owner-local KV-slot validity.\n- Negative slots continue to suppress MLA and indexer KV-cache writes.\n- Pure DCP gathers query heads before owner-local sparse attention.\n- Partial output/LSE is combined across DCP ranks through the existing DCP\n  manager.\n\n## Proposed fix and validation\n\nPR #50005 implements the fix and regression coverage.\n\nAt its current head:\n\n- The focused fused norm/RoPE suite passes all 67 tests on GB200.\n- All applicable changed-file pre-commit hooks pass.",
-    "author": "foraxe",
-    "state": "open",
-    "labels": [
-      "deepseek",
-      "nvidia",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/50095",
-    "createdAt": "2026-07-28T06:38:50.000Z",
-    "updatedAt": "2026-08-23T08:28:56.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:aef7fe71994a98e075396f5161b09ac64913d59a3e2e93904fbd85baf62f17db",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "DCP 下 GLM-5.2 融合注意力结果错误",
-      "summaryZh": "DeepSeek-V3.2 / GLM-5.2 在纯 DCP 下的融合注意力路径：融合路径在查询 RMSNorm 前检查本地 KV 槽位有效性，导致负槽位时查询输出保持为零；纯 DCP 还未跨 rank 聚合查询头及部分输出/LSE，造成注意力结果错误；GLM-5.2-NVFP4 在 TP4/DCP4 与 fp8_ds_mla 下出现重复 token 输出；修复路径在测试的确定性贪心请求中与 DCP1 输出字节一致",
-      "models": [
-        "DeepSeek-V3.2",
-        "GLM-5.2"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "影响纯 DCP 推理中的融合注意力、查询输出及跨 rank 结果合并。",
-      "attention": "IMMEDIATE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention bypasses DCP handling",
-        "【正文】Query output remains zero because the kernel returns before query RMSNorm；Pure DCP gathers query heads before owner\u0011ocal"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:38:12.714Z"
     }
   },
   {

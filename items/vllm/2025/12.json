@@ -1,5 +1,55 @@
 [
   {
+    "id": "vllm-issue-29763",
+    "nodeId": "I_kwDOI7xefs7bR6Ke",
+    "repository": "vllm-project/vllm",
+    "number": 29763,
+    "type": "issue",
+    "title": "[Bug]: GLM-4.5 reasoning parser streaming fails without tools in request - missing as_list() conversion",
+    "bodyExcerpt": "### Your current environment\n\nvLLM version: 0.9.1 (built from source)\nModel: GLM-4.5-Air (AWQ 4-bit quantized)\nHardware: NVIDIA GB10\nFlags: --reasoning-parser glm45 --enable-reasoning\n\n### 🐛 Describe the bug\n\n## Bug Description\n\nThe GLM-4.5 reasoning parser (`--reasoning-parser glm45`) fails to extract `reasoning_content` during **streaming** chat completions when **no tools are included in the request**. The `<think>` tags leak into the `content` field while `reasoning_content` remains `null`.\n\n### Observed Behavior\n| Scenario | `reasoning_content` | `content` |\n|----------|---------------------|-----------|\n| WITH tools in request | ✅ Correctly populated | ✅ Clean |\n| WITHOUT tools in request | ❌ `null` | ❌ Contains `<think>...</think>` tags |\n\n### Expected Behavior\nBoth scenarios should correctly populate `reasoning_content` with thinking text and `content` with the final response.\n\n## Root Cause\n\nIn `vllm/entrypoints/openai/serving_chat.py`, line 1034 passes `output.token_ids` directly to the reasoning parser without converting it using `as_list()`.\n\n**Line 1034 (BUG):**\n```python\nelif self.reasoning_parser:\n    delta_message = reasoning_parser.extract_reasoning_content_streaming(\n        previous_text, current_text, delta_text,\n        previous_token_ids, current_token_ids,\n        output.token_ids,  # <-- RAW GenericSequence (BUG!)\n    )\n\n\n## Comparison with working code path (line 939, WITH tools):\nelif tool_choice_auto and self.reasoning_parser:\n    output_token_ids = as_list(output.token_ids)  # <-- Correctly converted\n    delta_message = reasoning_parser.extract_reasoning_content_streaming(\n        previous_text, current_text, delta_text,\n        previous_token_ids, current_token_ids,\n        output_token_ids,  # <-- Uses converted list\n    )\nThe output.token_ids type is GenericSequence[int] which may be a NumPy array or other sequence type where the in operator behaves differently than with Python lists.\n\n## Pattern Evidence\nEvery other similar code path",
+    "author": "sygenaithanos",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/29763",
+    "createdAt": "2025-12-01T02:08:46.000Z",
+    "updatedAt": "2026-08-30T17:21:56.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:f440a26220ca24695a4dc74f787b7f03957486682f77bae72a548f9615f41991",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-4.5 流式推理解析器缺少 as_list 转换",
+      "summaryZh": "vLLM 中 GLM-4.5/GLM-4.5-Air 的流式聊天推理解析：未在请求中包含 tools 时，GLM-4.5 推理解析器无法提取 reasoning_content，<think> 标签泄漏到 content 字段；而包含 tools 时表现正常。问题定位为 serving_chat.py 直接将 output.token_ids 传入解析器，未先通过 as_list() 转换；影响 vLLM 0.9.1、NVIDIA GB10 上启用 --reasoning-parser glm45 和 --enable-reasoning 的流式聊天补全",
+      "models": [
+        "GLM-4.5",
+        "GLM-4.5-Air"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "MEDIUM",
+      "impactScopeZh": "不含 tools 的流式聊天请求；含 tools 的请求不受该现象影响。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】GLM-4.5 reasoning parser streaming fails without tools in request - missing as_list() conversion",
+        "【正文】WITHOUT tools in request: reasoning_content is null; content contains <think>...</think> tags"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-issue-31479",
     "nodeId": "I_kwDOI7xefs7ggsAb",
     "repository": "vllm-project/vllm",
@@ -407,56 +457,6 @@
       "evidence": [
         "【标题】Fixes glm reasoning parser leaking tokens",
         "【正文】Fixes https://github.com/vllm-project/vllm/issues/27703"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-29763",
-    "nodeId": "I_kwDOI7xefs7bR6Ke",
-    "repository": "vllm-project/vllm",
-    "number": 29763,
-    "type": "issue",
-    "title": "[Bug]: GLM-4.5 reasoning parser streaming fails without tools in request - missing as_list() conversion",
-    "bodyExcerpt": "### Your current environment\n\nvLLM version: 0.9.1 (built from source)\nModel: GLM-4.5-Air (AWQ 4-bit quantized)\nHardware: NVIDIA GB10\nFlags: --reasoning-parser glm45 --enable-reasoning\n\n### 🐛 Describe the bug\n\n## Bug Description\n\nThe GLM-4.5 reasoning parser (`--reasoning-parser glm45`) fails to extract `reasoning_content` during **streaming** chat completions when **no tools are included in the request**. The `<think>` tags leak into the `content` field while `reasoning_content` remains `null`.\n\n### Observed Behavior\n| Scenario | `reasoning_content` | `content` |\n|----------|---------------------|-----------|\n| WITH tools in request | ✅ Correctly populated | ✅ Clean |\n| WITHOUT tools in request | ❌ `null` | ❌ Contains `<think>...</think>` tags |\n\n### Expected Behavior\nBoth scenarios should correctly populate `reasoning_content` with thinking text and `content` with the final response.\n\n## Root Cause\n\nIn `vllm/entrypoints/openai/serving_chat.py`, line 1034 passes `output.token_ids` directly to the reasoning parser without converting it using `as_list()`.\n\n**Line 1034 (BUG):**\n```python\nelif self.reasoning_parser:\n    delta_message = reasoning_parser.extract_reasoning_content_streaming(\n        previous_text, current_text, delta_text,\n        previous_token_ids, current_token_ids,\n        output.token_ids,  # <-- RAW GenericSequence (BUG!)\n    )\n\n\n## Comparison with working code path (line 939, WITH tools):\nelif tool_choice_auto and self.reasoning_parser:\n    output_token_ids = as_list(output.token_ids)  # <-- Correctly converted\n    delta_message = reasoning_parser.extract_reasoning_content_streaming(\n        previous_text, current_text, delta_text,\n        previous_token_ids, current_token_ids,\n        output_token_ids,  # <-- Uses converted list\n    )\nThe output.token_ids type is GenericSequence[int] which may be a NumPy array or other sequence type where the in operator behaves differently than with Python lists.\n\n## Pattern Evidence\nEvery other similar code path",
-    "author": "sygenaithanos",
-    "state": "closed",
-    "labels": [
-      "bug",
-      "stale"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/29763",
-    "createdAt": "2025-12-01T02:08:46.000Z",
-    "updatedAt": "2026-04-01T02:16:31.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:bb77c9f50333fcd84d09e5f29f366e67f7d76b118cd9ed2d46e066821d15a68d",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-4.5 流式推理解析器缺少 as_list 转换",
-      "summaryZh": "vLLM 中 GLM-4.5/GLM-4.5-Air 的流式聊天推理解析：未在请求中包含 tools 时，GLM-4.5 推理解析器无法提取 reasoning_content，<think> 标签泄漏到 content 字段；而包含 tools 时表现正常。问题定位为 serving_chat.py 直接将 output.token_ids 传入解析器，未先通过 as_list() 转换；影响 vLLM 0.9.1、NVIDIA GB10 上启用 --reasoning-parser glm45 和 --enable-reasoning 的流式聊天补全",
-      "models": [
-        "GLM-4.5",
-        "GLM-4.5-Air"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "MEDIUM",
-      "impactScopeZh": "不含 tools 的流式聊天请求；含 tools 的请求不受该现象影响。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】GLM-4.5 reasoning parser streaming fails without tools in request - missing as_list() conversion",
-        "【正文】WITHOUT tools in request: reasoning_content is null; content contains <think>...</think> tags"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",

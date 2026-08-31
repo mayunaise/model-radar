@@ -1,5 +1,30 @@
 [
   {
+    "id": "mindspeed-llm-issue-1782",
+    "nodeId": "gitcode-issue-4261218",
+    "repository": "Ascend/MindSpeed-LLM",
+    "number": 1782,
+    "type": "issue",
+    "title": "[Feature]: support GLM-5.2 ShareIndex with custom VPP layouts",
+    "bodyExcerpt": "### Background\n\nGLM-5.2 ShareIndex training needs custom virtual pipeline parallelism with uneven decoder-layer placement. `--num-layer-list` is the existing non-VPP uneven-PP distribution mode, while `--pipeline-model-parallel-layout` is the MindSpeed layout mode that fully describes PP/VPP chunks, embedding, decoder, and loss placement. The two arguments are alternative layer-distribution modes and must not be configured together. Runtime and checkpoint conversion must derive the same PP/VPP-to-global-layer mapping from the layout alone.\n\n### Expected implementation\n\n1. Treat `--num-layer-list` and `--pipeline-model-parallel-layout` as mutually exclusive alternatives at training, checkpoint restore, and conversion boundaries.\n2. Reuse MindSpeed `PipelineParallelLayerLayout` to validate the custom layout and resolve decoder-layer counts and global offsets for every PP/VPP chunk.\n3. Ensure every ShareIndex layer resolves the intended compute source without crossing a process-local PP/VPP boundary.\n4. Build and load the correct number of VPP model chunks, persist the layout in checkpoint arguments, and reject conflicting command-line/checkpoint distribution modes.\n5. Support custom-layout HF-to-MCore and MCore-to-HF conversion while remaining compatible with Megatron Core v0.12.1.\n\n### Acceptance criteria\n\n- `--pipeline-model-parallel-layout 'Ett|(tttt|)*18ttttL'` alone produces 78 unique global decoder layers across PP=4 and VPP=5.\n- Supplying `--num-layer-list` and `--pipeline-model-parallel-layout` together fails with an explicit mutual-exclusion error.\n- Each ShareIndex consumer resolves the expected compute source within the same local PP/VPP chunk, with explicit validation errors for invalid split boundaries.\n- HF/MCore conversion uses the same layout mapping in both directions, and the resulting VPP checkpoint can be loaded with the configured layout.\n- The PR remains a single review commit and the repository checks for the changed-file scope are reported fact",
+    "author": "LinShua",
+    "state": "closed",
+    "labels": [
+      "feature",
+      "requirement",
+      "resolved"
+    ],
+    "url": "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1782",
+    "createdAt": "2026-08-18T09:16:49.000Z",
+    "updatedAt": "2026-08-31T03:29:20.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T12:29:53.179Z",
+    "contentHash": "sha256:7ee0b2b5dfb43948975d4093e459693861712b5864b86bc5beea4b5031d33fd0",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "mindspeed-llm-pr-5000",
     "nodeId": "gitcode-pr-9108298",
     "repository": "Ascend/MindSpeed-LLM",
@@ -76,56 +101,6 @@
     "category": "DOCS",
     "categorySource": "rules",
     "summary": null
-  },
-  {
-    "id": "mindspeed-llm-issue-1782",
-    "nodeId": "gitcode-issue-4261218",
-    "repository": "Ascend/MindSpeed-LLM",
-    "number": 1782,
-    "type": "issue",
-    "title": "[Feature]: support GLM-5.2 ShareIndex with custom VPP layouts",
-    "bodyExcerpt": "### Background\n\nGLM-5.2 ShareIndex training needs custom virtual pipeline parallelism with uneven decoder-layer placement. `--num-layer-list` is the existing non-VPP uneven-PP distribution mode, while `--pipeline-model-parallel-layout` is the MindSpeed layout mode that fully describes PP/VPP chunks, embedding, decoder, and loss placement. The two arguments are alternative layer-distribution modes and must not be configured together. Runtime and checkpoint conversion must derive the same PP/VPP-to-global-layer mapping from the layout alone.\n\n### Expected implementation\n\n1. Treat `--num-layer-list` and `--pipeline-model-parallel-layout` as mutually exclusive alternatives at training, checkpoint restore, and conversion boundaries.\n2. Reuse MindSpeed `PipelineParallelLayerLayout` to validate the custom layout and resolve decoder-layer counts and global offsets for every PP/VPP chunk.\n3. Ensure every ShareIndex layer resolves the intended compute source without crossing a process-local PP/VPP boundary.\n4. Build and load the correct number of VPP model chunks, persist the layout in checkpoint arguments, and reject conflicting command-line/checkpoint distribution modes.\n5. Support custom-layout HF-to-MCore and MCore-to-HF conversion while remaining compatible with Megatron Core v0.12.1.\n\n### Acceptance criteria\n\n- `--pipeline-model-parallel-layout 'Ett|(tttt|)*18ttttL'` alone produces 78 unique global decoder layers across PP=4 and VPP=5.\n- Supplying `--num-layer-list` and `--pipeline-model-parallel-layout` together fails with an explicit mutual-exclusion error.\n- Each ShareIndex consumer resolves the expected compute source within the same local PP/VPP chunk, with explicit validation errors for invalid split boundaries.\n- HF/MCore conversion uses the same layout mapping in both directions, and the resulting VPP checkpoint can be loaded with the configured layout.\n- The PR remains a single review commit and the repository checks for the changed-file scope are reported fact",
-    "author": "LinShua",
-    "state": "open",
-    "labels": [
-      "feature",
-      "requirement"
-    ],
-    "url": "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1782",
-    "createdAt": "2026-08-18T09:16:49.000Z",
-    "updatedAt": "2026-08-26T08:49:33.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-24T12:29:53.179Z",
-    "contentHash": "sha256:93b74c8ac6658b0a7b25b7708087a9fd4955e3af66521f5471477a78b7c17fd2",
-    "category": "NEW_SUPPORT",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "支持 GLM-5.2 ShareIndex 自定义 VPP 布局",
-      "summaryZh": "请求支持解析并校验 --pipeline-model-parallel-layout 与 --num-layer-list 的一致性，计算各 PP/VPP 分块的全局层偏移，正确构建和加载 VPP 模型分块，持久化布局参数，并支持自定义布局的 HF/MCore 双向转换及相关单元测试；配置 --num-layer-list \"18,20,20,20\" 和布局 Ett|(tttt|)*18ttttL 时，在 PP=4、VPP=5 下生成 78 个唯一全局解码层，并确保 ShareIndex 映射和检查点转换保持一致",
-      "models": [
-        "GLM-5.2"
-      ],
-      "hardware": [
-        "UNKNOWN"
-      ],
-      "scenarios": [
-        "TRAINING",
-        "OTHER"
-      ],
-      "category": "NEW_SUPPORT",
-      "severity": "MEDIUM",
-      "impactScopeZh": "覆盖 ShareIndex 训练、VPP 检查点以及 HF/MCore 转换路径，并兼容 Megatron Core v0.12.1。",
-      "attention": "WATCH",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】support GLM-5.2 ShareIndex with custom VPP layouts",
-        "【正文】--num-layer-list \"18,20,20,20\" 和 --pipeline-model-parallel-layout 'Ett|(tttt|)*18ttttL' 在 PP=4、VPP=5 下产生 78 个唯一全局解码层"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T12:29:53.179Z"
-    }
   },
   {
     "id": "mindspeed-llm-pr-4894",
