@@ -1,5 +1,53 @@
 [
   {
+    "id": "mindspeed-llm-pr-5006",
+    "nodeId": "gitcode-pr-9115732",
+    "repository": "Ascend/MindSpeed-LLM",
+    "number": 5006,
+    "type": "pr",
+    "title": "fix(mcore): ensure contiguous K inputs for GLM-5.2 kernels",
+    "bodyExcerpt": "Fixes #1820\nRefs #1562\n\n## What this PR does / why we need it?\n\n1. Normalize the K tensor to a contiguous layout before `npu_sparse_flash_attention` in the MCore attention path and the FSDP2 GLM-5.2 attention path, preserving the original tensor shape.\n2. Apply the same K-layout normalization before `npu_lightning_indexer` in the fused lightning indexer path and keep the corresponding `tests/mindspeed_llm/` code mirrors synchronized.\n3. Change the GLM-5.2 210B 4K A3 POC default node count from 32 to 8. The runtime changes are limited to tensor-layout preparation and do not modify public APIs or operator signatures.\n\n## Does this PR introduce any user-facing change?\n\nYes. The GLM-5.2 210B 4K A3 POC now defaults to 8 nodes instead of 32. The MCore and FSDP2 runtime paths keep the same interfaces while ensuring K inputs use a contiguous layout before the affected NPU fusion operators.\n\n## How was this patch tested?\n\n1. Ran changed-file pre-commit hooks on all seven files. `trailing-whitespace`, `end-of-file-fixer`, `check-added-large-files`, `check-merge-conflict`, `detect-private-key`, `ruff-check`, `ruff-format`, `codespell`, `pylint`, `bandit`, and `typos` passed on the final rerun; file-type-specific YAML, JSON, and C/C++ hooks were skipped. The repository-local `gitleaks-offline-scan` hook could not run because the configured `./gitleaks` executable is absent.\n2. Ran Python bytecode compilation on the six modified Python files; it passed.\n3. Ran `D:\\Git\\Git\\bin\\bash.exe -n tests/poc/glm52/pretrain_glm52_210b_4k_A3_ptd.sh`; it passed.\n4. Ran `git -c core.whitespace=cr-at-eol diff --check origin/master...HEAD`; it passed. The CRLF-aware setting matches the existing line-ending style of `custom_dot_product_attention.py`.\n5. Verified `git rev-list --count origin/master..HEAD` returns `1`.\n6. The GitCode push reported remote Git Hooks Checking `[PASSED]`.\n7. No A5 hardware, model training, accuracy, performance, or end-to-end functional test was run.",
+    "author": "LinShua",
+    "state": "open",
+    "labels": [
+      "ascend-cla/yes",
+      "docs-ci-pipeline-success",
+      "ci-pipeline-passed"
+    ],
+    "url": "https://gitcode.com/Ascend/MindSpeed-LLM/merge_requests/5006",
+    "createdAt": "2026-08-31T11:35:44.000Z",
+    "updatedAt": "2026-08-31T12:20:24.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:a056644045b1e2c3be31e6d4a731bdc1e6f41c9562848134149ab410011cf8ef",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "mindspeed-llm-issue-1820",
+    "nodeId": "gitcode-issue-4294667",
+    "repository": "Ascend/MindSpeed-LLM",
+    "number": 1820,
+    "type": "issue",
+    "title": "[Bug]: 修复 GLM-5.2 A5 kernel 的 K 输入连续性",
+    "bodyExcerpt": "### 需求背景\n\nGLM-5.2 在调用 `npu_sparse_flash_attention` 和 `npu_lightning_indexer` 前，K 张量可能保留融合算子不接受的 stride/非连续内存布局，导致 A5 kernel 路径出现输入连续性问题。类似问题曾在 #1562 中描述，但当前 master 的 MCore attention、FSDP2 GLM-5.2 attention 和 fused lightning indexer 路径仍需要统一处理。\n\n### 问题范围与根因\n\n1. MCore sparse flash attention 调用前的 `key` 未显式规范为连续布局。\n2. FSDP2 GLM-5.2 sparse flash attention 调用前的 `key_bshd` 未显式规范为连续布局。\n3. fused lightning indexer 调用前由 `rearrange` 得到的 `k` 未显式规范为连续布局。\n4. GLM-5.2 210B 4K A3 POC 的默认节点数需要从 32 调整为 8。\n\n### 期望实现\n\n1. 在三条融合算子路径中保持 K 张量形状不变并生成连续内存布局后再调用 NPU 算子。\n2. 同步更新 `tests/mindspeed_llm/` 下对应代码镜像。\n3. 将 210B 4K A3 POC 的 `NNODES` 默认值调整为 8。\n4. 本 Issue 不修改公共 API、命令行参数名称或算子接口。\n\n### 验收标准\n\n- MCore、FSDP2 和 fused lightning indexer 三条路径均在算子调用前规范 K 张量连续性。\n- `tests/mindspeed_llm/` 下的对应实现保持同步。\n- 210B 4K A3 POC 默认使用 8 个节点。\n- 6 个 Python 文件通过语法编译，Shell 脚本通过语法检查。\n- PR 对完整 7 文件范围执行仓库 pre-commit，并如实记录本地依赖阻塞和未执行的硬件功能测试。",
+    "author": "LinShua",
+    "state": "open",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1820",
+    "createdAt": "2026-08-31T11:33:54.000Z",
+    "updatedAt": "2026-08-31T11:33:54.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:ea33568f0cf5e873aedc7f6d1b0d0afe21778acd679df0c95d5be0a3b8281a82",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "mindspeed-llm-issue-1782",
     "nodeId": "gitcode-issue-4261218",
     "repository": "Ascend/MindSpeed-LLM",

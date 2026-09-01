@@ -1,32 +1,274 @@
 [
   {
-    "id": "vllm-issue-50095",
-    "nodeId": "I_kwDOI7xefs8AAAABKcR1dg",
+    "id": "vllm-issue-47504",
+    "nodeId": "I_kwDOI7xefs8AAAABHhnIvQ",
     "repository": "vllm-project/vllm",
-    "number": 50095,
+    "number": 47504,
     "type": "issue",
-    "title": "[Bug][DCP] NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention bypasses DCP handling",
-    "bodyExcerpt": "# [Bug][DCP] DeepSeek-V3.2 / GLM-5.2 fused attention bypasses pure-DCP handling\n\n## Problem\n\nThe fused DeepSeek-V3.2 / GLM-5.2 path still has two pure-DCP correctness\ndefects:\n\n1. `vllm/models/deepseek_v32/common/kernels.py` checks owner-local KV slot\n   validity before query RMSNorm. A negative slot means another DCP rank owns\n   the token's KV entry; it does not remove this rank's query contribution.\n2. `vllm/models/deepseek_v32/attention.py` gathers query heads and combines\n   partial output/LSE only for PCP+DCP. Pure DCP therefore sends rank-local\n   query heads into attention over owner-local KV and never performs the\n   required cross-rank result merge.\n\nThe sparse-indexer DCP rank, world-size, and interleave plumbing mentioned in\nthe original report has landed independently on `main`; it is no longer part\nof this issue.\n\n## Observable regression\n\nA focused kernel reproducer uses an all-negative slot mapping, representing a\nDCP rank that owns no KV-cache slot for those tokens.\n\nExpected:\n\n- Query output matches reference RMSNorm.\n- MLA and indexer KV caches remain unchanged.\n- The Top-K buffer is cleared.\n\nActual on unpatched `main`:\n\n- Query output remains zero because the kernel returns before query RMSNorm.\n\nAt model level, @drakosha reproduced repeated-token output on unpatched\nGLM-5.2-NVFP4 with TP4/DCP4 and `fp8_ds_mla`. The patched path produced output\nbyte-identical to DCP1 for the tested deterministic greedy request.\n\n## Expected behavior\n\n- Query RMSNorm runs independently of owner-local KV-slot validity.\n- Negative slots continue to suppress MLA and indexer KV-cache writes.\n- Pure DCP gathers query heads before owner-local sparse attention.\n- Partial output/LSE is combined across DCP ranks through the existing DCP\n  manager.\n\n## Proposed fix and validation\n\nPR #50005 implements the fix and regression coverage.\n\nAt its current head:\n\n- The focused fused norm/RoPE suite passes all 67 tests on GB200.\n- All applicable changed-file pre-commit hooks pass.",
-    "author": "foraxe",
+    "title": "[Bug]: GLM tool_call required + streaming causes JSON repetition",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCUDA_VERSION=13.0.2\nLD_LIBRARY_PATH=/usr/local/nvidia/lib64:/usr/local/nvidia/cuda/lib64:/ur/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64\nNVIDIA_DRIVER_CAPABILITIES=compute,utility\nNVIDIA_REQUIRE_CUDA=cud>=13.0 brand=unknown,driver>=535,driver<536 brand=grid,driver>=535,driver<536 brand=tesla,driver>=535,driver<536 brand=nvidia...\nNVIDIA_VISIBLE_DEVICES=GPU-cfc...,GPU-542...,GPU-19e...,GPU-442...\nTORCH_CUDA_ARCH_LIST=7.5 8.0 8.6 8.9 9.0 10.0 12.0\nVLLM_CACHE_ROOT=/.cache\nVLLM_CONFIG_ROOT=/.cache\nVLLM_ENABLE_CUDA_COMPATIBILITY=0\nVLLM_USAGE_SOURCE=production-docker-image\nPYTORCH_NVML_BASED_CUDA_CHECK=1\nTORCHINDUCTOR_COMPILE_THREADS=1\nTORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor_vllm-user\n```\n\n</details>\n\n\n### 🐛 Describe the bug\n\nOn vllm version `v0.24.0`, calling GLM-5.2 or GLM-4.5 with `tool_choice==required`, and `stream==True` causes the output to repeat the JSON over and over until the context length is reached. I've tested this with and without reasoning. `v0.23.0` behaves correctly for GLM-4.5, non-streaming behaves correctly, and `tool_choice==auto` behaves correctly.\n\nExample code:\n```python\nimport requests\nimport json\n\nmessages = [\n    {\"role\": \"user\", \"content\": \"Cn you tell me what the temperature will be in new york city? Use NY as the abbreviation.\"}\n]\n\ntools = [\n    {\n        \"type\": \"function\",\n        \"function\": {\n            \"name\": \"get_current_weather\",\n            \"description\": \"Get the urrent weather in a given location\",\n            \"parameters\": {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"city\": {\"type\": \"string\", \"description\": \"The city to find teh weather for\"},\n                    \"state\": {\"type\": \"string\", \"description\": \"The two-letter abbreviation for the state the city is in\"},\n                    \"unit\": {\"type\": \"string\", \"description\": \"The unit to fetch th",
+    "author": "clovisNyu",
     "state": "open",
     "labels": [
-      "deepseek",
-      "nvidia",
-      "glm"
+      "bug",
+      "tool-calling"
     ],
-    "url": "https://github.com/vllm-project/vllm/issues/50095",
-    "createdAt": "2026-07-28T06:38:50.000Z",
-    "updatedAt": "2026-08-31T05:39:23.000Z",
+    "url": "https://github.com/vllm-project/vllm/issues/47504",
+    "createdAt": "2026-07-03T03:11:40.000Z",
+    "updatedAt": "2026-08-31T23:40:13.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:ef3d07edd5d9c7c45dea719c4e92ea4c64ff09dd7f874adb6114f4c6c17660f6",
+    "contentHash": "sha256:273b22640258dd73398cc8fcf32afa912e4fbef97b5a1cae0402a094439e4ac3",
     "category": "BUG",
     "categorySource": "ai",
     "summary": {
-      "headlineZh": "DCP 下 GLM-5.2 融合注意力结果错误",
-      "summaryZh": "DeepSeek-V3.2 / GLM-5.2 在纯 DCP 下的融合注意力路径：融合路径在查询 RMSNorm 前检查本地 KV 槽位有效性，导致负槽位时查询输出保持为零；纯 DCP 还未跨 rank 聚合查询头及部分输出/LSE，造成注意力结果错误；GLM-5.2-NVFP4 在 TP4/DCP4 与 fp8_ds_mla 下出现重复 token 输出；修复路径在测试的确定性贪心请求中与 DCP1 输出字节一致",
+      "headlineZh": "GLM tool_call 流式输出重复 JSON",
+      "summaryZh": "vLLM v0.24.0 中 GLM-5.2/GLM-4.5 的必选工具调用与流式输出：在 vLLM v0.24.0 中调用 GLM-5.2 或 GLM-4.5 时，同时设置 tool_choice==required 和 stream==True，会导致 JSON 输出反复重复，直至达到上下文长度。该问题在启用或不启用 reasoning 时均可复现；非流式调用和 tool_choice==auto 行为正常；v0.23.0 中 GLM-4.5 行为正常",
       "models": [
-        "DeepSeek-V3.2",
+        "GLM-5.2",
+        "GLM-4.5"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 vLLM v0.24.0 中 GLM-5.2/GLM-4.5 的必选工具调用流式推理。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Bug]: GLM tool_call required + streaming causes JSON repetition",
+        "【正文】On vllm version v0.24.0, calling GLM-5.2 or GLM-4.5 with tool_choice==required, and stream==True causes the output to 反复"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-48095",
+    "nodeId": "I_kwDOI7xefs8AAAABILuLaA",
+    "repository": "vllm-project/vllm",
+    "number": 48095,
+    "type": "issue",
+    "title": "[Bug]: GLM 5.2 forced toolcall left unparsed in content  (glm 47 tool parser)",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nvLLM Version                 : 0.24.0\n (image vllm/vllm-openai@sha256:251eba5cc7c12fed0b75da22a9240e582b1c9e39f6fbc064f86781b963bd814f)\n  Model                        : zai-org/GLM-5.2-FP8\n  Tool-call parser             : glm47\n  Reasoning parser             : glm45\n  GPU Topology (TP)            : tensor-parallel-size=8\n\nargs:\n            - \"zai-org/GLM-5.2-FP8\"\n            - \"--tensor-parallel-size=8\"\n            - \"--gpu-memory-utilization=0.90\"\n            - \"--kv-cache-dtype=fp8\"\n            - \"--kv-cache-metrics\"\n            - \"--max-num-seqs=32\"\n            - \"--max-model-len=200000\"\n            - \"--max-num-batched-tokens=8192\"\n            - \"--enable-prefix-caching\"\n            - \"--enable-prompt-tokens-details\"\n            - \"--tool-call-parser=glm47\"\n            - \"--enable-chunked-prefill\"\n            - \"--reasoning-parser=glm45\"\n            - \"--enable-auto-tool-choice\"\n            - \"--speculative-config.method=mtp\"\n            - \"--speculative-config.num_speculative_tokens=5\"\n\nRelevant env:\n    VLLM_ENFORCE_STRICT_TOOL_CALLING=0   ← set manually; bug persists with it 0 AND unset\n```\n\n</details>\n\n\n### 🐛 Describe the bug\n\nWhen sending chat/completions request to GLM 5.2 with tool_choice: required, the parsing of the tool call fails, and the tool call is instead written to the output content.\n\n```sh\n❯ curl -sS \"$BASE_URL/v1/chat/completions\" \\\n  -H \"Authorization: Bearer $API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"model\": \"glm-5-2-fp8\",\n    \"messages\": [\n      {\"role\": \"system\", \"content\": \"You are a coding agent. Use the available tools when appropriate.\"},\n      {\"role\": \"user\", \"content\": \"Run `git status` in /tmp/repo.\"}\n    ],\n    \"tools\": [{\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"bash\",\n        \"description\": \"Run a bash command in the user'\\''s shell.\",\n        \"parameters\": {\n          ",
+    "author": "william-rom",
+    "state": "open",
+    "labels": [
+      "bug",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/48095",
+    "createdAt": "2026-07-09T07:21:40.000Z",
+    "updatedAt": "2026-08-31T23:39:38.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:a7e875ce947708d990246e182a3886a618d0aa457e65c9f823e1c211524405a2",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.2 强制工具调用解析失败",
+      "summaryZh": "vLLM 0.24.0 中 GLM-5.2-FP8 的 glm47 工具调用解析：向 GLM-5.2 发送 tool_choice 为 required 的聊天补全请求时，工具调用解析失败，工具调用内容被写入输出 content，而不是作为工具调用返回；问题在 VLLM_ENFORCE_STRICT_TOOL_CALLING 未设置或设为 0 时均可复现",
+      "models": [
+        "GLM-5.2-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 vLLM 0.24.0 使用 glm47 工具调用解析器为 GLM-5.2 提供强制工具调用的聊天补全场景。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】GLM 5.2 forced toolcall left unparsed in content",
+        "【正文】When sending chat/completions request to GLM 5.2 with tool_choice: required, the parsing of the tool call fails, and the"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-48201",
+    "nodeId": "I_kwDOI7xefs8AAAABIS0ExA",
+    "repository": "vllm-project/vllm",
+    "number": 48201,
+    "type": "issue",
+    "title": "[RFC]: GLM-5.x thinking_token_budget defaults and regression tests",
+    "bodyExcerpt": "### Motivation\n\nGLM-5.x models can spend the whole completion budget in the reasoning phase when thinking is enabled by default. This makes OpenAI-compatible chat/tool-calling flows difficult to use unless the caller explicitly disables thinking or sets a small `thinking_token_budget`.\n\nIn a local vLLM 0.24.0 deployment, `thinking_token_budget` already works with GLM-5.2 when serving with:\n\n```bash\nvllm serve <glm-5.2-fp8> \\\n  --reasoning-parser glm45 \\\n  --tool-call-parser glm47 \\\n  --enable-auto-tool-choice \\\n  --chat-template-content-format string\n```\n\nA small budget prevented the response from being consumed entirely by reasoning and still allowed streaming tool calls to work.\n\nRelated prior issues/PRs:\n\n- #26091 (`[Feature]: GLM thinking budget`) is closed as stale.\n- #34827 (`Support thinking budget for reasoning models (e.g., GLM-4.5V)`) is closed as stale.\n- #20859 added the hard thinking-token limit.\n- #46727 is tracking Model Runner V2 support.\n\nThis issue is not asking for a duplicate implementation of the generic budget mechanism. It is asking whether the project wants GLM-5.x-specific regression coverage, recommended/default budget guidance, and possibly model-family defaults or documentation.\n\n### Observed behavior\n\nUsing a short Chinese final-answer prompt with `max_tokens=192`:\n\n```text\nno thinking_token_budget:\n  completion_tokens: 192\n  reasoning chars:   344\n  content chars:     0\n  finish_reason:     length\n\nthinking_token_budget=16:\n  reasoning chars:   31\n  content chars:     287\n  finish_reason:     length\n\nthinking_token_budget=32:\n  completion_tokens: 154 in one run, 87 in a two-sentence run\n  reasoning tokens:  32\n  content tokens:    53 in the token-inspected run\n  finish_reason:     stop\n```\n\nWith `return_token_ids=true`, the `thinking_token_budget=32` run had the expected layout:\n\n```text\n0-31   reasoning tokens        32 tokens\n32     </think>                1 token\n33-85  final content           53 tokens\n86     stop token             ",
+    "author": "AlanJager",
+    "state": "open",
+    "labels": [
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/48201",
+    "createdAt": "2026-07-10T02:49:12.000Z",
+    "updatedAt": "2026-08-31T23:39:35.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:3f05e98abbcdc74a4d78a2b3bbfc92d0996c782c1287d66402a865fa4344d568",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.x thinking_token_budget 默认值与回归测试",
+      "summaryZh": "请求为 GLM-5.x 增加回归测试，提供推荐或默认 thinking_token_budget 指导，并评估模型系列默认值或文档支持；在 vLLM 0.24.0 中，GLM-5.2 已支持 thinking_token_budget；设置 16 或 32 可保留最终内容，并支持流式工具调用",
+      "models": [
+        "GLM-5.x",
+        "GLM-5.2"
+      ],
+      "hardware": [
+        "UNKNOWN"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响启用思考的 GLM-5.x 推理及 OpenAI 兼容聊天、工具调用流程。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】[RFC]: GLM-5.x thinking_token_budget defaults and regression tests",
+        "【正文】GLM-5.x models can spend the whole completion budget in the reasoning phase when thinking is enabled by default."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-49248",
+    "nodeId": "I_kwDOI7xefs8AAAABJg9hYQ",
+    "repository": "vllm-project/vllm",
+    "number": 49248,
+    "type": "issue",
+    "title": "[Bug]: glm47 tool parser silently returns empty arguments when the model omits the opening <arg_value> tag",
+    "bodyExcerpt": "### Your current environment\n\nvLLM nightly (image `vllm/vllm-openai:cu129-nightly-c71a583aa9`, also reproduced on current `main` code path), GLM-5.2 (NVFP4) on 4×GPU TP4, `--tool-call-parser glm47 --reasoning-parser glm45 --enable-auto-tool-choice`.\n\n### 🐛 Describe the bug\n\nUnder concurrent load, GLM-4.7-family models sporadically emit a tool call with the opening `<arg_value>` tag missing, while the argument value and the closing tag are fully intact:\n\n```\n<tool_call>search<arg_key>query</arg_key>how many vacation days left</arg_value></tool_call>\n```\n\n(raw sampled tokens captured via `logprobs: true` on `/v1/chat/completions`; note `</arg_key>` followed directly by the value, no `<arg_value>`).\n\nThe glm47 parser matches arguments with\n\n```python\n_ARG_RE = re.compile(\n    r\"<arg_key>(?P<key>.*?)</arg_key>\\s*\"\n    r\"<arg_value>(?P<value>.*?)</arg_value>\",\n    re.DOTALL,\n)\n```\n\n(`vllm/parser/glm47_moe.py`), so the malformed-but-recoverable call silently parses to `arguments: \"{}\"`. The client then fails schema validation for the tool (e.g. `Invalid input: expected string, received undefined`), retries typically fail the same way (the broken `{}` call gets rendered back into the chat history), and the agent degrades.\n\nObserved rate on our production trace family: ~5–17% of calls under 6 concurrent requests (12/72 in one run), 0 when requests run sequentially on an idle server; reproduces at `temperature: 0` as well. The model-side token skip is a model quirk vLLM cannot prevent, but the parser turning a fully recoverable call into `{}` with no diagnostic makes it much worse than it needs to be.\n\nRepro sketch:\n1. Agent-style chat request with tools (XML tool-call format per GLM-4.7 template) against a glm47-parser deployment.\n2. Run ~6 requests concurrently, `logprobs: true`.\n3. When a response comes back with `arguments: \"{}\"` for a tool with required params, the logprobs token dump shows the pattern above: value present, opening `<arg_value>` missing.\n\nFix (PR linke",
+    "author": "drakosha",
+    "state": "open",
+    "labels": [
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/49248",
+    "createdAt": "2026-07-20T22:14:46.000Z",
+    "updatedAt": "2026-08-31T23:38:50.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:f12aa7dab7a8157ba1b62f45b7ead90de7341ab1eff1ba0de3e1d704d2c61f7a",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-49412",
+    "nodeId": "I_kwDOI7xefs8AAAABJs1ruA",
+    "repository": "vllm-project/vllm",
+    "number": 49412,
+    "type": "issue",
+    "title": "[Bug]: Streaming vs non-streaming content whitespace mismatch at tool-call boundaries (ParserEngine: qwen3/nemotron_v3/seed_oss/glm47_moe/gemma4)",
+    "bodyExcerpt": "### Description\n\nFor engine-based parsers, streaming and non-streaming produce **different `content`** for the same model output when plain text sits immediately before, between, or after a tool call.\n\nThe non-streaming path strips whitespace from tool-associated content (`_strip_content_whitespace` → `content.strip()` in `vllm/parser/engine/parser_engine.py`, gated by config flag `strip_content_whitespace_with_tools`, default `True`). The streaming path (`extract_tool_calls_streaming` / `parse_delta` → `_events_to_delta` → `_strip_trailing_reasoning`) has no equivalent step for `delta.content` — `_strip_trailing_reasoning` only trims `delta.reasoning`, and `_events_to_delta`'s own whitespace handling only covers content that is *entirely* whitespace before the first non-whitespace chunk arrives. Boundary whitespace on real (non-whitespace) content adjacent to a tool call is never stripped in streaming.\n\nThis is not just a synthetic edge case: BPE tokenizers commonly fuse a leading space onto the following word as one token. Verified against the real Qwen3 tokenizer:\n\n```python\n>>> from transformers import AutoTokenizer\n>>> tok = AutoTokenizer.from_pretrained(\"Qwen/Qwen3-8B\")\n>>> tok.encode(\" done.\")\n[2814, 13]\n>>> [tok.decode([i]) for i in tok.encode(\" done.\")]\n[' done', '.']\n```\n\nSo `\" done\"` is genuinely emitted as a single token in a real streaming response — this triggers whenever a model emits any prose right before/after a tool call, which is a very common pattern (e.g. \"Let me check that for you. `<tool_call>...`\").\n\n### Reproduction\n\nEnvironment: offline, no GPU/torch build needed — the parser engine is pure Python. Repro script feeds identical model output through the real streaming path (`extract_tool_calls_streaming`, token-by-token) and the real non-streaming path (`extract_tool_calls`), then diffs `content`.\n\nMinimal case (Qwen3, `enable_thinking=False` so pre/post-tool text is `content` not `reasoning`):\n\n```python\nmodel_output = (\n    \"<tool_call>\\n<",
+    "author": "muhammadfawaz1",
+    "state": "open",
+    "labels": [
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/49412",
+    "createdAt": "2026-07-22T06:02:04.000Z",
+    "updatedAt": "2026-08-31T23:38:36.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:c743938cbc3b4260aa095441ff5692cea89ea2aeab27845b22c2351a90e2b8ef",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-49981",
+    "nodeId": "I_kwDOI7xefs8AAAABKUu7Mw",
+    "repository": "vllm-project/vllm",
+    "number": 49981,
+    "type": "issue",
+    "title": "[Bug]: tool_choice: \"required\" causes xgrammar FSM crash / infinite hang with GLM-5.2-NVFP4 on vLLM 0.26.0",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nClang version                : Could not collect\nCMake version                : Could not collect\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.11.0+cu129\nIs debug build               : False\nCUDA used to build PyTorch   : 12.9\nROCM used to build PyTorch   : N/A\nXPU used to build PyTorch    : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.13 (main, Mar  4 2026, 09:23:07) [GCC 11.4.0] (64-bit runtime)\nPython platform              : Linux-5.14.0-611.55.1.el9_7.x86_64-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.9.86\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration :\nGPU 0: NVIDIA H200-141C\nGPU 1: NVIDIA H200-141C\nGPU 2: NVIDIA H200-141C\nGPU 3: NVIDIA H200-141C\nGPU 4: NVIDIA H200-141C\nGPU 5: NVIDIA H200-141C\nGPU 6: NVIDIA H200-141C\nGPU 7: NVIDIA H200-141C\n\nNvidia driver version        : 580.105.08\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           45 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):            ",
+    "author": "paolovic",
+    "state": "open",
+    "labels": [
+      "bug",
+      "structured-output",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/49981",
+    "createdAt": "2026-07-27T12:20:03.000Z",
+    "updatedAt": "2026-08-31T23:38:07.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:87685dcf6dcb40a9bf707b65287da3ad6c993cdb58f2777277be00ff2ad72feb",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.2-NVFP4工具调用触发xgrammar崩溃",
+      "summaryZh": "vLLM 0.26.0 中 GLM-5.2-NVFP4 的 tool_choice=\"required\" 场景：设置 tool_choice=\"required\" 时，xgrammar FSM 发生崩溃或无限挂起；问题出现在配备 NVIDIA H200 GPU 的 CUDA 12.9 环境中",
+      "models": [
+        "GLM-5.2-NVFP4"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 vLLM 0.26.0 中该模型的必需工具调用推理。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】tool_choice: \"required\" causes xgrammar FSM crash / infinite hang with GLM-5.2-NVFP4 on vLLM 0.26.0",
+        "【正文】GPU models and configuration: NVIDIA H200-141C"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-50399",
+    "nodeId": "I_kwDOI7xefs8AAAABKxKdLQ",
+    "repository": "vllm-project/vllm",
+    "number": 50399,
+    "type": "issue",
+    "title": "[Bug]: tool_choice: \"required\" causes tool_calls to continuously output until the maximum token is reached with GLM-5.2 on vLLM 0.26.0",
+    "bodyExcerpt": "### Your current environment\n\n<details>\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nClang version                : Could not collect\nCMake version                : version 3.22.1\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.11.0+cu130\nIs debug build               : False\nCUDA used to build PyTorch   : 13.0\nROCM used to build PyTorch   : N/A\nXPU used to build PyTorch    : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.10.12 (main, Jun 22 2026, 18:55:27) [GCC 11.4.0] (64-bit runtime)\nPython platform              : Linux-5.15.0-83-generic-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 13.0.88\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration :\nGPU 0: NVIDIA H200\nGPU 1: NVIDIA H200\nGPU 2: NVIDIA H200\nGPU 3: NVIDIA H200\nGPU 4: NVIDIA H200\nGPU 5: NVIDIA H200\nGPU 6: NVIDIA H200\nGPU 7: NVIDIA H200\n\nNvidia driver version        : 580.95.05\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                       x86_64\nCPU op-mode(s):                     32-bit, 64-bit\nAddress sizes:                      52 bits physical, 57 bits virtual\nByte Order:                         Little Endian\nCPU(s):                             192\nOn-line CPU(s) list:                0-191\nVendor ID:                          GenuineIntel\nModel name:                         INTE",
+    "author": "longzhenliu0128-prog",
+    "state": "open",
+    "labels": [
+      "bug",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/50399",
+    "createdAt": "2026-07-30T08:03:28.000Z",
+    "updatedAt": "2026-08-31T23:37:53.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:f97410ed0b7a2bdf0df8a70862d3508cc92acc078b34f54f7571e40a6c5f08ba",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.2 tool_choice required 持续输出 tool_calls",
+      "summaryZh": "vLLM 0.26.0 中 GLM-5.2 的强制工具调用：设置 tool_choice=\"required\" 后，GLM-5.2 会持续输出 tool_calls，直到达到最大 token 数；问题运行于配备 NVIDIA H200 GPU 的 CUDA 13.0 环境",
+      "models": [
         "GLM-5.2"
       ],
       "hardware": [
@@ -37,71 +279,67 @@
       ],
       "category": "BUG",
       "severity": "HIGH",
-      "impactScopeZh": "影响纯 DCP 推理中的融合注意力、查询输出及跨 rank 结果合并。",
+      "impactScopeZh": "影响 vLLM 0.26.0 中 GLM-5.2 的工具调用推理。",
       "attention": "IMMEDIATE",
       "capabilityCandidate": false,
       "evidence": [
-        "【标题】NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention bypasses DCP handling",
-        "【正文】Query output remains zero because the kernel returns before query RMSNorm；Pure DCP gathers query heads before owner\u0011ocal"
+        "【标题】tool_choice: \"required\" causes tool_calls to continuously output until the maximum token is reached with GLM-5.2 on vLLM"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:38:12.714Z"
+      "generatedAt": "2026-08-24T11:17:54.490Z"
     }
   },
   {
-    "id": "vllm-pr-50005",
-    "nodeId": "PR_kwDOI7xefs72_VW5",
+    "id": "vllm-issue-50473",
+    "nodeId": "I_kwDOI7xefs8AAAABK3J5xg",
     "repository": "vllm-project/vllm",
-    "number": 50005,
+    "number": 50473,
+    "type": "issue",
+    "title": "thinking_token_budget rejected on V2 model runner (''not yet supported'') — port budget logits processor for reasoning-parser models",
+    "bodyExcerpt": "## Summary\n\n`thinking_token_budget` (added in #20859) hard-rejects on the V2 model runner with:\n\n```\nthinking_token_budget is not yet supported by the V2 model runner.\nRun vLLM with VLLM_USE_V2_MODEL_RUNNER=0 to use thinking_token_budget.\n```\n\nRequest: port the thinking-budget logits processor (force-close the reasoning phase after N reasoning tokens, via the registered reasoning parser) to the V2 model runner.\n\n## Motivation\n\nWe serve Moonshot Kimi-K3 (hybrid KDA/linear-attention arch — `IsHybrid` + `HasInnerState`, separate mamba-cache state) on the official `vllm/vllm-openai:kimi-k3` image, which defaults to V2. The model's default reasoning effort (`thinking_effort=max` when the client omits it) can spend the entire output budget inside the reasoning phase, producing `finish_reason=length` responses with reasoning-only output and zero client-visible content. On our production gateway this terminal class (\"reasoning_only empty output\") occurs at ~27 per 10K requests on K3 vs ~1.3 per 10K on comparable thinking models.\n\n`thinking_token_budget` is exactly the right governor and works for our non-V2 models (Kimi K2.6, GLM-5.1/5.2) — it force-closes reasoning so content always gets budget. It is unavailable precisely on the one model in our fleet that most needs it.\n\nThe V1-runner workaround (`VLLM_USE_V2_MODEL_RUNNER=0`) is likely a non-starter for hybrid/mamba architectures like K3, so a V1 fallback is not a real remediation path here.\n\n## Proposed scope\n\nSupport `thinking_token_budget` (chat + completions protocols) under the V2 runner for models with a registered `--reasoning-parser`, with the same semantics as the V1 implementation: inject the reasoning-end token when the budget is reached, preserving the remaining max_tokens budget for content.\n\n## Environment\n\n- Image: `vllm/vllm-openai:kimi-k3` (official K3 release image, vLLM ≥ 0.26 line)\n- Model: `moonshotai/Kimi-K3` (mxfp4, TP8, `--reasoning-parser kimi_k3`, `--tool-call-parser kimi_k3`)\n- Repro: any `/v1/",
+    "author": "scottcha",
+    "state": "open",
+    "labels": [
+      "tool-calling",
+      "kimi",
+      "k3"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/50473",
+    "createdAt": "2026-07-30T20:51:54.000Z",
+    "updatedAt": "2026-08-31T23:37:50.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:4401b16df39e732f3b1e63e2138ac4f5a7a6d08722a86863fab99e7c9f3eeab2",
+    "category": "OTHER",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-49062",
+    "nodeId": "PR_kwDOI7xefs7zcKeD",
+    "repository": "vllm-project/vllm",
+    "number": 49062,
     "type": "pr",
-    "title": "[Bugfix][DCP] Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention",
-    "bodyExcerpt": "# [Bugfix][DCP] Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention\n\nFixes #50095.\n\n## Purpose\n\nFix two DCP correctness defects in the fused DeepSeek-V3.2 / GLM-5.2\nattention path:\n\n- The fused norm/RoPE kernel skipped query RMSNorm when a DCP rank had no\n  owner-local KV-cache slot. KV ownership does not remove that rank's query\n  contribution.\n- Pure DCP sent only rank-local query heads into attention over owner-local KV\n  and did not combine the resulting partial output/LSE across DCP ranks.\n\nThe sparse-indexer DCP rank, world-size, and interleave plumbing described in\nthe original version of this PR has since landed independently on `main`; this\nPR no longer changes that part.\n\n## Implementation\n\n- Run query RMSNorm before the owner-local slot check. Negative slots still\n  suppress MLA and indexer KV-cache writes.\n- For pure DCP, gather query heads through `MLADCPManager` before sparse MLA\n  attention. The manager keeps the direct-workspace fast path when supported\n  and falls back safely for oversized mixed batches.\n- Combine partial output/LSE through the existing `MLADCPManager` after\n  attention. For this NVIDIA pure-DCP mixed-batch path, pass no PCP-only decode\n  metadata; its sparse backend supplies neutral contributions for empty local\n  shards.\n- Extend the existing fused norm/RoPE test with an all-negative-slot regression\n  that checks valid query output, unchanged caches, and Top-K clearing.\n\n## Non-duplication\n\nI re-audited related open work on August 23, 2026. Searching for issue #50095\nfinds only this PR.\n\n- #52472 adds a separate TurboQuant sparse MLA backend and does not modify this\n  fused DeepSeek-V3.2 attention or norm/RoPE path.\n- #52377 has landed with generic sparse-MLA forced-MQA metadata and\n  direct-workspace fallback handling after the DCP-manager refactor; this PR\n  now consumes that manager path but still supplies the NVIDIA fused override\n  and negative-slot query-normalization fixes.\n- #47779 enables DCP in the SM120 FlashInfer sparse",
-    "author": "foraxe",
+    "title": "[Bugfix][Model] Remove redundant all_gather_interleave in ViT split_qkv",
+    "bodyExcerpt": "## Purpose\n\nFixes #49061.\n\nPaddleOCR-VL, Ernie4.5-VL, and GLM-4.1V vision attention each carried a\nbyte-identical helper `all_gather_interleave()` that calls\n`torch.distributed.all_gather()` directly on the tensor-parallel group's raw\n`device_group`, followed by a per-rank re-split, inside `split_qkv()`.\n\nThere are two problems.\n\nFirst, portability. The vision encoder runs eagerly (`torch.no_grad()`, outside\n`torch.compile`). On any platform whose `device_group` has no c10d backend\nregistered for eager use, the direct `dist.all_gather()` raises\n`RuntimeError: No backend type associated with device type`, which crashes the\nvision-encoder worker with `EngineDeadError` for every image request at\n`tensor_parallel_size > 1`. vLLM's collective API\n(`tensor_model_parallel_all_gather`, routed through `GroupCoordinator`) exists to\nhandle exactly this case, and the hand-rolled helper bypassed it.\n\nSecond, redundancy. The gather is a no-op. Each rank's local qkv out of\n`QKVParallelLinear` (`gather_output=False`) is `[q_shard | k_shard | v_shard]`\nfor that rank's own heads. `all_gather_interleave` gathers every rank, reorders\nto `[all_q | all_k | all_v]`, then `split_tensor_along_last_dim(...)[tp_rank]`\nselects back exactly this rank's own shards. For full multi-head self-attention\n(`total_num_kv_heads == total_num_heads`, which all three models use) the whole\nround-trip is a numerical identity, so chunking the local tensor directly is\nbit-identical.\n\nThis is the same removal already merged for `glm4_1v` in #23441\n(\"Remove redundant all gather + split\"), which fixed that model's `split_qkv`\nbut left the now-dead `all_gather_interleave` helper behind.\n\n## Changes\n\n- `paddleocr_vl.py`, `ernie45_vl.py`: drop the `all_gather_interleave` gather and\n  the subsequent per-rank re-split from `split_qkv`, keeping `qkv.chunk(3, dim=2)`\n  and the reshape. This matches the already-merged `glm4_1v.split_qkv`.\n- All three files: delete the now-unused module-level `all_gather_interleave`.\n- Ne",
+    "author": "shivasathishs-rp",
     "state": "open",
     "labels": [
       "bug",
       "ready",
-      "deepseek",
-      "nvidia",
       "glm"
     ],
-    "url": "https://github.com/vllm-project/vllm/pull/50005",
-    "createdAt": "2026-07-27T15:32:03.000Z",
-    "updatedAt": "2026-08-31T03:23:53.000Z",
+    "url": "https://github.com/vllm-project/vllm/pull/49062",
+    "createdAt": "2026-07-19T00:50:34.000Z",
+    "updatedAt": "2026-08-31T18:06:21.000Z",
     "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:7a32249555e258f125d3ad728dab7b4581c7e80d4365e1d56dac86a34f06a8cc",
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:21812b87d6cedda36dd51c6392afe73bc690909bc3f9fd6d00dbd7d48cff774e",
     "category": "FIX",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "修复 NVIDIA DeepSeek-V3.2/GLM-5.2 融合注意力",
-      "summaryZh": "修复 query RMSNorm 被 KV-cache 槽位检查跳过的问题；纯 DCP 在稀疏 MLA 注意力前跨 DCP group 汇聚 query heads，并在注意力后通过 MLADCPManager 合并部分输出和 LSE；新增全负槽位回归测试，解决DCP 融合注意力存在两个正确性缺陷：无本地 KV-cache 槽位的 rank 会跳过 query RMSNorm；纯 DCP 仅使用本地 query heads 进行注意力计算，未跨 rank 合并部分输出和 LSE；修复 NVIDIA 纯 DCP 混合批处理路径的注意力正确性，同时保持负槽位对 MLA 和 indexer KV-cache 写入的抑制",
-      "models": [
-        "DeepSeek-V3.2",
-        "GLM-5.2"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "FIX",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 NVIDIA 上 DeepSeek-V3.2/GLM-5.2 的 DCP 融合注意力路径。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention",
-        "【正文】Fix two DCP correctness defects in the fused DeepSeek-V3.2 / GLM-5.2 attention path"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T10:27:08.865Z"
-    }
+    "categorySource": "rules",
+    "summary": null
   },
   {
     "id": "vllm-pr-50415",
@@ -122,10 +360,10 @@
     ],
     "url": "https://github.com/vllm-project/vllm/pull/50415",
     "createdAt": "2026-07-30T09:13:46.000Z",
-    "updatedAt": "2026-08-30T08:55:07.000Z",
+    "updatedAt": "2026-08-31T17:49:03.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:5f77c1b8ba7846f5a0f10bbe30b0f030115942c3e274ffbb20be16d277b8fbed",
+    "contentHash": "sha256:c7d32482cc00db5b58245092d6a8908c875e98a46f7f4791b74a6be0dcaf9598",
     "category": "NEW_SUPPORT",
     "categorySource": "ai",
     "summary": {
@@ -160,6 +398,133 @@
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:17:54.490Z"
     }
+  },
+  {
+    "id": "vllm-pr-47779",
+    "nodeId": "PR_kwDOI7xefs7ukEM8",
+    "repository": "vllm-project/vllm",
+    "number": 47779,
+    "type": "pr",
+    "title": "[Bugfix][SM120][MLA] Enable DCP for FlashInfer sparse MLA decode",
+    "bodyExcerpt": "## Purpose\n\nEnable decode context parallelism for the SM120 FlashInfer sparse MLA decode backend (`FLASHINFER_MLA_SPARSE_SM120`).\n\nThe generic FlashInfer sparse MLA backend already participates in DCP by filtering sparse top-k indices to the local DCP rank, passing valid per-row counts as `seq_lens`, requesting decode LSE, normalizing the LSE shape, and masking empty DCP rows before returning `(out, lse)` to the shared DCP reducer.\n\nThe SM120 packed sparse MLA wrapper still followed the simpler non-DCP path: it converted sparse indices without DCP filtering, passed `seq_lens=None`, did not request/return LSE, and allocated the output buffer from `self.num_heads`. On RTX PRO 6000 / SM120 GLM-5.2-NVFP4 serving with DCP this prevented startup and/or DCP reduction correctness. One concrete failure from hardware validation was:\n\n```text\nValueError: Invalid shape of out: expected (32, 1, 32, 512), got torch.Size([32, 1, 8, 512])\n```\n\nThis PR ports the existing sparse FlashInfer DCP wrapper behavior to the SM120 variant while preserving the SM120-specific packed `fp8_ds_mla` KV cache path, BF16 query input, `bmm2_scale=1.0`, and `kv_scale_format` plumbing.\n\nSpecifically, it:\n\n- marks `FlashInferMLASparseSM120Impl` as able to return decode LSE;\n- uses `triton_filter_and_convert_dcp_index` when DCP is enabled;\n- passes compacted valid counts to FlashInfer as `seq_lens`;\n- requests `return_lse` when the shared DCP reducer needs it;\n- normalizes FlashInfer LSE to `(num_tokens, num_heads)`;\n- masks empty DCP rows with `out=0` and `lse=-inf`;\n- sizes the FlashInfer `out` buffer from the query head count actually passed to FlashInfer.\n\nDependency note: this patch applies cleanly to current `main` and does not require rebasing on another vLLM PR. Runtime validation below used FlashInfer 0.6.14. If `main` still pins 0.6.13 when this is reviewed, full SM120 GLM validation may be easier after #47669 lands.\n\nAI assistance disclosure: OpenAI Codex was used to port the locally validated",
+    "author": "sebastiaanvduijn",
+    "state": "open",
+    "labels": [
+      "bug",
+      "ready",
+      "needs-rebase",
+      "v1",
+      "nvidia"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/47779",
+    "createdAt": "2026-07-06T22:04:51.000Z",
+    "updatedAt": "2026-08-31T14:48:36.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:c6706698c2f06d34c37e952a147ab950613c929261083809c195af56bd8a5e8d",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-49602",
+    "nodeId": "PR_kwDOI7xefs71bnT9",
+    "repository": "vllm-project/vllm",
+    "number": 49602,
+    "type": "pr",
+    "title": "[Bugfix] Hoist $defs/definitions in Cohere parser tool schema composition",
+    "bodyExcerpt": "\r\n\r\n## Purpose\r\n\r\nFix a bug where any `/v1/chat/completions` request with tools whose JSON Schema\r\ncontains `$defs`/`definitions` fails with HTTP 500 on Cohere models served with\r\n`--reasoning-parser cohere_command3|cohere_command4`.\r\n\r\nResolves the bug class reported in #16467 (closed as stale, never fixed) for the\r\nCohere reasoning parser path specifically. Other parsers that compose their own\r\ngrammars are out of scope (see the GLM case in #47175); the generic tool path in\r\n`vllm/tool_parsers/utils.py` already hoists `$defs` and is unaffected.\r\n\r\n**Root cause.** `collect_tool_schema` in\r\n`vllm/reasoning/cohere_command_reasoning_parser.py` builds the constrained-decoding\r\ngrammar for tool calls by nesting each tool's `parameters` schema inside a\r\n`{tool_call_id, tool_name, parameters}` envelope. The tool schema was spliced in\r\nverbatim, so a definitions block originally at the schema root ends up under\r\n`properties.parameters`, while its `$ref` pointers (`#/$defs/X`) remain\r\nroot-anchored. xgrammar then correctly rejects the dangling JSON pointer:\r\n\r\n```text\r\nRuntimeError: Cannot find field $defs in #/$defs/X\r\n```\r\n\r\nThe request fails during preprocessing, before generation. Agentic frameworks such as pydantic-ai emit `$defs`\r\nfor any nested model, so this breaks effectively all tools defined via such\r\nframeworks (see user reports in #16467).\r\n\r\n**Minimal repro** against a Cohere model served with\r\n`--reasoning-parser cohere_command4 --tool-call-parser cohere_command4 --enable-auto-tool-choice`\r\n(any tool schema whose parameters carry `$defs` + `$ref`; a flat schema without\r\n`$defs` does not reproduce):\r\n\r\n```bash\r\ncurl -s http://localhost:8000/v1/chat/completions \\\r\n  -H \"Content-Type: application/json\" \\\r\n  -d '{\r\n    \"model\": \"CohereLabs/North-Mini-Code-1.0\",\r\n    \"messages\": [{\"role\": \"user\", \"content\": \"Weather in Prague?\"}],\r\n    \"tool_choice\": \"auto\",\r\n    \"tools\": [{\r\n      \"type\": \"function\",\r\n      \"function\": {\r\n        \"name\": \"get_weather\",\r\n        \"",
+    "author": "vaclavcadek",
+    "state": "open",
+    "labels": [
+      "bug",
+      "tool-calling",
+      "cohere"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49602",
+    "createdAt": "2026-07-23T15:04:30.000Z",
+    "updatedAt": "2026-08-31T13:27:02.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:4511f81a65650a92e5e967be7ee8ade5424e9e5651036e2a281f383f7d9d1790",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 Cohere 工具 schema 的 $defs 引用错误",
+      "summaryZh": "修复 Cohere parser 工具 schema 组合逻辑，将根级 $defs/definitions 提升到组合后的 schema 根部，保持 $ref 的根路径有效，解决使用 cohere_command3 或 cohere_command4 reasoning parser 时，工具参数 schema 包含 $defs/definitions 与 $ref 会在 /v1/chat/completions 预处理阶段触发 HTTP 500，xgrammar 报错“Cannot find field $defs in #/$defs/X”；修复 Cohere 模型工具调用对嵌套模型 schema 的支持；不影响通用工具路径，其他自定义 grammar 的 parser 不在范围内",
+      "models": [
+        "CohereLabs/North-Mini-Code-1.0"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "Cohere reasoning parser 的工具调用请求。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Bugfix] Hoist $defs/definitions in Cohere parser tool schema composition",
+        "【正文】any /v1/chat/completions request with tools whose JSON Schema contains $defs/definitions fails with HTTP 500 on Cohere"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-50005",
+    "nodeId": "PR_kwDOI7xefs72_VW5",
+    "repository": "vllm-project/vllm",
+    "number": 50005,
+    "type": "pr",
+    "title": "[Bugfix][DCP] Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention",
+    "bodyExcerpt": "# [Bugfix][DCP] Fix NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention\n\nFixes #50095.\n\n## Purpose\n\nFix two DCP correctness defects in the fused DeepSeek-V3.2 / GLM-5.2\nattention path:\n\n- The fused norm/RoPE kernel skipped query RMSNorm when a DCP rank had no\n  owner-local KV-cache slot. KV ownership does not remove that rank's query\n  contribution.\n- Pure DCP sent only rank-local query heads into attention over owner-local KV\n  and did not combine the resulting partial output/LSE across DCP ranks.\n\nThe sparse-indexer DCP rank, world-size, and interleave plumbing described in\nthe original version of this PR has since landed independently on `main`; this\nPR no longer changes that part.\n\n## Implementation\n\n- Run query RMSNorm before the owner-local slot check. Negative slots still\n  suppress MLA and indexer KV-cache writes.\n- For pure DCP, gather query heads through `MLADCPManager` before sparse MLA\n  attention. The manager keeps the direct-workspace fast path when supported\n  and falls back safely for oversized mixed batches.\n- Combine partial output/LSE through the existing `MLADCPManager` after\n  attention. For this NVIDIA pure-DCP mixed-batch path, pass no PCP-only decode\n  metadata; its sparse backend supplies neutral contributions for empty local\n  shards.\n- Extend the existing fused norm/RoPE test with an all-negative-slot regression\n  that checks valid query output, unchanged caches, and Top-K clearing.\n\n## Non-duplication\n\nI re-audited related open work on August 23, 2026. Searching for issue #50095\nfinds only this PR.\n\n- #52472 adds a separate TurboQuant sparse MLA backend and does not modify this\n  fused DeepSeek-V3.2 attention or norm/RoPE path.\n- #52377 has landed with generic sparse-MLA forced-MQA metadata and\n  direct-workspace fallback handling after the DCP-manager refactor; this PR\n  now consumes that manager path but still supplies the NVIDIA fused override\n  and negative-slot query-normalization fixes.\n- #47779 enables DCP in the SM120 FlashInfer sparse",
+    "author": "foraxe",
+    "state": "merged",
+    "labels": [
+      "bug",
+      "ready",
+      "deepseek",
+      "nvidia",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/50005",
+    "createdAt": "2026-07-27T15:32:03.000Z",
+    "updatedAt": "2026-08-31T07:32:56.000Z",
+    "mergedAt": "2026-08-31T07:30:46.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:81efe20cc3e2f14485edde058e43cf1b15ee989f39e02a4def8027ed92533fdd",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-50095",
+    "nodeId": "I_kwDOI7xefs8AAAABKcR1dg",
+    "repository": "vllm-project/vllm",
+    "number": 50095,
+    "type": "issue",
+    "title": "[Bug][DCP] NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention bypasses DCP handling",
+    "bodyExcerpt": "# [Bug][DCP] DeepSeek-V3.2 / GLM-5.2 fused attention bypasses pure-DCP handling\n\n## Problem\n\nThe fused DeepSeek-V3.2 / GLM-5.2 path still has two pure-DCP correctness\ndefects:\n\n1. `vllm/models/deepseek_v32/common/kernels.py` checks owner-local KV slot\n   validity before query RMSNorm. A negative slot means another DCP rank owns\n   the token's KV entry; it does not remove this rank's query contribution.\n2. `vllm/models/deepseek_v32/attention.py` gathers query heads and combines\n   partial output/LSE only for PCP+DCP. Pure DCP therefore sends rank-local\n   query heads into attention over owner-local KV and never performs the\n   required cross-rank result merge.\n\nThe sparse-indexer DCP rank, world-size, and interleave plumbing mentioned in\nthe original report has landed independently on `main`; it is no longer part\nof this issue.\n\n## Observable regression\n\nA focused kernel reproducer uses an all-negative slot mapping, representing a\nDCP rank that owns no KV-cache slot for those tokens.\n\nExpected:\n\n- Query output matches reference RMSNorm.\n- MLA and indexer KV caches remain unchanged.\n- The Top-K buffer is cleared.\n\nActual on unpatched `main`:\n\n- Query output remains zero because the kernel returns before query RMSNorm.\n\nAt model level, @drakosha reproduced repeated-token output on unpatched\nGLM-5.2-NVFP4 with TP4/DCP4 and `fp8_ds_mla`. The patched path produced output\nbyte-identical to DCP1 for the tested deterministic greedy request.\n\n## Expected behavior\n\n- Query RMSNorm runs independently of owner-local KV-slot validity.\n- Negative slots continue to suppress MLA and indexer KV-cache writes.\n- Pure DCP gathers query heads before owner-local sparse attention.\n- Partial output/LSE is combined across DCP ranks through the existing DCP\n  manager.\n\n## Proposed fix and validation\n\nPR #50005 implements the fix and regression coverage.\n\nAt its current head:\n\n- The focused fused norm/RoPE suite passes all 67 tests on GB200.\n- All applicable changed-file pre-commit hooks pass.",
+    "author": "foraxe",
+    "state": "closed",
+    "labels": [
+      "deepseek",
+      "nvidia",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/50095",
+    "createdAt": "2026-07-28T06:38:50.000Z",
+    "updatedAt": "2026-08-31T07:32:29.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:70bb2cddda51405abbcf8ef08d204fb13dff7378b84ac68d4351de23012d8190",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
   },
   {
     "id": "vllm-pr-47883",
@@ -897,54 +1262,6 @@
     }
   },
   {
-    "id": "vllm-pr-49602",
-    "nodeId": "PR_kwDOI7xefs71bnT9",
-    "repository": "vllm-project/vllm",
-    "number": 49602,
-    "type": "pr",
-    "title": "[Bugfix] Hoist $defs/definitions in Cohere parser tool schema composition",
-    "bodyExcerpt": "\r\n\r\n## Purpose\r\n\r\nFix a bug where any `/v1/chat/completions` request with tools whose JSON Schema\r\ncontains `$defs`/`definitions` fails with HTTP 500 on Cohere models served with\r\n`--reasoning-parser cohere_command3|cohere_command4`.\r\n\r\nResolves the bug class reported in #16467 (closed as stale, never fixed) for the\r\nCohere reasoning parser path specifically. Other parsers that compose their own\r\ngrammars are out of scope (see the GLM case in #47175); the generic tool path in\r\n`vllm/tool_parsers/utils.py` already hoists `$defs` and is unaffected.\r\n\r\n**Root cause.** `collect_tool_schema` in\r\n`vllm/reasoning/cohere_command_reasoning_parser.py` builds the constrained-decoding\r\ngrammar for tool calls by nesting each tool's `parameters` schema inside a\r\n`{tool_call_id, tool_name, parameters}` envelope. The tool schema was spliced in\r\nverbatim, so a definitions block originally at the schema root ends up under\r\n`properties.parameters`, while its `$ref` pointers (`#/$defs/X`) remain\r\nroot-anchored. xgrammar then correctly rejects the dangling JSON pointer:\r\n\r\n```text\r\nRuntimeError: Cannot find field $defs in #/$defs/X\r\n```\r\n\r\nThe request fails during preprocessing, before generation. Agentic frameworks such as pydantic-ai emit `$defs`\r\nfor any nested model, so this breaks effectively all tools defined via such\r\nframeworks (see user reports in #16467).\r\n\r\n**Minimal repro** against a Cohere model served with\r\n`--reasoning-parser cohere_command4 --tool-call-parser cohere_command4 --enable-auto-tool-choice`\r\n(any tool schema whose parameters carry `$defs` + `$ref`; a flat schema without\r\n`$defs` does not reproduce):\r\n\r\n```bash\r\ncurl -s http://localhost:8000/v1/chat/completions \\\r\n  -H \"Content-Type: application/json\" \\\r\n  -d '{\r\n    \"model\": \"CohereLabs/North-Mini-Code-1.0\",\r\n    \"messages\": [{\"role\": \"user\", \"content\": \"Weather in Prague?\"}],\r\n    \"tool_choice\": \"auto\",\r\n    \"tools\": [{\r\n      \"type\": \"function\",\r\n      \"function\": {\r\n        \"name\": \"get_weather\",\r\n        \"",
-    "author": "vaclavcadek",
-    "state": "open",
-    "labels": [
-      "bug",
-      "tool-calling",
-      "cohere"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/49602",
-    "createdAt": "2026-07-23T15:04:30.000Z",
-    "updatedAt": "2026-08-24T14:21:29.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:f24cb8318adcda32501943a9a57002380403532cbdfcabab0831e310797c02dd",
-    "category": "FIX",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "修复 Cohere 工具 schema 的 $defs 引用错误",
-      "summaryZh": "修复 Cohere parser 工具 schema 组合逻辑，将根级 $defs/definitions 提升到组合后的 schema 根部，保持 $ref 的根路径有效，解决使用 cohere_command3 或 cohere_command4 reasoning parser 时，工具参数 schema 包含 $defs/definitions 与 $ref 会在 /v1/chat/completions 预处理阶段触发 HTTP 500，xgrammar 报错“Cannot find field $defs in #/$defs/X”；修复 Cohere 模型工具调用对嵌套模型 schema 的支持；不影响通用工具路径，其他自定义 grammar 的 parser 不在范围内",
-      "models": [
-        "CohereLabs/North-Mini-Code-1.0"
-      ],
-      "hardware": [],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "FIX",
-      "severity": "HIGH",
-      "impactScopeZh": "Cohere reasoning parser 的工具调用请求。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[Bugfix] Hoist $defs/definitions in Cohere parser tool schema composition",
-        "【正文】any /v1/chat/completions request with tools whose JSON Schema contains $defs/definitions fails with HTTP 500 on Cohere"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
     "id": "vllm-pr-50470",
     "nodeId": "PR_kwDOI7xefs74tK8Y",
     "repository": "vllm-project/vllm",
@@ -1401,54 +1718,6 @@
     }
   },
   {
-    "id": "vllm-issue-49981",
-    "nodeId": "I_kwDOI7xefs8AAAABKUu7Mw",
-    "repository": "vllm-project/vllm",
-    "number": 49981,
-    "type": "issue",
-    "title": "[Bug]: tool_choice: \"required\" causes xgrammar FSM crash / infinite hang with GLM-5.2-NVFP4 on vLLM 0.26.0",
-    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nClang version                : Could not collect\nCMake version                : Could not collect\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.11.0+cu129\nIs debug build               : False\nCUDA used to build PyTorch   : 12.9\nROCM used to build PyTorch   : N/A\nXPU used to build PyTorch    : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.13 (main, Mar  4 2026, 09:23:07) [GCC 11.4.0] (64-bit runtime)\nPython platform              : Linux-5.14.0-611.55.1.el9_7.x86_64-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 12.9.86\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration :\nGPU 0: NVIDIA H200-141C\nGPU 1: NVIDIA H200-141C\nGPU 2: NVIDIA H200-141C\nGPU 3: NVIDIA H200-141C\nGPU 4: NVIDIA H200-141C\nGPU 5: NVIDIA H200-141C\nGPU 6: NVIDIA H200-141C\nGPU 7: NVIDIA H200-141C\n\nNvidia driver version        : 580.105.08\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           45 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):            ",
-    "author": "paolovic",
-    "state": "open",
-    "labels": [
-      "bug"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/49981",
-    "createdAt": "2026-07-27T12:20:03.000Z",
-    "updatedAt": "2026-08-18T11:27:27.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:d2fcfbf21f123959b7658c3be81f3d7664335021849eddd91b31d730b3d02b9e",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5.2-NVFP4工具调用触发xgrammar崩溃",
-      "summaryZh": "vLLM 0.26.0 中 GLM-5.2-NVFP4 的 tool_choice=\"required\" 场景：设置 tool_choice=\"required\" 时，xgrammar FSM 发生崩溃或无限挂起；问题出现在配备 NVIDIA H200 GPU 的 CUDA 12.9 环境中",
-      "models": [
-        "GLM-5.2-NVFP4"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 vLLM 0.26.0 中该模型的必需工具调用推理。",
-      "attention": "IMMEDIATE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】tool_choice: \"required\" causes xgrammar FSM crash / infinite hang with GLM-5.2-NVFP4 on vLLM 0.26.0",
-        "【正文】GPU models and configuration: NVIDIA H200-141C"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
     "id": "vllm-pr-47939",
     "nodeId": "PR_kwDOI7xefs7vE89-",
     "repository": "vllm-project/vllm",
@@ -1836,53 +2105,6 @@
       "evidence": [
         "【标题】[ROCm] [BugFix] Fix Quark GLM-5.2 Checkpoint inference",
         "【正文】two independent bugs blocking quark quantized GLM-5.2 checkpoints with Attn quantized to PTPC FP8 from running end-toend"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-50399",
-    "nodeId": "I_kwDOI7xefs8AAAABKxKdLQ",
-    "repository": "vllm-project/vllm",
-    "number": 50399,
-    "type": "issue",
-    "title": "[Bug]: tool_choice: \"required\" causes tool_calls to continuously output until the maximum token is reached with GLM-5.2 on vLLM 0.26.0",
-    "bodyExcerpt": "### Your current environment\n\n<details>\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nClang version                : Could not collect\nCMake version                : version 3.22.1\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.11.0+cu130\nIs debug build               : False\nCUDA used to build PyTorch   : 13.0\nROCM used to build PyTorch   : N/A\nXPU used to build PyTorch    : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.10.12 (main, Jun 22 2026, 18:55:27) [GCC 11.4.0] (64-bit runtime)\nPython platform              : Linux-5.15.0-83-generic-x86_64-with-glibc2.35\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 13.0.88\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration :\nGPU 0: NVIDIA H200\nGPU 1: NVIDIA H200\nGPU 2: NVIDIA H200\nGPU 3: NVIDIA H200\nGPU 4: NVIDIA H200\nGPU 5: NVIDIA H200\nGPU 6: NVIDIA H200\nGPU 7: NVIDIA H200\n\nNvidia driver version        : 580.95.05\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                       x86_64\nCPU op-mode(s):                     32-bit, 64-bit\nAddress sizes:                      52 bits physical, 57 bits virtual\nByte Order:                         Little Endian\nCPU(s):                             192\nOn-line CPU(s) list:                0-191\nVendor ID:                          GenuineIntel\nModel name:                         INTE",
-    "author": "longzhenliu0128-prog",
-    "state": "open",
-    "labels": [
-      "bug"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/50399",
-    "createdAt": "2026-07-30T08:03:28.000Z",
-    "updatedAt": "2026-07-31T02:48:53.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:cfb9eea414096149a70996d430bdc2ada381d699dfbe6249f73fb928372e82dd",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5.2 tool_choice required 持续输出 tool_calls",
-      "summaryZh": "vLLM 0.26.0 中 GLM-5.2 的强制工具调用：设置 tool_choice=\"required\" 后，GLM-5.2 会持续输出 tool_calls，直到达到最大 token 数；问题运行于配备 NVIDIA H200 GPU 的 CUDA 13.0 环境",
-      "models": [
-        "GLM-5.2"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 vLLM 0.26.0 中 GLM-5.2 的工具调用推理。",
-      "attention": "IMMEDIATE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】tool_choice: \"required\" causes tool_calls to continuously output until the maximum token is reached with GLM-5.2 on vLLM"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
@@ -2923,54 +3145,6 @@
     }
   },
   {
-    "id": "vllm-issue-48095",
-    "nodeId": "I_kwDOI7xefs8AAAABILuLaA",
-    "repository": "vllm-project/vllm",
-    "number": 48095,
-    "type": "issue",
-    "title": "[Bug]: GLM 5.2 forced toolcall left unparsed in content  (glm 47 tool parser)",
-    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nvLLM Version                 : 0.24.0\n (image vllm/vllm-openai@sha256:251eba5cc7c12fed0b75da22a9240e582b1c9e39f6fbc064f86781b963bd814f)\n  Model                        : zai-org/GLM-5.2-FP8\n  Tool-call parser             : glm47\n  Reasoning parser             : glm45\n  GPU Topology (TP)            : tensor-parallel-size=8\n\nargs:\n            - \"zai-org/GLM-5.2-FP8\"\n            - \"--tensor-parallel-size=8\"\n            - \"--gpu-memory-utilization=0.90\"\n            - \"--kv-cache-dtype=fp8\"\n            - \"--kv-cache-metrics\"\n            - \"--max-num-seqs=32\"\n            - \"--max-model-len=200000\"\n            - \"--max-num-batched-tokens=8192\"\n            - \"--enable-prefix-caching\"\n            - \"--enable-prompt-tokens-details\"\n            - \"--tool-call-parser=glm47\"\n            - \"--enable-chunked-prefill\"\n            - \"--reasoning-parser=glm45\"\n            - \"--enable-auto-tool-choice\"\n            - \"--speculative-config.method=mtp\"\n            - \"--speculative-config.num_speculative_tokens=5\"\n\nRelevant env:\n    VLLM_ENFORCE_STRICT_TOOL_CALLING=0   ← set manually; bug persists with it 0 AND unset\n```\n\n</details>\n\n\n### 🐛 Describe the bug\n\nWhen sending chat/completions request to GLM 5.2 with tool_choice: required, the parsing of the tool call fails, and the tool call is instead written to the output content.\n\n```sh\n❯ curl -sS \"$BASE_URL/v1/chat/completions\" \\\n  -H \"Authorization: Bearer $API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"model\": \"glm-5-2-fp8\",\n    \"messages\": [\n      {\"role\": \"system\", \"content\": \"You are a coding agent. Use the available tools when appropriate.\"},\n      {\"role\": \"user\", \"content\": \"Run `git status` in /tmp/repo.\"}\n    ],\n    \"tools\": [{\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"bash\",\n        \"description\": \"Run a bash command in the user'\\''s shell.\",\n        \"parameters\": {\n          ",
-    "author": "william-rom",
-    "state": "open",
-    "labels": [
-      "bug"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/48095",
-    "createdAt": "2026-07-09T07:21:40.000Z",
-    "updatedAt": "2026-07-15T06:33:50.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:d033a37f78fb8eac0443fdd90d23e8f0d0783e6c796b7824f0dbb3139941c0c5",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5.2 强制工具调用解析失败",
-      "summaryZh": "vLLM 0.24.0 中 GLM-5.2-FP8 的 glm47 工具调用解析：向 GLM-5.2 发送 tool_choice 为 required 的聊天补全请求时，工具调用解析失败，工具调用内容被写入输出 content，而不是作为工具调用返回；问题在 VLLM_ENFORCE_STRICT_TOOL_CALLING 未设置或设为 0 时均可复现",
-      "models": [
-        "GLM-5.2-FP8"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 vLLM 0.24.0 使用 glm47 工具调用解析器为 GLM-5.2 提供强制工具调用的聊天补全场景。",
-      "attention": "IMMEDIATE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】GLM 5.2 forced toolcall left unparsed in content",
-        "【正文】When sending chat/completions request to GLM 5.2 with tool_choice: required, the parsing of the tool call fails, and the"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
     "id": "vllm-issue-48689",
     "nodeId": "I_kwDOI7xefs8AAAABI2yXww",
     "repository": "vllm-project/vllm",
@@ -3155,53 +3329,6 @@
       "evidence": [
         "【标题】GLM-4.7/4.5 parser: deserialize tool args with no schema type",
         "【正文】values with no schema type ... come back as JSON strings: 5 → \"5\", true → \"true\", [1, 2.5] → \"[1, 2.5]\""
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-48201",
-    "nodeId": "I_kwDOI7xefs8AAAABIS0ExA",
-    "repository": "vllm-project/vllm",
-    "number": 48201,
-    "type": "issue",
-    "title": "[RFC]: GLM-5.x thinking_token_budget defaults and regression tests",
-    "bodyExcerpt": "### Motivation\n\nGLM-5.x models can spend the whole completion budget in the reasoning phase when thinking is enabled by default. This makes OpenAI-compatible chat/tool-calling flows difficult to use unless the caller explicitly disables thinking or sets a small `thinking_token_budget`.\n\nIn a local vLLM 0.24.0 deployment, `thinking_token_budget` already works with GLM-5.2 when serving with:\n\n```bash\nvllm serve <glm-5.2-fp8> \\\n  --reasoning-parser glm45 \\\n  --tool-call-parser glm47 \\\n  --enable-auto-tool-choice \\\n  --chat-template-content-format string\n```\n\nA small budget prevented the response from being consumed entirely by reasoning and still allowed streaming tool calls to work.\n\nRelated prior issues/PRs:\n\n- #26091 (`[Feature]: GLM thinking budget`) is closed as stale.\n- #34827 (`Support thinking budget for reasoning models (e.g., GLM-4.5V)`) is closed as stale.\n- #20859 added the hard thinking-token limit.\n- #46727 is tracking Model Runner V2 support.\n\nThis issue is not asking for a duplicate implementation of the generic budget mechanism. It is asking whether the project wants GLM-5.x-specific regression coverage, recommended/default budget guidance, and possibly model-family defaults or documentation.\n\n### Observed behavior\n\nUsing a short Chinese final-answer prompt with `max_tokens=192`:\n\n```text\nno thinking_token_budget:\n  completion_tokens: 192\n  reasoning chars:   344\n  content chars:     0\n  finish_reason:     length\n\nthinking_token_budget=16:\n  reasoning chars:   31\n  content chars:     287\n  finish_reason:     length\n\nthinking_token_budget=32:\n  completion_tokens: 154 in one run, 87 in a two-sentence run\n  reasoning tokens:  32\n  content tokens:    53 in the token-inspected run\n  finish_reason:     stop\n```\n\nWith `return_token_ids=true`, the `thinking_token_budget=32` run had the expected layout:\n\n```text\n0-31   reasoning tokens        32 tokens\n32     </think>                1 token\n33-85  final content           53 tokens\n86     stop token             ",
-    "author": "AlanJager",
-    "state": "open",
-    "labels": [],
-    "url": "https://github.com/vllm-project/vllm/issues/48201",
-    "createdAt": "2026-07-10T02:49:12.000Z",
-    "updatedAt": "2026-07-10T10:26:46.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:da0382b7844a7049d56fb87012d9a557f5fc0d443bc7c576c4f6c43a3965b163",
-    "category": "NEW_SUPPORT",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5.x thinking_token_budget 默认值与回归测试",
-      "summaryZh": "请求为 GLM-5.x 增加回归测试，提供推荐或默认 thinking_token_budget 指导，并评估模型系列默认值或文档支持；在 vLLM 0.24.0 中，GLM-5.2 已支持 thinking_token_budget；设置 16 或 32 可保留最终内容，并支持流式工具调用",
-      "models": [
-        "GLM-5.x",
-        "GLM-5.2"
-      ],
-      "hardware": [
-        "UNKNOWN"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "NEW_SUPPORT",
-      "severity": "MEDIUM",
-      "impactScopeZh": "影响启用思考的 GLM-5.x 推理及 OpenAI 兼容聊天、工具调用流程。",
-      "attention": "WATCH",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】[RFC]: GLM-5.x thinking_token_budget defaults and regression tests",
-        "【正文】GLM-5.x models can spend the whole completion budget in the reasoning phase when thinking is enabled by default."
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
@@ -3441,55 +3568,6 @@
       "evidence": [
         "【标题】Recycle post-final-norm hidden in GLM MTP (single norm)",
         "【正文】Recycling the pre-final-norm hidden mismatches the draft model's hnorm and drops MTP acceptance"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-47504",
-    "nodeId": "I_kwDOI7xefs8AAAABHhnIvQ",
-    "repository": "vllm-project/vllm",
-    "number": 47504,
-    "type": "issue",
-    "title": "[Bug]: GLM tool_call required + streaming causes JSON repetition",
-    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCUDA_VERSION=13.0.2\nLD_LIBRARY_PATH=/usr/local/nvidia/lib64:/usr/local/nvidia/cuda/lib64:/ur/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64\nNVIDIA_DRIVER_CAPABILITIES=compute,utility\nNVIDIA_REQUIRE_CUDA=cud>=13.0 brand=unknown,driver>=535,driver<536 brand=grid,driver>=535,driver<536 brand=tesla,driver>=535,driver<536 brand=nvidia...\nNVIDIA_VISIBLE_DEVICES=GPU-cfc...,GPU-542...,GPU-19e...,GPU-442...\nTORCH_CUDA_ARCH_LIST=7.5 8.0 8.6 8.9 9.0 10.0 12.0\nVLLM_CACHE_ROOT=/.cache\nVLLM_CONFIG_ROOT=/.cache\nVLLM_ENABLE_CUDA_COMPATIBILITY=0\nVLLM_USAGE_SOURCE=production-docker-image\nPYTORCH_NVML_BASED_CUDA_CHECK=1\nTORCHINDUCTOR_COMPILE_THREADS=1\nTORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor_vllm-user\n```\n\n</details>\n\n\n### 🐛 Describe the bug\n\nOn vllm version `v0.24.0`, calling GLM-5.2 or GLM-4.5 with `tool_choice==required`, and `stream==True` causes the output to repeat the JSON over and over until the context length is reached. I've tested this with and without reasoning. `v0.23.0` behaves correctly for GLM-4.5, non-streaming behaves correctly, and `tool_choice==auto` behaves correctly.\n\nExample code:\n```python\nimport requests\nimport json\n\nmessages = [\n    {\"role\": \"user\", \"content\": \"Cn you tell me what the temperature will be in new york city? Use NY as the abbreviation.\"}\n]\n\ntools = [\n    {\n        \"type\": \"function\",\n        \"function\": {\n            \"name\": \"get_current_weather\",\n            \"description\": \"Get the urrent weather in a given location\",\n            \"parameters\": {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"city\": {\"type\": \"string\", \"description\": \"The city to find teh weather for\"},\n                    \"state\": {\"type\": \"string\", \"description\": \"The two-letter abbreviation for the state the city is in\"},\n                    \"unit\": {\"type\": \"string\", \"description\": \"The unit to fetch th",
-    "author": "clovisNyu",
-    "state": "open",
-    "labels": [
-      "bug"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/47504",
-    "createdAt": "2026-07-03T03:11:40.000Z",
-    "updatedAt": "2026-07-03T03:49:14.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:ab478eed1793b5d9b70a7c0464634ad2b013976b27b8462752f15811732ae0dd",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM tool_call 流式输出重复 JSON",
-      "summaryZh": "vLLM v0.24.0 中 GLM-5.2/GLM-4.5 的必选工具调用与流式输出：在 vLLM v0.24.0 中调用 GLM-5.2 或 GLM-4.5 时，同时设置 tool_choice==required 和 stream==True，会导致 JSON 输出反复重复，直至达到上下文长度。该问题在启用或不启用 reasoning 时均可复现；非流式调用和 tool_choice==auto 行为正常；v0.23.0 中 GLM-4.5 行为正常",
-      "models": [
-        "GLM-5.2",
-        "GLM-4.5"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 vLLM v0.24.0 中 GLM-5.2/GLM-4.5 的必选工具调用流式推理。",
-      "attention": "IMMEDIATE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[Bug]: GLM tool_call required + streaming causes JSON repetition",
-        "【正文】On vllm version v0.24.0, calling GLM-5.2 or GLM-4.5 with tool_choice==required, and stream==True causes the output to 反复"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",

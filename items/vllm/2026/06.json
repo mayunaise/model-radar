@@ -1,5 +1,306 @@
 [
   {
+    "id": "vllm-pr-46994",
+    "nodeId": "PR_kwDOI7xefs7roDCB",
+    "repository": "vllm-project/vllm",
+    "number": 46994,
+    "type": "pr",
+    "title": "[Spec][V2] Support MTP speculative decoding under pipeline parallelism",
+    "bodyExcerpt": "## Purpose\n\nMTP speculative decoding does not currently work under pipeline parallelism on the V2 model runner. This PR makes it functional for DeepSeek-family MTP drafts (DeepSeek-V3, GLM-5.2, Qwen3.5/3.6, …). Five independent issues, all on the PP>1 path. Fixes #1-#3 are DeepSeek-family-specific; fix #4 applies to all models using sparse MLA attention; fix #5 applies to Qwen3.5/3.6 MTP draft models on the last PP rank.\n\n**1. `DeepSeekMTP` does not implement `SupportsPP`** — DeepSeek-family specific. The engine refuses to build the draft model under PP at all:\n```\nNotImplementedError: Pipeline parallelism is not supported for this model.\nSupported models implement the `SupportsPP` interface.   [DeepSeekMTPModel]\n```\nThe MTP draft runs only on the last PP stage, so it never actually consumes PP intermediate tensors, but the interface still requires the `make_empty_intermediate_tensors` factory. (This mirrors what #39704 does for the V1 runner.)\n\n**2. `PPHandler` sampled-token broadcast width mismatch (hang)** — affects all MTP under PP. `broadcast()` sends `sampled_token_ids` at its natural width — 1 on any step with no draft tokens (prefill, first decode), `num_spec+1` once rejection sampling has run — while `receive()` always posts a fixed `[num_reqs, max_sample_len]` buffer. NCCL `broadcast` doesn't negotiate element counts, so a width-1 send against a width-`max_sample_len` receive is a count mismatch that deadlocks the receiver. Fix: pad the source to `max_sample_len` (trailing `-1`, ignored by `post_update`).\n\n**3. Proposed draft tokens are never relayed to non-last PP ranks (garbage output / ~0 acceptance)** — affects all MTP under PP. `req_states.draft_tokens` is written only on the last rank (the `propose()` path); non-last ranks keep the zero-init buffer. `combine_sampled_and_draft_tokens` then embeds zeros at the draft positions on rank 0, so the verification input is wrong. Fix: coalesce a third broadcast (the proposed draft tokens) into the existing def",
+    "author": "eastwood-c",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "intel-gpu",
+      "speculative-decoding",
+      "needs-rebase",
+      "v1",
+      "qwen",
+      "deepseek",
+      "nvidia",
+      "mrv2",
+      "dflash"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/46994",
+    "createdAt": "2026-06-29T05:01:54.000Z",
+    "updatedAt": "2026-09-01T04:05:58.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:f8b6d044c5bde2afd1f7bfe47816d6b59366ff9934e545f224d56e755dc417fe",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "V2流水线并行支持MTP推测解码",
+      "summaryZh": "支持V2模型运行器在流水线并行下运行MTP推测解码，并修复DeepSeek系列PP接口、采样令牌广播宽度、草稿令牌跨阶段转发等问题，解决V2模型运行器当前无法在流水线并行下运行MTP推测解码，涉及DeepSeekMTP缺少SupportsPP、采样令牌广播宽度不匹配导致接收端死锁，以及草稿令牌未转发导致错误验证输入和近零接受率；覆盖DeepSeek-V3、GLM-5.2、Qwen3.5/3.6等DeepSeek系列MTP草稿模型；部分修复适用于所有稀疏MLA注意力模型及所有PP下的MTP模型",
+      "models": [
+        "DeepSeek-V3",
+        "GLM-5.2",
+        "Qwen3.5",
+        "Qwen3.6",
+        "DeepSeekMTP"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "HIGH",
+      "impactScopeZh": "仅涉及V2模型运行器的PP>1路径及MTP推测解码。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】Support MTP speculative decoding under pipeline parallelism",
+        "【正文】MTP speculative decoding does not currently work under pipeline parallelism on the V2 model runner. This PR makes it fu"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-44184",
+    "nodeId": "I_kwDOI7xefs8AAAABD-kYNg",
+    "repository": "vllm-project/vllm",
+    "number": 44184,
+    "type": "issue",
+    "title": "[Bug]: when set kv_cache_dtype to fp8 or fp8_e4m3 causes the d node to crash",
+    "bodyExcerpt": "### Your current environment\n\nvllm v0.21.0 module: deepseek-v3-fp8  same as: GLM5\n\n  --tensor-parallel-size 8 \\\n  --speculative-config.method mtp \\\n  --speculative-config.num_speculative_tokens 3 \\\n  --trust-remote-code \\\n  --kv-cache-dtype fp8 \\\n  --kv-transfer-config \n\n### 🐛 Describe the bug\n\n<img width=\"1585\" height=\"726\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/f22db5f4-c331-4591-b9ee-82c2d3631d79\" />\n\n<img width=\"1413\" height=\"217\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/f34a2dd2-d4b7-4380-8fbc-5a86f2907ff9\" />\n\nData writes are normal. When using lmcache with the mooncake backend as an external KV cache, the write data type is uint8.\n\n<img width=\"1584\" height=\"615\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/91adc72b-3d90-4208-b496-42edf201817f\" />\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "NUABO",
+    "state": "open",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/44184",
+    "createdAt": "2026-06-01T09:25:23.000Z",
+    "updatedAt": "2026-09-01T01:48:33.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:0c6047f26268d91af1f9693f266295a8942ad5ab865618211c03dfa117310b97",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-44843",
+    "nodeId": "I_kwDOI7xefs8AAAABEtL7Rw",
+    "repository": "vllm-project/vllm",
+    "number": 44843,
+    "type": "issue",
+    "title": "[Bug]: cc with vllm glm-5-fp8 function call error",
+    "bodyExcerpt": "### Your current environment\n\n[Bug]: cc with vllm glm-5-fp8 function call error\nvllm version:0.19.0\n\n\n<img width=\"1536\" height=\"349\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/f691a5ba-5ce1-40e3-9172-a8d282085eae\" />\n\n\n### 🐛 Describe the bug\n\n<img width=\"1536\" height=\"349\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/4f6661ad-6052-4fc3-a540-006539890e12\" />\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "yiminghub2024",
+    "state": "open",
+    "labels": [
+      "bug",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/44843",
+    "createdAt": "2026-06-08T07:12:49.000Z",
+    "updatedAt": "2026-08-31T23:41:16.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:24f19a0ea0b8f9c7243f63874c9f7ae91ba9a9b2062bacf82aee7ca60aa229d6",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5-FP8 函数调用错误",
+      "summaryZh": "vLLM 0.19.0 中 GLM-5-FP8 的函数调用场景：使用 vLLM 0.19.0 运行 GLM-5-FP8 时，函数调用发生错误",
+      "models": [
+        "GLM-5-FP8"
+      ],
+      "hardware": [
+        "UNKNOWN"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 vLLM 0.19.0 中 GLM-5-FP8 的函数调用。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Bug]: cc with vllm glm-5-fp8 function call error",
+        "【正文】vllm version:0.19.0"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-45273",
+    "nodeId": "I_kwDOI7xefs8AAAABFJV30A",
+    "repository": "vllm-project/vllm",
+    "number": 45273,
+    "type": "issue",
+    "title": "[Bug]: v0.19.1 /v1/responses fails for multi-turn Codex requests (GLM-5.1)",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>Click to expand environment details</summary>\n\n| Item | Value |\n|------|-------|\n| **vLLM version** | `v0.19.1` (git tag) |\n| **Docker image** | `vllm/vllm-openai:glm51-x86_64-cu129` |\n| **Model** | GLM-5.1-FP8 (`--served-model-name GLM-5.1-FP8`) |\n| **Hardware** | 2 nodes × 8× NVIDIA H800 (TP=8, PP=2) |\n| **OS** | Ubuntu 22.04.5 LTS |\n| **Driver / CUDA** | 575.57.08 / CUDA 12.9 |\n| **Client** | Cursor Codex (OpenAI `/v1/responses` API; does **not** support `wire_api = \"chat\"`) |\n\n**Key server launch flags:**\n\n```bash\ndocker run --gpus all --rm --privileged --ipc=host --network host \\\n  -v /data/glm-5.1-fp8:/data/glm-5.1-fp8 \\\n  -e NCCL_IB_DISABLE=1 \\\n  vllm/vllm-openai:glm51-x86_64-cu129 /data/glm-5.1-fp8 \\\n  --host 0.0.0.0 --port 8001 \\\n  --served-model-name GLM-5.1-FP8 \\\n  --trust-remote-code \\\n  --chat-template-content-format string \\\n  --gpu-memory-utilization 0.95 \\\n  --tensor-parallel-size 8 \\\n  --pipeline-parallel-size 2 \\\n  --nnodes 2 \\\n  --tool-call-parser glm47 \\\n  --enable-auto-tool-choice\n```\n\n> **Note:** `collect_env.py` was not run inside the production Docker container. Environment details above were collected from the deployment host via `nvidia-smi` and container configuration.\n>\n> **Upgrade constraint:** GLM-5.1 is only stable on v0.19.1 in our environment. Upgrading to v0.21.0+ introduces model compatibility regressions, so we cannot simply upgrade to pick up partial Responses API fixes on `main`.\n\n</details>\n\n---\n\n### Describe the bug\n\nOn **vLLM v0.19.1**, the OpenAI **`POST /v1/responses`** endpoint works for **single-turn** requests, but **breaks in real multi-turn Codex sessions** once conversation history includes prior **assistant** messages and/or **tool calls**.\n\nThis is a production blocker for Codex and any client that requires the Responses API, since Codex does **not** support `/v1/chat/completions`.\n\n---\n\n#### Symptom 1 — Multi-turn history with assistant messages → **400 Bad Request**",
+    "author": "ochprince",
+    "state": "open",
+    "labels": [
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/45273",
+    "createdAt": "2026-06-11T12:15:40.000Z",
+    "updatedAt": "2026-08-31T23:41:11.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:95652aca6a4025d4ef6bb5dd7e03e750f3d98403841637576928126b3300618a",
+    "category": "COMPATIBILITY",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "vLLM v0.19.1 Responses API多轮Codex请求失败",
+      "summaryZh": "vLLM v0.19.1 的 /v1/responses 多轮 GLM-5.1-FP8 Codex 请求：在 vLLM v0.19.1 中，OpenAI POST /v1/responses 单轮请求可用，但当多轮会话历史包含此前的 assistant 消息和/或工具调用时会失败并返回 400 Bad Request；阻塞依赖 Responses API 的 Codex 生产使用；客户端不支持改用 /v1/chat/completions",
+      "models": [
+        "GLM-5.1-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "COMPATIBILITY",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 vLLM v0.19.1 上通过两节点 H800 集群运行的 GLM-5.1-FP8 多轮 Codex Responses API 请求。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】v0.19.1 /v1/responses fails for multi-turn Codex requests (GLM-5.1)",
+        "【正文】On vLLM v0.19.1, the OpenAI POST /v1/responses endpoint works for single-turn requests, but breaks in real multi-turn..."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-46049",
+    "nodeId": "I_kwDOI7xefs8AAAABF7Q4mw",
+    "repository": "vllm-project/vllm",
+    "number": 46049,
+    "type": "issue",
+    "title": "feat: model-agnostic reasoning content detection to prevent per-model parser proliferation",
+    "bodyExcerpt": "## Problem\n\nvLLM currently uses per-model reasoning content parsers — each model family (DeepSeek, Qwen3, MiniMax, GLM) needs its own parser to detect and route `<｜end▁of▁thinking｜> or `<think>` content to `reasoning_content` instead of `content`. When new models are added, reasoning content leaks into the output until a parser is written:\n\n- #46042: MiniMax-M3 `<mm:think>` leaks into content\n- #46040: GLM-5.2 `<tool_call>` inside `<think>` tag\n- Similar historical issues for DeepSeek V3/R1, Qwen3-thinking variants\n\nThis per-model approach is fragile and creates a constant stream of \"reasoning content leak\" bugs.\n\n## Proposed Solution\n\nConsider a **model-agnostic reasoning content detection layer** that:\n1. Detects common reasoning content markers regardless of model — `<think>`, `<｜end▁of▁thinking｜>`, `<reasoning>`, `<mm:think>`, `/* think */`, etc.\n2. Falls back to tokenizer-level detection: check if the model's tokenizer has special tokens for reasoning boundaries\n3. Applies the detection as a post-processing filter on streaming output, NOT in the model-specific parser\n\nThis would eliminate the per-model parser requirement for reasoning content and make new model onboarding more robust.\n\n## Impact\n\n- Eliminates a recurring class of bugs (\"model X reasoning leaks into output\")\n- Reduces maintenance burden of per-model parsers\n- Improves new model onboarding experience\n- Fixes #46042, #46040, and similar future issues in one change",
+    "author": "tcconnally",
+    "state": "open",
+    "labels": [
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/46049",
+    "createdAt": "2026-06-18T13:12:37.000Z",
+    "updatedAt": "2026-08-31T23:40:51.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:0a2cba00ea37ca8f900abcc8c429bcbb2acaa2dd87abbca0a0eb40881b0aa07f",
+    "category": "OTHER",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-46262",
+    "nodeId": "I_kwDOI7xefs8AAAABGLIMSQ",
+    "repository": "vllm-project/vllm",
+    "number": 46262,
+    "type": "issue",
+    "title": "[Bug]: PP2 tool calling produces garbled output while PP1 works correctly (GLM-5.2-FP8 DSA, chunked-prefill)",
+    "bodyExcerpt": "## Environment\n\n- **vLLM version**: 0.23.0+rocm723 (commit `g91df0fad4`)\n- **GPU**: 8× AMD Instinct MI355X (288 GiB/GPU) per node\n- **ROCm**: 7.2.3\n- **Docker image**: `vllm/vllm-openai-rocm:latest`\n- **Model**: GLM-5.2-FP8 (`glm_moe_dsa`), FP8 quantized, 703.74 GiB, 78 layers, 1M max context\n- **Deployment**: PP2 + TP8 across 2 nodes with InfiniBand RDMA\n- **Executor backend**: `mp`\n- **Scheduling**: `--no-async-scheduling` (required to avoid KeyError in PP mode with tool calling)\n\n## Deployment Commands\n\n**Master (PP stage 0, node-rank 0):**\n```bash\nvllm serve /models \\\n  --served-model-name glm-5.2 \\\n  --pipeline-parallel-size 2 --tensor-parallel-size 8 --distributed-executor-backend mp \\\n  --nnodes 2 --node-rank 0 --master-addr <MASTER_IP> --master-port 29501 \\\n  --trust-remote-code --host 0.0.0.0 --port 30000 \\\n  --max-model-len 1048576 --gpu-memory-utilization 0.80 --kv-cache-dtype fp8 \\\n  --block-size 64 --no-async-scheduling \\\n  --enable-chunked-prefill --max-num-batched-tokens 8192 --max-num-seqs 30 \\\n  --enable-prefix-caching \\\n  --enable-auto-tool-choice --tool-call-parser glm47 --reasoning-parser glm45\n```\n\n**Worker (PP stage 1, node-rank 1):**\n```bash\nvllm serve /models \\\n  --pipeline-parallel-size 2 --tensor-parallel-size 8 --distributed-executor-backend mp \\\n  --nnodes 2 --node-rank 1 --master-addr <MASTER_IP> --master-port 29501 \\\n  --trust-remote-code --headless \\\n  --max-model-len 1048576 --gpu-memory-utilization 0.80 --kv-cache-dtype fp8 \\\n  --block-size 64 --no-async-scheduling\n```\n\n## Bug Description\n\nTool calling produces garbled/malformed output in PP2 mode, while working correctly in PP1 (single-node) mode. Regular (non-tool) chat works correctly in both PP1 and PP2 modes.\n\n## Reproduction\n\n**Step 1: Test PP2 tool calling (BROKEN)**\n```bash\ncurl http://localhost:30000/v1/chat/completions -H 'Content-Type: application/json' -d '{\n  \"model\": \"glm-5.2\",\n  \"temperature\": 0,\n  \"messages\": [{\"role\": \"user\", \"content\": \"What is the weather in Beijin",
+    "author": "tanguofu",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/46262",
+    "createdAt": "2026-06-21T04:06:42.000Z",
+    "updatedAt": "2026-08-31T23:40:42.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:fd90dd9fa1b99c6f5eea9984ab79847d312d0d75138642bc58086b72f27463c0",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "PP2 下 GLM-5.2 工具调用输出乱码",
+      "summaryZh": "GLM-5.2-FP8 在 vLLM PP2、TP8、分块预填充配置下的工具调用：在 2 节点 PP2 部署中，GLM-5.2-FP8 的工具调用会产生乱码或格式错误的输出；同一模型在 PP1 下工作正常，普通非工具聊天在 PP1 和 PP2 下均正常；影响 AMD MI355X、ROCm 7.2.3 上的 PP2 工具调用；当前需使用 --no-async-scheduling 以避免工具调用在 PP 模式下出现 KeyError",
+      "models": [
+        "GLM-5.2-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "仅明确涉及 PP2 多节点工具调用；PP1 工具调用和 PP1/PP2 普通聊天未受影响。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】PP2 tool calling produces garbled output while PP1 works correctly",
+        "【正文】Tool calling produces garbled/malformed output in PP2 mode, while working correctly in PP1 (single-node) mode."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-46263",
+    "nodeId": "I_kwDOI7xefs8AAAABGLJUtQ",
+    "repository": "vllm-project/vllm",
+    "number": 46263,
+    "type": "issue",
+    "title": "[Bug]: PP2 + tool calling KeyError in scheduler.py: req_id missing from req_id_to_index",
+    "bodyExcerpt": "## Environment\n\n- **vLLM version**: 0.23.0+rocm723 (commit `g91df0fad4`)\n- **GPU**: 8× AMD Instinct MI355X per node, 2 nodes\n- **ROCm**: 7.2.3\n- **Model**: GLM-5.2-FP8 (`glm_moe_dsa`, 703.74 GiB, 78 layers)\n- **Deployment**: PP2 + TP8, `mp` executor, InfiniBand RDMA\n- **Scheduling**: `--no-async-scheduling`\n\n## Bug Description\n\nIn PP2 (pipeline parallelism across 2 nodes) with tool calling enabled, vLLM crashes with `KeyError` at `scheduler.py` when iterating `model_runner_output.req_id_to_index[req_id]`.\n\nThe crash occurs when a request is **aborted/finished on the last PP stage (worker)** by the tool call parser, but the master scheduler (rank 0) still has the request in `num_scheduled_tokens`. The request is NOT in `self.requests` anymore (or is still there but removed from the batch), causing it to be absent from `model_runner_output.req_id_to_index`.\n\n## Root Cause\n\nIn the scheduler's processing loop (`scheduler.py` ~line 1409):\n\n```python\nfor req_id, num_tokens_scheduled in num_scheduled_tokens.items():\n    request = self.requests.get(req_id)\n    if request is None or request.is_finished():\n        continue  # Only handles None/finished, NOT \"missing from req_id_to_index\"\n    req_index = model_runner_output.req_id_to_index[req_id]  # 💥 KeyError here\n```\n\nThe existing guard only covers `request is None` or `request.is_finished()`. It does NOT cover the case where:\n1. The **last PP stage's model runner** removes the request from its batch (because tool calling finished it)\n2. The master scheduler still has it in `num_scheduled_tokens`\n3. The request is still alive in `self.requests` but absent from `req_id_to_index`\n\nThis race condition is particularly triggered by:\n- `--enable-auto-tool-choice --tool-call-parser glm47 --reasoning-parser glm45`\n- Pipeline parallelism (PP >= 2)\n- `--no-async-scheduling` (reduces but doesn't eliminate the race)\n\n## Reproduction\n\n**Master (node-rank 0):**\n```bash\nvllm serve /models \\\n  --pipeline-parallel-size 2 --tensor-parallel-",
+    "author": "tanguofu",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/46263",
+    "createdAt": "2026-06-21T04:15:44.000Z",
+    "updatedAt": "2026-08-31T23:40:40.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:a1042c5daf53784920167455d9f16290b7676d475b03c84f09cc63c844df967e",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-47179",
+    "nodeId": "I_kwDOI7xefs8AAAABHMw1IA",
+    "repository": "vllm-project/vllm",
+    "number": 47179,
+    "type": "issue",
+    "title": "[Rust Frontend] Tool-call argument parsing diverges from the Python parsers (coercion, whitespace, unions)",
+    "bodyExcerpt": "### Summary\n\nWhile comparing the Rust frontend tool-call parsers against the independent Python parsers they reimplement, I found several cases where the two produce **different tool-call arguments for identical model output**. Some of these may be intentional improvements in the Rust implementation; others look like unintended behavior changes. Filing to get maintainer guidance on which are intended before proposing fixes.\n\nThis only concerns parsers where an independent pure-Python implementation still exists. Parsers that are thin adapters over the Rust engine (kimi_k2, minimax, glm47, qwen3_engine) cannot diverge and are out of scope.\n\n### Divergences\n\n#### 1. Qwen3-Coder — argument type coercion (Rust coerces, Python does not)\n\n`vllm/parser/qwen3.py:57-76` (`_qwen3_arg_converter`) emits every parameter value as a `.strip()`'d string via `json.dumps`; it has no access to the tool schema. The Rust parser (`rust/src/parser/src/tool/qwen_coder.rs` → `parameters.rs`) routes each value through schema-aware coercion.\n\nInput (with `days: {type: integer}` in the tool schema):\n```\n<function=get_weather>\n<parameter=days>3</parameter>\n</function>\n```\n- Python → `{\"days\": \"3\"}` (string)\n- Rust → `{\"days\": 3}` (integer)\n\nArguably the Rust behavior is *more* correct (it honors the declared schema type), but it is a behavior change between the two frontends. Which is intended?\n\n#### 2. Qwen3-Coder — value whitespace handling\n\nPython uses `value.strip()` (qwen3.py:65). Rust trims only a single leading/trailing newline (`trim_one_wrapping_newline`, qwen_coder.rs).\n\nInput (`location` is string-typed):\n```\n<parameter=location>\n  Dallas  \n</parameter>\n```\n- Python → `{\"location\": \"Dallas\"}`\n- Rust → `{\"location\": \"  Dallas  \"}`\n\n#### 3. HY-V3 — boolean coercion of `\"1\"`/`\"0\"` (found by source comparison; not independently re-run)\n\nPython `_try_parse_bool` (`vllm/tool_parsers/hy_v3_tool_parser.py`) accepts only `\"true\"`/`\"false\"`; Rust `try_convert_boolean` (parameters.rs) also maps",
+    "author": "blasrodri",
+    "state": "open",
+    "labels": [
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/47179",
+    "createdAt": "2026-06-30T15:23:20.000Z",
+    "updatedAt": "2026-08-31T23:40:19.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:32b3b99f8d38432bac66712f8c35a97f35641cb93bc640a44be67c9ff2402742",
+    "category": "OTHER",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-issue-46654",
     "nodeId": "I_kwDOI7xefs8AAAABGmXBag",
     "repository": "vllm-project/vllm",
@@ -214,66 +515,6 @@
       "evidence": [
         "【标题】Support DCP for DeepSeek Sparse Attention",
         "【正文】Add Decode Context Parallelism (DCP) support for DeepSeek Sparse Attention through the FLASHMLA_SPARSE MLA backend."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-46994",
-    "nodeId": "PR_kwDOI7xefs7roDCB",
-    "repository": "vllm-project/vllm",
-    "number": 46994,
-    "type": "pr",
-    "title": "[Spec][V2] Support MTP speculative decoding under pipeline parallelism",
-    "bodyExcerpt": "## Purpose\n\nMTP speculative decoding does not currently work under pipeline parallelism on the V2 model runner. This PR makes it functional for DeepSeek-family MTP drafts (DeepSeek-V3, GLM-5.2, Qwen3.5/3.6, …). Five independent issues, all on the PP>1 path. Fixes #1-#3 are DeepSeek-family-specific; fix #4 applies to all models using sparse MLA attention; fix #5 applies to Qwen3.5/3.6 MTP draft models on the last PP rank.\n\n**1. `DeepSeekMTP` does not implement `SupportsPP`** — DeepSeek-family specific. The engine refuses to build the draft model under PP at all:\n```\nNotImplementedError: Pipeline parallelism is not supported for this model.\nSupported models implement the `SupportsPP` interface.   [DeepSeekMTPModel]\n```\nThe MTP draft runs only on the last PP stage, so it never actually consumes PP intermediate tensors, but the interface still requires the `make_empty_intermediate_tensors` factory. (This mirrors what #39704 does for the V1 runner.)\n\n**2. `PPHandler` sampled-token broadcast width mismatch (hang)** — affects all MTP under PP. `broadcast()` sends `sampled_token_ids` at its natural width — 1 on any step with no draft tokens (prefill, first decode), `num_spec+1` once rejection sampling has run — while `receive()` always posts a fixed `[num_reqs, max_sample_len]` buffer. NCCL `broadcast` doesn't negotiate element counts, so a width-1 send against a width-`max_sample_len` receive is a count mismatch that deadlocks the receiver. Fix: pad the source to `max_sample_len` (trailing `-1`, ignored by `post_update`).\n\n**3. Proposed draft tokens are never relayed to non-last PP ranks (garbage output / ~0 acceptance)** — affects all MTP under PP. `req_states.draft_tokens` is written only on the last rank (the `propose()` path); non-last ranks keep the zero-init buffer. `combine_sampled_and_draft_tokens` then embeds zeros at the draft positions on rank 0, so the verification input is wrong. Fix: coalesce a third broadcast (the proposed draft tokens) into the existing def",
-    "author": "eastwood-c",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "intel-gpu",
-      "speculative-decoding",
-      "v1",
-      "qwen",
-      "deepseek",
-      "nvidia",
-      "mrv2",
-      "dflash"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/46994",
-    "createdAt": "2026-06-29T05:01:54.000Z",
-    "updatedAt": "2026-08-22T16:23:42.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:0dc78c2f4718afb0e63f368540158e9ab861c8bf17404a9072c017bc331a993c",
-    "category": "NEW_SUPPORT",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "V2流水线并行支持MTP推测解码",
-      "summaryZh": "支持V2模型运行器在流水线并行下运行MTP推测解码，并修复DeepSeek系列PP接口、采样令牌广播宽度、草稿令牌跨阶段转发等问题，解决V2模型运行器当前无法在流水线并行下运行MTP推测解码，涉及DeepSeekMTP缺少SupportsPP、采样令牌广播宽度不匹配导致接收端死锁，以及草稿令牌未转发导致错误验证输入和近零接受率；覆盖DeepSeek-V3、GLM-5.2、Qwen3.5/3.6等DeepSeek系列MTP草稿模型；部分修复适用于所有稀疏MLA注意力模型及所有PP下的MTP模型",
-      "models": [
-        "DeepSeek-V3",
-        "GLM-5.2",
-        "Qwen3.5",
-        "Qwen3.6",
-        "DeepSeekMTP"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "NEW_SUPPORT",
-      "severity": "HIGH",
-      "impactScopeZh": "仅涉及V2模型运行器的PP>1路径及MTP推测解码。",
-      "attention": "WATCH",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】Support MTP speculative decoding under pipeline parallelism",
-        "【正文】MTP speculative decoding does not currently work under pipeline parallelism on the V2 model runner. This PR makes it fu"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
@@ -1318,54 +1559,6 @@
     }
   },
   {
-    "id": "vllm-issue-46262",
-    "nodeId": "I_kwDOI7xefs8AAAABGLIMSQ",
-    "repository": "vllm-project/vllm",
-    "number": 46262,
-    "type": "issue",
-    "title": "[Bug]: PP2 tool calling produces garbled output while PP1 works correctly (GLM-5.2-FP8 DSA, chunked-prefill)",
-    "bodyExcerpt": "## Environment\n\n- **vLLM version**: 0.23.0+rocm723 (commit `g91df0fad4`)\n- **GPU**: 8× AMD Instinct MI355X (288 GiB/GPU) per node\n- **ROCm**: 7.2.3\n- **Docker image**: `vllm/vllm-openai-rocm:latest`\n- **Model**: GLM-5.2-FP8 (`glm_moe_dsa`), FP8 quantized, 703.74 GiB, 78 layers, 1M max context\n- **Deployment**: PP2 + TP8 across 2 nodes with InfiniBand RDMA\n- **Executor backend**: `mp`\n- **Scheduling**: `--no-async-scheduling` (required to avoid KeyError in PP mode with tool calling)\n\n## Deployment Commands\n\n**Master (PP stage 0, node-rank 0):**\n```bash\nvllm serve /models \\\n  --served-model-name glm-5.2 \\\n  --pipeline-parallel-size 2 --tensor-parallel-size 8 --distributed-executor-backend mp \\\n  --nnodes 2 --node-rank 0 --master-addr <MASTER_IP> --master-port 29501 \\\n  --trust-remote-code --host 0.0.0.0 --port 30000 \\\n  --max-model-len 1048576 --gpu-memory-utilization 0.80 --kv-cache-dtype fp8 \\\n  --block-size 64 --no-async-scheduling \\\n  --enable-chunked-prefill --max-num-batched-tokens 8192 --max-num-seqs 30 \\\n  --enable-prefix-caching \\\n  --enable-auto-tool-choice --tool-call-parser glm47 --reasoning-parser glm45\n```\n\n**Worker (PP stage 1, node-rank 1):**\n```bash\nvllm serve /models \\\n  --pipeline-parallel-size 2 --tensor-parallel-size 8 --distributed-executor-backend mp \\\n  --nnodes 2 --node-rank 1 --master-addr <MASTER_IP> --master-port 29501 \\\n  --trust-remote-code --headless \\\n  --max-model-len 1048576 --gpu-memory-utilization 0.80 --kv-cache-dtype fp8 \\\n  --block-size 64 --no-async-scheduling\n```\n\n## Bug Description\n\nTool calling produces garbled/malformed output in PP2 mode, while working correctly in PP1 (single-node) mode. Regular (non-tool) chat works correctly in both PP1 and PP2 modes.\n\n## Reproduction\n\n**Step 1: Test PP2 tool calling (BROKEN)**\n```bash\ncurl http://localhost:30000/v1/chat/completions -H 'Content-Type: application/json' -d '{\n  \"model\": \"glm-5.2\",\n  \"temperature\": 0,\n  \"messages\": [{\"role\": \"user\", \"content\": \"What is the weather in Beijin",
-    "author": "tanguofu",
-    "state": "open",
-    "labels": [
-      "rocm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/46262",
-    "createdAt": "2026-06-21T04:06:42.000Z",
-    "updatedAt": "2026-06-25T13:36:18.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:2f9ba99b5220aaa843686b3786bb50226a707082f9311b3957e088e4bac79a68",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "PP2 下 GLM-5.2 工具调用输出乱码",
-      "summaryZh": "GLM-5.2-FP8 在 vLLM PP2、TP8、分块预填充配置下的工具调用：在 2 节点 PP2 部署中，GLM-5.2-FP8 的工具调用会产生乱码或格式错误的输出；同一模型在 PP1 下工作正常，普通非工具聊天在 PP1 和 PP2 下均正常；影响 AMD MI355X、ROCm 7.2.3 上的 PP2 工具调用；当前需使用 --no-async-scheduling 以避免工具调用在 PP 模式下出现 KeyError",
-      "models": [
-        "GLM-5.2-FP8"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "仅明确涉及 PP2 多节点工具调用；PP1 工具调用和 PP1/PP2 普通聊天未受影响。",
-      "attention": "IMMEDIATE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】PP2 tool calling produces garbled output while PP1 works correctly",
-        "【正文】Tool calling produces garbled/malformed output in PP2 mode, while working correctly in PP1 (single-node) mode."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
     "id": "vllm-issue-46673",
     "nodeId": "I_kwDOI7xefs8AAAABGoKVXg",
     "repository": "vllm-project/vllm",
@@ -1832,100 +2025,6 @@
       "evidence": [
         "【标题】[Bug]: GLM-5 FP8 generates nonsense on BF16 KV cache dtype",
         "【正文】HW: H200 x 8；Model checkpoint: zai-org/GLM-5.1-FP8"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-44843",
-    "nodeId": "I_kwDOI7xefs8AAAABEtL7Rw",
-    "repository": "vllm-project/vllm",
-    "number": 44843,
-    "type": "issue",
-    "title": "[Bug]: cc with vllm glm-5-fp8 function call error",
-    "bodyExcerpt": "### Your current environment\n\n[Bug]: cc with vllm glm-5-fp8 function call error\nvllm version:0.19.0\n\n\n<img width=\"1536\" height=\"349\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/f691a5ba-5ce1-40e3-9172-a8d282085eae\" />\n\n\n### 🐛 Describe the bug\n\n<img width=\"1536\" height=\"349\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/4f6661ad-6052-4fc3-a540-006539890e12\" />\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
-    "author": "yiminghub2024",
-    "state": "open",
-    "labels": [
-      "bug"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/44843",
-    "createdAt": "2026-06-08T07:12:49.000Z",
-    "updatedAt": "2026-06-13T08:26:54.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:e3830f6c6de2420f7fa912cb80e685f0ec6f2954466b9e9fc5125bfab47fbc93",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5-FP8 函数调用错误",
-      "summaryZh": "vLLM 0.19.0 中 GLM-5-FP8 的函数调用场景：使用 vLLM 0.19.0 运行 GLM-5-FP8 时，函数调用发生错误",
-      "models": [
-        "GLM-5-FP8"
-      ],
-      "hardware": [
-        "UNKNOWN"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "MEDIUM",
-      "impactScopeZh": "影响 vLLM 0.19.0 中 GLM-5-FP8 的函数调用。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[Bug]: cc with vllm glm-5-fp8 function call error",
-        "【正文】vllm version:0.19.0"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-45273",
-    "nodeId": "I_kwDOI7xefs8AAAABFJV30A",
-    "repository": "vllm-project/vllm",
-    "number": 45273,
-    "type": "issue",
-    "title": "[Bug]: v0.19.1 /v1/responses fails for multi-turn Codex requests (GLM-5.1)",
-    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>Click to expand environment details</summary>\n\n| Item | Value |\n|------|-------|\n| **vLLM version** | `v0.19.1` (git tag) |\n| **Docker image** | `vllm/vllm-openai:glm51-x86_64-cu129` |\n| **Model** | GLM-5.1-FP8 (`--served-model-name GLM-5.1-FP8`) |\n| **Hardware** | 2 nodes × 8× NVIDIA H800 (TP=8, PP=2) |\n| **OS** | Ubuntu 22.04.5 LTS |\n| **Driver / CUDA** | 575.57.08 / CUDA 12.9 |\n| **Client** | Cursor Codex (OpenAI `/v1/responses` API; does **not** support `wire_api = \"chat\"`) |\n\n**Key server launch flags:**\n\n```bash\ndocker run --gpus all --rm --privileged --ipc=host --network host \\\n  -v /data/glm-5.1-fp8:/data/glm-5.1-fp8 \\\n  -e NCCL_IB_DISABLE=1 \\\n  vllm/vllm-openai:glm51-x86_64-cu129 /data/glm-5.1-fp8 \\\n  --host 0.0.0.0 --port 8001 \\\n  --served-model-name GLM-5.1-FP8 \\\n  --trust-remote-code \\\n  --chat-template-content-format string \\\n  --gpu-memory-utilization 0.95 \\\n  --tensor-parallel-size 8 \\\n  --pipeline-parallel-size 2 \\\n  --nnodes 2 \\\n  --tool-call-parser glm47 \\\n  --enable-auto-tool-choice\n```\n\n> **Note:** `collect_env.py` was not run inside the production Docker container. Environment details above were collected from the deployment host via `nvidia-smi` and container configuration.\n>\n> **Upgrade constraint:** GLM-5.1 is only stable on v0.19.1 in our environment. Upgrading to v0.21.0+ introduces model compatibility regressions, so we cannot simply upgrade to pick up partial Responses API fixes on `main`.\n\n</details>\n\n---\n\n### Describe the bug\n\nOn **vLLM v0.19.1**, the OpenAI **`POST /v1/responses`** endpoint works for **single-turn** requests, but **breaks in real multi-turn Codex sessions** once conversation history includes prior **assistant** messages and/or **tool calls**.\n\nThis is a production blocker for Codex and any client that requires the Responses API, since Codex does **not** support `/v1/chat/completions`.\n\n---\n\n#### Symptom 1 — Multi-turn history with assistant messages → **400 Bad Request**",
-    "author": "ochprince",
-    "state": "open",
-    "labels": [],
-    "url": "https://github.com/vllm-project/vllm/issues/45273",
-    "createdAt": "2026-06-11T12:15:40.000Z",
-    "updatedAt": "2026-06-11T22:48:35.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:73adb812f435c69628e4dabd5b1296bccfd286e716a36625d5a71e4a7fca3235",
-    "category": "COMPATIBILITY",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "vLLM v0.19.1 Responses API多轮Codex请求失败",
-      "summaryZh": "vLLM v0.19.1 的 /v1/responses 多轮 GLM-5.1-FP8 Codex 请求：在 vLLM v0.19.1 中，OpenAI POST /v1/responses 单轮请求可用，但当多轮会话历史包含此前的 assistant 消息和/或工具调用时会失败并返回 400 Bad Request；阻塞依赖 Responses API 的 Codex 生产使用；客户端不支持改用 /v1/chat/completions",
-      "models": [
-        "GLM-5.1-FP8"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "COMPATIBILITY",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 vLLM v0.19.1 上通过两节点 H800 集群运行的 GLM-5.1-FP8 多轮 Codex Responses API 请求。",
-      "attention": "IMMEDIATE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】v0.19.1 /v1/responses fails for multi-turn Codex requests (GLM-5.1)",
-        "【正文】On vLLM v0.19.1, the OpenAI POST /v1/responses endpoint works for single-turn requests, but breaks in real multi-turn..."
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
