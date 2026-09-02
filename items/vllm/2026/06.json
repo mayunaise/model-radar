@@ -1,5 +1,29 @@
 [
   {
+    "id": "vllm-issue-46856",
+    "nodeId": "I_kwDOI7xefs8AAAABG2B2iA",
+    "repository": "vllm-project/vllm",
+    "number": 46856,
+    "type": "issue",
+    "title": "[Bug][ROCm] GLM5.1 ROCM_AITER_MLA_SPARSE corruption persists between ISL 60k to 137k (AA-LCR dataset)  on gfx942 in v0.23.0 (both compiled and eager mode)",
+    "bodyExcerpt": "### Your current environment\n\nPython: 3.12.13 (main, Mar  4 2026, 09:23:07) [GCC 11.4.0]\nPyTorch: 2.10.0+git8514f05\nCUDA available: True\nGPU count: 8\nGPU 0:\nGPU 1:\nGPU 2:\nGPU 3:\nGPU 4:\nGPU 5:\nGPU 6:\nGPU 7:\nvLLM: 0.23.0\n\n## Model Details\n\n- **Model**: `zai-org/GLM-5.1-FP8` ([HuggingFace](https://huggingface.co/zai-org/GLM-5.1-FP8))\n- **Architecture**: `GlmMoeDsaForCausalLM` — GLM MoE with Dynamic Sparse Attention (DSA)\n- **Parameters**: 744B (705B active MoE, 256 experts, 8 active per token)\n- **Quantization**: FP8 (E4M3)\n- **Attention**: MLA (Multi-head Latent Attention) + DSA (Dynamic Sparse Attention)\n  - DSA selects top-2048 KV entries per query token via fp8 MQA logits indexer\n  - `--block-size 1` is **mandatory** for DSA (triggers `NORMAL` layout, fixed by PR #43781)\n- **Backend**: `ROCM_AITER_MLA_SPARSE` — **only available backend on ROCm, no fallback**\n- **Context window**: 200,000 tokens\n- **Production ISL**: z.ai blog reports 100K–200K ISL workloads (HLE: 202K, SWE-Bench: 200K)\n- **Why ISL matters**: At 76K ISL, the DSA indexer computes a `76K × 76K` fp8 logits\n  matrix (~22GB float32) requiring heavy sub-chunking\n  (`VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=512` default)\n\n\n### 🐛 Describe the bug\n\n## Bug Description\n\nROCM_AITER_MLA_SPARSE backend produces corrupted output (binary/numeric garbage,\nalpha-ratio < 0.3) at ISL > ~76K tokens on AMD MI300X (gfx942) with vLLM v0.23.0.\n\nThe corruption occurs in BOTH compiled mode (default) and --enforce-eager mode,\nconfirming the bug is in the kernel itself, NOT in CUDA graph compilation.\n\nThis is a follow-up to Issue #40018 (closed by PR #43781). PR #43781 raised the\ncorruption threshold from ~8K (v0.22.1) to ~76K (v0.23.0) but did not fully resolve it.\n\n## Observed vs Expected\n\nExpected: Coherent reasoning output at 76K-101K ISL (model's documented operating range\nper z.ai blog: 100K-200K ISL production workloads)\n\nObserved:\n- Q7 (~76K tokens): alpha=0.00, output = \"10,10,10,10,10...\" (compiled)\n                    alph",
+    "author": "psakhamo",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "rocm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/46856",
+    "createdAt": "2026-06-26T18:31:45.000Z",
+    "updatedAt": "2026-09-01T18:03:46.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-02T04:54:35.079Z",
+    "contentHash": "sha256:9d92bf9021cbb3abadf60ffd2c1f8096b79e190b297846881188c674adc4344e",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-46994",
     "nodeId": "PR_kwDOI7xefs7roDCB",
     "repository": "vllm-project/vllm",
@@ -23,10 +47,10 @@
     ],
     "url": "https://github.com/vllm-project/vllm/pull/46994",
     "createdAt": "2026-06-29T05:01:54.000Z",
-    "updatedAt": "2026-09-01T04:05:58.000Z",
+    "updatedAt": "2026-09-01T06:10:16.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:f8b6d044c5bde2afd1f7bfe47816d6b59366ff9934e545f224d56e755dc417fe",
+    "contentHash": "sha256:a58ec87c97d7ff8ba56fff84a7e524a4b41bf5767bce22cb7faca3b0a35c4585",
     "category": "NEW_SUPPORT",
     "categorySource": "ai",
     "summary": {

@@ -1,5 +1,152 @@
 [
   {
+    "id": "vllm-pr-49869",
+    "nodeId": "PR_kwDOI7xefs72gfM7",
+    "repository": "vllm-project/vllm",
+    "number": 49869,
+    "type": "pr",
+    "title": "[Model] Fix GLM-OCR MTP weight loading",
+    "bodyExcerpt": "### Summary\n\n- recognize `model.language_model.layers.*` as a valid MTP checkpoint prefix\n- add regression coverage for all supported MTP layer prefixes\n- preserve the existing behavior when the model has no MTP layers\n\n### Why\n\nFixes #49856.\n\nThe current `zai-org/GLM-OCR` checkpoint stores its appended MTP layer under\n`model.language_model.layers.16.*`. `GlmOcrMTP.load_weights()` calls\n`get_spec_layer_idx_from_weight_name()` before\n`_rewrite_spec_layer_name()` removes the `language_model` wrapper.\n\nThe classifier previously recognized only `model.layers.*` and `layers.*`.\nConsequently, every nested GLM-OCR MTP weight was classified as a non-MTP\nweight and skipped before its name could be rewritten, leaving eight draft\nparameters uninitialized.\n\nThis change teaches the common classifier about the nested language-model\nprefix. Keeping the handling in the classifier also makes `skip_spec_layers()`\napply the same classification when loading the target model.\n\n### Validation\n\nHardware and software:\n\n- NVIDIA RTX 4090\n- Python 3.12\n- PyTorch 2.13.0+cu130\n- original reproduction source commit `833483f3578a2c4766977d0fe431bd32a01ce250`\n- repeated post-fix validation on rebased PR head\n  `c23502a49f58533131b8baaf2a075197ba43984c`\n- `zai-org/GLM-OCR` revision\n  `ca5d8b3e287e52589e37c28385d9655ee4372f9d`\n\nBefore the change:\n\n```text\nValueError: Following weights were not initialized from checkpoint:\nmodel.layers.16.enorm.weight\nmodel.layers.16.hnorm.weight\nmodel.layers.16.eh_proj.weight\nmodel.layers.16.shared_head.norm.weight\nmodel.layers.16.mtp_block.input_layernorm.weight\nmodel.layers.16.mtp_block.post_attention_layernorm.weight\nmodel.layers.16.mtp_block.post_mlp_layernorm.weight\nmodel.layers.16.mtp_block.post_self_attn_layernorm.weight\n```\n\nAfter the change:\n\n- the MTP drafter loads successfully\n- `/health` becomes ready\n- an OpenAI-compatible multimodal request completes successfully\n- an image containing `vLLM MTP smoke test 49856` is transcribed exactly\n\nEnd-to-end serv",
+    "author": "jackLei0901",
+    "state": "open",
+    "labels": [
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49869",
+    "createdAt": "2026-07-26T09:22:58.000Z",
+    "updatedAt": "2026-09-02T03:51:23.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:7a8432b019e3035c02a386b49b76b607f10620682df9be4a7d26afeb5185ed5a",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM-OCR MTP 权重加载",
+      "summaryZh": "修复公共权重分类器，使其识别 `model.language_model.layers.*` 前缀，并为所有支持的 MTP 层前缀增加回归覆盖；无 MTP 层时保持原有行为，解决GLM-OCR 检查点中的 `model.language_model.layers.16.*` MTP 权重未被识别为 MTP 权重，导致权重被跳过，八个 draft 参数未初始化并触发 ValueError；GLM-OCR MTP drafter 可成功加载，服务健康检查就绪，并可完成 OpenAI 兼容的多模态请求及图像文字转写",
+      "models": [
+        "GLM-OCR"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE",
+        "EVALUATION"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响使用嵌套 `language_model` 前缀的 GLM-OCR MTP 检查点加载。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Fix GLM-OCR MTP weight loading",
+        "【正文】every nested GLM-OCR MTP weight was classified as a non-MTP weight and skipped"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-50095",
+    "nodeId": "I_kwDOI7xefs8AAAABKcR1dg",
+    "repository": "vllm-project/vllm",
+    "number": 50095,
+    "type": "issue",
+    "title": "[Bug][DCP] NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention bypasses DCP handling",
+    "bodyExcerpt": "# [Bug][DCP] DeepSeek-V3.2 / GLM-5.2 fused attention bypasses pure-DCP handling\n\n## Problem\n\nThe fused DeepSeek-V3.2 / GLM-5.2 path still has two pure-DCP correctness\ndefects:\n\n1. `vllm/models/deepseek_v32/common/kernels.py` checks owner-local KV slot\n   validity before query RMSNorm. A negative slot means another DCP rank owns\n   the token's KV entry; it does not remove this rank's query contribution.\n2. `vllm/models/deepseek_v32/attention.py` gathers query heads and combines\n   partial output/LSE only for PCP+DCP. Pure DCP therefore sends rank-local\n   query heads into attention over owner-local KV and never performs the\n   required cross-rank result merge.\n\nThe sparse-indexer DCP rank, world-size, and interleave plumbing mentioned in\nthe original report has landed independently on `main`; it is no longer part\nof this issue.\n\n## Observable regression\n\nA focused kernel reproducer uses an all-negative slot mapping, representing a\nDCP rank that owns no KV-cache slot for those tokens.\n\nExpected:\n\n- Query output matches reference RMSNorm.\n- MLA and indexer KV caches remain unchanged.\n- The Top-K buffer is cleared.\n\nActual on unpatched `main`:\n\n- Query output remains zero because the kernel returns before query RMSNorm.\n\nAt model level, @drakosha reproduced repeated-token output on unpatched\nGLM-5.2-NVFP4 with TP4/DCP4 and `fp8_ds_mla`. The patched path produced output\nbyte-identical to DCP1 for the tested deterministic greedy request.\n\n## Expected behavior\n\n- Query RMSNorm runs independently of owner-local KV-slot validity.\n- Negative slots continue to suppress MLA and indexer KV-cache writes.\n- Pure DCP gathers query heads before owner-local sparse attention.\n- Partial output/LSE is combined across DCP ranks through the existing DCP\n  manager.\n\n## Proposed fix and validation\n\nPR #50005 implements the fix and regression coverage.\n\nAt its current head:\n\n- The focused fused norm/RoPE suite passes all 67 tests on GB200.\n- All applicable changed-file pre-commit hooks pass.",
+    "author": "foraxe",
+    "state": "closed",
+    "labels": [
+      "deepseek",
+      "nvidia",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/50095",
+    "createdAt": "2026-07-28T06:38:50.000Z",
+    "updatedAt": "2026-09-02T01:34:09.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:97f0ef1fef6cc774f5bb445c1b5bad2456237d8d49647ae898934fa03376bb73",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-49539",
+    "nodeId": "PR_kwDOI7xefs71PG3V",
+    "repository": "vllm-project/vllm",
+    "number": 49539,
+    "type": "pr",
+    "title": "[Bugfix][Quantization] Keep unquantized routed experts unquantized under AutoGPTQ",
+    "bodyExcerpt": "# Issue #49141 — Fused_moe dimension mismatch for Qwen MXFP4 model on ROCm\n\n## 1. Root cause\n\nThe issue has two reports. Both are the same underlying defect: **a MoE layer whose\nexpert weights are stored *unquantized* in the checkpoint is still given a\n*quantized* MoE method**, so the allocated parameters do not match the checkpoint\ntensors.\n\nThe trigger in both cases is the MTP (speculative-decoding drafter) layer. AMD's\nQuark and community GPTQ quantizations of `Qwen3.5-35B-A3B` quantize the 40\ntransformer layers but leave the MTP layer's experts in bf16. The main model\nloads fine; only the drafter fails.\n\n* **Original MXFP4/Quark report** (`RuntimeError: The size of tensor a (256) must\n  match the size of tensor b (512) at non-singleton dimension 1`, in\n  `routed_experts.py::_load_w2`).\n  `hidden_size=2048`, `moe_intermediate_size=512`. Quark MXFP4 allocates\n  `w2_weight` as `(E, hidden, intermediate // 2)` = `(E, 2048, 256)` (fp4 packs\n  two values per byte), while the checkpoint's MTP `down_proj.weight` is the\n  unquantized `(2048, 512)`. `amd/Qwen3.5-35B-A3B-MXFP4`'s\n  `quantization_config.exclude` lists `mtp.layers.0.mlp.experts.<i>.{gate,up,down}_proj`\n  for all 256 experts, but `should_ignore_layer()` only compared the *parent*\n  layer name `mtp.layers.0.mlp.experts` against those *child* entries.\n  **This half is already fixed on main** by the `check_children` argument added\n  to `quark/utils.py::should_ignore_layer` (the amd/GLM-5.2-MXFP4 fix), which is\n  why a commenter on the issue could not reproduce it on main. No change needed.\n\n* **Still-broken GPTQ report** (issue comments:\n  `AttributeError: 'RoutedExperts' object has no attribute 'w2_weight'. Did you\n  mean: 'w2_qweight'?`, same drafter-loading path).\n  `AutoGPTQConfig` tracks which modules the checkpoint actually quantized in\n  `modules_in_block_to_quantize` — auto-derived in `maybe_update_config()` from\n  the safetensors dtypes, so it contains only the quantized layers' per-expert\n  module name",
+    "author": "pjdurden",
+    "state": "open",
+    "labels": [
+      "bug",
+      "rocm",
+      "needs-rebase",
+      "qwen",
+      "quantization"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49539",
+    "createdAt": "2026-07-23T06:59:04.000Z",
+    "updatedAt": "2026-09-02T00:14:43.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-02T04:54:35.079Z",
+    "contentHash": "sha256:278e2368a6f1fdef87e25451c5edb1258ec714d096f3da1d8d95505e67e992f8",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-49313",
+    "nodeId": "PR_kwDOI7xefs70SF_2",
+    "repository": "vllm-project/vllm",
+    "number": 49313,
+    "type": "pr",
+    "title": "[Quark] Online-requant unquantized layers via quantization_config ove…",
+    "bodyExcerpt": "## Purpose\r\n\r\nQuark mixed-precision checkpoints (e.g. GLM-5.2 MXFP4 MoE) ship some layers\r\nunquantized (the bf16 MLA / dense-MLP projections), so today those layers fall\r\nback to `UnquantizedLinearMethod` and there is no supported way to re-quantize\r\nthem without a fully pre-quantized checkpoint.\r\n\r\nThis PR adds an **opt-in** path: when the user passes a `--quantization-config`\r\noverlay (`QuantizationConfigArgs` with a `linear` spec + `ignore` patterns),\r\nQuark routes the checkpoint's unquantized `LinearBase` layers to the shared\r\nonline methods in `quantization/online` (e.g. FP8 ptpc), scoped by the\r\noverlay's own `ignore` patterns.\r\n\r\n- The quant logic stays in `quantization/online` — Quark only routes to it,\r\n  per the maintainer guidance on #31672 that online quant must not live inside\r\n  the loader.\r\n- Fully backward compatible: when no overlay is set, `_online_requant_overlay()`\r\n  returns `None` and default Quark behavior is unchanged.\r\n- `RoutedExperts` and any layer matched by `ignore` (`lm_head`, embeddings,\r\n  router `gate`, MoE experts, MLA `kv_b_proj`) are left untouched.\r\n\r\n## Test Plan\r\n\r\nServe a Quark MXFP4 mixed-precision checkpoint with and without the overlay.\r\n\r\n**Baseline (unchanged path, no overlay):**\r\n\r\n```bash\r\n# Baseline\r\nvllm serve <GLM-5.2-MXFP4> --tensor-parallel-size 4 --trust-remote-code \\\r\n  --kv-cache-dtype fp8\r\n\r\n# Online-requant the bf16 attn/dense projections to FP8 ptpc:\r\nvllm serve <GLM-5.2-MXFP4> --tensor-parallel-size 4 --trust-remote-code \\\r\n  --kv-cache-dtype fp8 \\\r\n  --quantization-config '{\"linear\":\"fp8_per_channel\",\"ignore\":[\"lm_head\",\"re:.*embed_tokens.*\",\"re:.*mlp\\\\.gate$\",\"re:.*expert.*\",\"re:.*kv_b_proj.*\"]}'\r\n\r\n#Unit test for the routing / ignore logic:\r\npytest tests/quantization/test_quark_online_overlay.py -q\r\n\r\n```\r\nVerify the overlay is picked up and correctness is preserved.\r\n\r\n## Test Result\r\nWith the overlay, the unquantized projections are routed to Fp8PtpcOnlineLinearMethod (confirmed via the \r\n```\r\nQuark onl",
+    "author": "fanxingran",
+    "state": "open",
+    "labels": [
+      "documentation",
+      "needs-rebase",
+      "quantization"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49313",
+    "createdAt": "2026-07-21T09:47:36.000Z",
+    "updatedAt": "2026-09-01T12:17:29.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-02T04:54:35.079Z",
+    "contentHash": "sha256:d73f419676f1fcbada484ede6cf6a9cd4d807256aefa73dadb696e3ef8ea331e",
+    "category": "DOCS",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-49239",
+    "nodeId": "I_kwDOI7xefs8AAAABJgdBew",
+    "repository": "vllm-project/vllm",
+    "number": 49239,
+    "type": "issue",
+    "title": "Malformed /v1/responses request returns a >100MB validation-error body (full input echoed per error)",
+    "bodyExcerpt": "### Summary\n\nA single malformed `POST /v1/responses` request can produce an **HTTP 400 response body over 100 MB**, because the request's entire `input` payload is echoed **once per validation error**. With an input that produces thousands of validation errors, the response size explodes far beyond the request size — a response-amplification / DoS vector against clients and any proxy in front of vLLM.\n\n### Environment\n\n- vLLM `0.23.1rc1.dev601+ga16dbd5b8` (nightly), OpenAI-compatible server, Responses API (`/v1/responses`).\n- Served model: `zai-org/GLM-5.2` (FP8), text-only. (The model is incidental — this is server-side request validation, not model behavior.)\n\n### What happens\n\nWhen an `/v1/responses` request has an `input` whose shape fails Pydantic validation (e.g. `input` given as a list of message-shaped objects where a field has the wrong type), the server returns a 400 whose body is a Pydantic validation-error dump. Each individual error entry **embeds the full offending `input` value** under its `input` key. For a request with N content items that each fail, you get ~N error entries, each carrying a copy of the whole payload.\n\nObserved in production: one such request produced **12,047 validation errors** and a **~114 MB response body** from a request of a few KB. Representative (truncated) error entry:\n\n```\n{\"type\": \"string_type\", \"loc\": (\"body\", \"input\", \"str\"), \"msg\": \"Input should be a valid string\", \"input\": [{\"type\": \"message\", \"role\": \"user\", \"content\": [{\"type\": \"i... (full input repeated) ...}]}\n```\n\n### Impact\n\n- Clients and proxies must buffer/parse a 100 MB+ body for what should be a small 400.\n- In our case the downstream proxy (LiteLLM) read and post-processed the entire body, stalling its event loop and inflating memory — a small malformed request cascaded into a service outage. (Filing the proxy-side hardening separately with that project.)\n\n### Expected behavior\n\nA validation error for a malformed request should be **bounded in size**. Optio",
+    "author": "rmonsurate",
+    "state": "closed",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/issues/49239",
+    "createdAt": "2026-07-20T20:51:01.000Z",
+    "updatedAt": "2026-09-01T06:51:18.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-02T04:54:35.079Z",
+    "contentHash": "sha256:f3a941b15f13f5c4de637cdb838bd9bf3b1fee93a6daf8c70707f5d171cc4a18",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-issue-47504",
     "nodeId": "I_kwDOI7xefs8AAAABHhnIvQ",
     "repository": "vllm-project/vllm",
@@ -498,31 +645,6 @@
     "firstSeenAt": "2026-08-21T03:17:31.073Z",
     "contentHash": "sha256:81efe20cc3e2f14485edde058e43cf1b15ee989f39e02a4def8027ed92533fdd",
     "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-issue-50095",
-    "nodeId": "I_kwDOI7xefs8AAAABKcR1dg",
-    "repository": "vllm-project/vllm",
-    "number": 50095,
-    "type": "issue",
-    "title": "[Bug][DCP] NVIDIA DeepSeek-V3.2 / GLM-5.2 fused attention bypasses DCP handling",
-    "bodyExcerpt": "# [Bug][DCP] DeepSeek-V3.2 / GLM-5.2 fused attention bypasses pure-DCP handling\n\n## Problem\n\nThe fused DeepSeek-V3.2 / GLM-5.2 path still has two pure-DCP correctness\ndefects:\n\n1. `vllm/models/deepseek_v32/common/kernels.py` checks owner-local KV slot\n   validity before query RMSNorm. A negative slot means another DCP rank owns\n   the token's KV entry; it does not remove this rank's query contribution.\n2. `vllm/models/deepseek_v32/attention.py` gathers query heads and combines\n   partial output/LSE only for PCP+DCP. Pure DCP therefore sends rank-local\n   query heads into attention over owner-local KV and never performs the\n   required cross-rank result merge.\n\nThe sparse-indexer DCP rank, world-size, and interleave plumbing mentioned in\nthe original report has landed independently on `main`; it is no longer part\nof this issue.\n\n## Observable regression\n\nA focused kernel reproducer uses an all-negative slot mapping, representing a\nDCP rank that owns no KV-cache slot for those tokens.\n\nExpected:\n\n- Query output matches reference RMSNorm.\n- MLA and indexer KV caches remain unchanged.\n- The Top-K buffer is cleared.\n\nActual on unpatched `main`:\n\n- Query output remains zero because the kernel returns before query RMSNorm.\n\nAt model level, @drakosha reproduced repeated-token output on unpatched\nGLM-5.2-NVFP4 with TP4/DCP4 and `fp8_ds_mla`. The patched path produced output\nbyte-identical to DCP1 for the tested deterministic greedy request.\n\n## Expected behavior\n\n- Query RMSNorm runs independently of owner-local KV-slot validity.\n- Negative slots continue to suppress MLA and indexer KV-cache writes.\n- Pure DCP gathers query heads before owner-local sparse attention.\n- Partial output/LSE is combined across DCP ranks through the existing DCP\n  manager.\n\n## Proposed fix and validation\n\nPR #50005 implements the fix and regression coverage.\n\nAt its current head:\n\n- The focused fused norm/RoPE suite passes all 67 tests on GB200.\n- All applicable changed-file pre-commit hooks pass.",
-    "author": "foraxe",
-    "state": "closed",
-    "labels": [
-      "deepseek",
-      "nvidia",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/50095",
-    "createdAt": "2026-07-28T06:38:50.000Z",
-    "updatedAt": "2026-08-31T07:32:29.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:70bb2cddda51405abbcf8ef08d204fb13dff7378b84ac68d4351de23012d8190",
-    "category": "BUG",
     "categorySource": "rules",
     "summary": null
   },
@@ -1415,55 +1537,6 @@
       "evidence": [
         "【标题】[Rust Frontend] Add hy_v3 reasoning parser",
         "【正文】This PR is the reasoning half of Hunyuan V3 support in the Rust frontend."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-49869",
-    "nodeId": "PR_kwDOI7xefs72gfM7",
-    "repository": "vllm-project/vllm",
-    "number": 49869,
-    "type": "pr",
-    "title": "[Model] Fix GLM-OCR MTP weight loading",
-    "bodyExcerpt": "### Summary\n\n- recognize `model.language_model.layers.*` as a valid MTP checkpoint prefix\n- add regression coverage for all supported MTP layer prefixes\n- preserve the existing behavior when the model has no MTP layers\n\n### Why\n\nFixes #49856.\n\nThe current `zai-org/GLM-OCR` checkpoint stores its appended MTP layer under\n`model.language_model.layers.16.*`. `GlmOcrMTP.load_weights()` calls\n`get_spec_layer_idx_from_weight_name()` before\n`_rewrite_spec_layer_name()` removes the `language_model` wrapper.\n\nThe classifier previously recognized only `model.layers.*` and `layers.*`.\nConsequently, every nested GLM-OCR MTP weight was classified as a non-MTP\nweight and skipped before its name could be rewritten, leaving eight draft\nparameters uninitialized.\n\nThis change teaches the common classifier about the nested language-model\nprefix. Keeping the handling in the classifier also makes `skip_spec_layers()`\napply the same classification when loading the target model.\n\n### Validation\n\nHardware and software:\n\n- NVIDIA RTX 4090\n- Python 3.12\n- PyTorch 2.13.0+cu130\n- original reproduction source commit `833483f3578a2c4766977d0fe431bd32a01ce250`\n- repeated post-fix validation on rebased PR head\n  `c23502a49f58533131b8baaf2a075197ba43984c`\n- `zai-org/GLM-OCR` revision\n  `ca5d8b3e287e52589e37c28385d9655ee4372f9d`\n\nBefore the change:\n\n```text\nValueError: Following weights were not initialized from checkpoint:\nmodel.layers.16.enorm.weight\nmodel.layers.16.hnorm.weight\nmodel.layers.16.eh_proj.weight\nmodel.layers.16.shared_head.norm.weight\nmodel.layers.16.mtp_block.input_layernorm.weight\nmodel.layers.16.mtp_block.post_attention_layernorm.weight\nmodel.layers.16.mtp_block.post_mlp_layernorm.weight\nmodel.layers.16.mtp_block.post_self_attn_layernorm.weight\n```\n\nAfter the change:\n\n- the MTP drafter loads successfully\n- `/health` becomes ready\n- an OpenAI-compatible multimodal request completes successfully\n- an image containing `vLLM MTP smoke test 49856` is transcribed exactly\n\nEnd-to-end serv",
-    "author": "jackLei0901",
-    "state": "open",
-    "labels": [
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/49869",
-    "createdAt": "2026-07-26T09:22:58.000Z",
-    "updatedAt": "2026-08-20T16:45:21.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:7d9828993376085667a381f2164ee00c56c4ffeb7460e4356e3236f3d48f806d",
-    "category": "FIX",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "修复 GLM-OCR MTP 权重加载",
-      "summaryZh": "修复公共权重分类器，使其识别 `model.language_model.layers.*` 前缀，并为所有支持的 MTP 层前缀增加回归覆盖；无 MTP 层时保持原有行为，解决GLM-OCR 检查点中的 `model.language_model.layers.16.*` MTP 权重未被识别为 MTP 权重，导致权重被跳过，八个 draft 参数未初始化并触发 ValueError；GLM-OCR MTP drafter 可成功加载，服务健康检查就绪，并可完成 OpenAI 兼容的多模态请求及图像文字转写",
-      "models": [
-        "GLM-OCR"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE",
-        "EVALUATION"
-      ],
-      "category": "FIX",
-      "severity": "HIGH",
-      "impactScopeZh": "影响使用嵌套 `language_model` 前缀的 GLM-OCR MTP 检查点加载。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】Fix GLM-OCR MTP weight loading",
-        "【正文】every nested GLM-OCR MTP weight was classified as a non-MTP weight and skipped"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
