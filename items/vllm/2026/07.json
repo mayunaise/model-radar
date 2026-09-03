@@ -1,52 +1,100 @@
 [
   {
+    "id": "vllm-pr-49026",
+    "nodeId": "PR_kwDOI7xefs7zTkb_",
+    "repository": "vllm-project/vllm",
+    "number": 49026,
+    "type": "pr",
+    "title": "[Bugfix][Platform] sm12x: add FLASHMLA_SPARSE (Triton sparse-MLA) to the MLA-sparse backend candidate list — flashinfer sparse_mla_sm120 livelocks on GB10",
+    "bodyExcerpt": "## Summary\nFlashInfer's sparse-MLA attention kernels (`sparse_mla_sm120`) livelock GB10 (sm_121) GPUs under cold-prefill load, wedging entire TP clusters with no host-side recovery path. This PR makes the Triton sparse-MLA route (`FLASHMLA_SPARSE`) selectable on sm12x, so affected deployments can bypass the livelocking kernels with a single backend flag. The root-cause evidence (cuda-gdb on a live wedge), validation receipts (560+ clean sessions), and full write-up live in [the evidence repo](https://github.com/marksunner/glm52-dgx-spark-deadlock-evidence) and [RFC #48720](https://github.com/vllm-project/vllm/issues/48720).\n\nOn capability-12 devices the MLA-sparse candidate list currently resolves to `[TRITON_MLA, FLASHINFER_MLA_SPARSE_SM120]` (`vllm/platforms/cuda.py:130` in 0.23.1rc1.dev893+gd3a66aa7e); for sparse-MLA models (e.g. GLM-5.2 / DeepSeek-lineage MTP configs) the flashinfer sm120 path is the only viable pick — boot log receipt: `Using FLASHINFER_MLA_SPARSE_SM120 … out of potential backends: ['FLASHINFER_MLA_SPARSE_SM120']` — so affected hardware has no escape hatch.\n\nEnum-to-implementation map, for reviewers cold to the sparse-MLA backend zoo: `FLASHINFER_MLA_SPARSE_SM120` is the flashinfer `sparse_mla_sm120` CUDA kernel family (the livelocking one). `FLASHMLA_SPARSE` upstream binds the native FlashMLA CUDA extension (`vllm._flashmla_C`), which does not build/exist on sm12x; on our deployment the sm12x Triton drop-ins rebind its two sparse ops (`flash_mla_sparse_fwd`, `flash_mla_with_kvcache`) to portable Triton implementations — the Triton kernels come verbatim from the deepseek_v4 path of jasl's vLLM fork (credit @jasl) — so selecting `FLASHMLA_SPARSE` routes to Triton there. `TRITON_MLA` is the dense-MLA Triton backend, not a sparse-MLA implementation, so it is not viable for this model class — which is why the flashinfer path is today's sole effective candidate.\n\n**Ask:** make the Triton sparse-MLA implementation (`FLASHMLA_SPARSE` backend enum) a m",
+    "author": "marksunner",
+    "state": "open",
+    "labels": [
+      "bug",
+      "needs-rebase",
+      "v1",
+      "deepseek"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49026",
+    "createdAt": "2026-07-18T10:27:28.000Z",
+    "updatedAt": "2026-09-02T09:05:57.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-03T04:51:51.184Z",
+    "contentHash": "sha256:e3b8c52b8731acb712599a77b47f85afb68a5a2c3454fe53eedfb07d083d8ba5",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-49856",
+    "nodeId": "I_kwDOI7xefs8AAAABKMs8Kw",
+    "repository": "vllm-project/vllm",
+    "number": 49856,
+    "type": "issue",
+    "title": "[Bug]: [MTP] ValueError when loading zai-org/GLM-OCR with MTP speculative decoding (model.layers.16.mtp_block uninitialized)",
+    "bodyExcerpt": "### Your current environment\n\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 26.04 LTS (x86_64)\nGCC version                  : (conda-forge gcc 14.3.0-20) 14.3.0\nClang version                : Could not collect\nCMake version                : Could not collect\nLibc version                 : glibc-2.43\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.11.0+cu130\nIs debug build               : False\nCUDA used to build PyTorch   : 13.0\nROCM used to build PyTorch   : N/A\nXPU used to build PyTorch    : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0] (64-bit runtime)\nPython platform              : Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.43\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 13.3.73\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration : GPU 0: NVIDIA GeForce RTX 4070 Ti SUPER\nNvidia driver version        : Could not collect\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           39 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  28\nOn-line CPU(s) list:                     0-27\nVendor ID:                               GenuineIntel\nModel name:                              Intel(R) Core(TM) i7-14700KF\nCPU family:                              6\nModel: ",
+    "author": "k6G52m4Dz75W",
+    "state": "closed",
+    "labels": [
+      "bug"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/49856",
+    "createdAt": "2026-07-26T06:09:16.000Z",
+    "updatedAt": "2026-09-02T08:38:38.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:a589c5ae51ab4708c4cee2feeea6428ec3db6623148f9bd21801e1bf4557339d",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-49869",
     "nodeId": "PR_kwDOI7xefs72gfM7",
     "repository": "vllm-project/vllm",
     "number": 49869,
     "type": "pr",
     "title": "[Model] Fix GLM-OCR MTP weight loading",
-    "bodyExcerpt": "### Summary\n\n- recognize `model.language_model.layers.*` as a valid MTP checkpoint prefix\n- add regression coverage for all supported MTP layer prefixes\n- preserve the existing behavior when the model has no MTP layers\n\n### Why\n\nFixes #49856.\n\nThe current `zai-org/GLM-OCR` checkpoint stores its appended MTP layer under\n`model.language_model.layers.16.*`. `GlmOcrMTP.load_weights()` calls\n`get_spec_layer_idx_from_weight_name()` before\n`_rewrite_spec_layer_name()` removes the `language_model` wrapper.\n\nThe classifier previously recognized only `model.layers.*` and `layers.*`.\nConsequently, every nested GLM-OCR MTP weight was classified as a non-MTP\nweight and skipped before its name could be rewritten, leaving eight draft\nparameters uninitialized.\n\nThis change teaches the common classifier about the nested language-model\nprefix. Keeping the handling in the classifier also makes `skip_spec_layers()`\napply the same classification when loading the target model.\n\n### Validation\n\nHardware and software:\n\n- NVIDIA RTX 4090\n- Python 3.12\n- PyTorch 2.13.0+cu130\n- original reproduction source commit `833483f3578a2c4766977d0fe431bd32a01ce250`\n- repeated post-fix validation on rebased PR head\n  `c23502a49f58533131b8baaf2a075197ba43984c`\n- `zai-org/GLM-OCR` revision\n  `ca5d8b3e287e52589e37c28385d9655ee4372f9d`\n\nBefore the change:\n\n```text\nValueError: Following weights were not initialized from checkpoint:\nmodel.layers.16.enorm.weight\nmodel.layers.16.hnorm.weight\nmodel.layers.16.eh_proj.weight\nmodel.layers.16.shared_head.norm.weight\nmodel.layers.16.mtp_block.input_layernorm.weight\nmodel.layers.16.mtp_block.post_attention_layernorm.weight\nmodel.layers.16.mtp_block.post_mlp_layernorm.weight\nmodel.layers.16.mtp_block.post_self_attn_layernorm.weight\n```\n\nAfter the change:\n\n- the MTP drafter loads successfully\n- `/health` becomes ready\n- an OpenAI-compatible multimodal request completes successfully\n- an image containing `vLLM MTP smoke test 49856` is transcribed exactly\n\nEnd-to-end serv",
+    "bodyExcerpt": "### Summary\n\n- recognize `model.language_model.layers.*` as a valid MTP checkpoint prefix\n- exercise GLM-OCR MTP through the online model-initialization registry\n- keep MTP detection shared by model loading and `skip_spec_layers()`\n\n### Why\n\nFixes #49856.\n\nThe current `zai-org/GLM-OCR` checkpoint stores its appended MTP layer under\n`model.language_model.layers.16.*`. `GlmOcrMTP.load_weights()` calls\n`get_spec_layer_idx_from_weight_name()` before\n`_rewrite_spec_layer_name()` removes the `language_model` wrapper.\n\nThe classifier previously recognized only `model.layers.*` and `layers.*`.\nConsequently, every nested GLM-OCR MTP weight was classified as a non-MTP\nweight and skipped before its name could be rewritten, leaving eight draft\nparameters uninitialized.\n\nThis change teaches the common classifier about the nested language-model\nprefix. Keeping the handling in the classifier also makes `skip_spec_layers()`\napply the same classification when loading the target model.\n\n### Validation\n\nHardware and software:\n\n- NVIDIA RTX 4090\n- Python 3.12\n- PyTorch 2.13.0+cu130\n- original reproduction source commit `833483f3578a2c4766977d0fe431bd32a01ce250`\n- repeated post-fix validation on rebased production-fix head\n  `c23502a49f58533131b8baaf2a075197ba43984c`\n- review update head `9d9bdb494aaac40e043374aa50619b14ee524dce`\n- `zai-org/GLM-OCR` revision\n  `ca5d8b3e287e52589e37c28385d9655ee4372f9d`\n\nBefore the change:\n\n```text\nValueError: Following weights were not initialized from checkpoint:\nmodel.layers.16.enorm.weight\nmodel.layers.16.hnorm.weight\nmodel.layers.16.eh_proj.weight\nmodel.layers.16.shared_head.norm.weight\nmodel.layers.16.mtp_block.input_layernorm.weight\nmodel.layers.16.mtp_block.post_attention_layernorm.weight\nmodel.layers.16.mtp_block.post_mlp_layernorm.weight\nmodel.layers.16.mtp_block.post_self_attn_layernorm.weight\n```\n\nAfter the change:\n\n- the MTP drafter loads successfully\n- `/health` becomes ready\n- an OpenAI-compatible multimodal request completes successfully\n",
     "author": "jackLei0901",
-    "state": "open",
+    "state": "merged",
     "labels": [
+      "ready",
       "glm"
     ],
     "url": "https://github.com/vllm-project/vllm/pull/49869",
     "createdAt": "2026-07-26T09:22:58.000Z",
-    "updatedAt": "2026-09-02T03:51:23.000Z",
+    "updatedAt": "2026-09-02T08:38:37.000Z",
+    "mergedAt": "2026-09-02T08:38:36.000Z",
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:32dfcb1bd7ef5178cdf813eca28591c0c2b7605d309a069e54e3113e7e178d79",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-48095",
+    "nodeId": "I_kwDOI7xefs8AAAABILuLaA",
+    "repository": "vllm-project/vllm",
+    "number": 48095,
+    "type": "issue",
+    "title": "[Bug]: GLM 5.2 forced toolcall left unparsed in content  (glm 47 tool parser)",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nvLLM Version                 : 0.24.0\n (image vllm/vllm-openai@sha256:251eba5cc7c12fed0b75da22a9240e582b1c9e39f6fbc064f86781b963bd814f)\n  Model                        : zai-org/GLM-5.2-FP8\n  Tool-call parser             : glm47\n  Reasoning parser             : glm45\n  GPU Topology (TP)            : tensor-parallel-size=8\n\nargs:\n            - \"zai-org/GLM-5.2-FP8\"\n            - \"--tensor-parallel-size=8\"\n            - \"--gpu-memory-utilization=0.90\"\n            - \"--kv-cache-dtype=fp8\"\n            - \"--kv-cache-metrics\"\n            - \"--max-num-seqs=32\"\n            - \"--max-model-len=200000\"\n            - \"--max-num-batched-tokens=8192\"\n            - \"--enable-prefix-caching\"\n            - \"--enable-prompt-tokens-details\"\n            - \"--tool-call-parser=glm47\"\n            - \"--enable-chunked-prefill\"\n            - \"--reasoning-parser=glm45\"\n            - \"--enable-auto-tool-choice\"\n            - \"--speculative-config.method=mtp\"\n            - \"--speculative-config.num_speculative_tokens=5\"\n\nRelevant env:\n    VLLM_ENFORCE_STRICT_TOOL_CALLING=0   ← set manually; bug persists with it 0 AND unset\n```\n\n</details>\n\n\n### 🐛 Describe the bug\n\nWhen sending chat/completions request to GLM 5.2 with tool_choice: required, the parsing of the tool call fails, and the tool call is instead written to the output content.\n\n```sh\n❯ curl -sS \"$BASE_URL/v1/chat/completions\" \\\n  -H \"Authorization: Bearer $API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"model\": \"glm-5-2-fp8\",\n    \"messages\": [\n      {\"role\": \"system\", \"content\": \"You are a coding agent. Use the available tools when appropriate.\"},\n      {\"role\": \"user\", \"content\": \"Run `git status` in /tmp/repo.\"}\n    ],\n    \"tools\": [{\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"bash\",\n        \"description\": \"Run a bash command in the user'\\''s shell.\",\n        \"parameters\": {\n          ",
+    "author": "william-rom",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/48095",
+    "createdAt": "2026-07-09T07:21:40.000Z",
+    "updatedAt": "2026-09-02T07:32:30.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:7a8432b019e3035c02a386b49b76b607f10620682df9be4a7d26afeb5185ed5a",
-    "category": "FIX",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "修复 GLM-OCR MTP 权重加载",
-      "summaryZh": "修复公共权重分类器，使其识别 `model.language_model.layers.*` 前缀，并为所有支持的 MTP 层前缀增加回归覆盖；无 MTP 层时保持原有行为，解决GLM-OCR 检查点中的 `model.language_model.layers.16.*` MTP 权重未被识别为 MTP 权重，导致权重被跳过，八个 draft 参数未初始化并触发 ValueError；GLM-OCR MTP drafter 可成功加载，服务健康检查就绪，并可完成 OpenAI 兼容的多模态请求及图像文字转写",
-      "models": [
-        "GLM-OCR"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE",
-        "EVALUATION"
-      ],
-      "category": "FIX",
-      "severity": "HIGH",
-      "impactScopeZh": "影响使用嵌套 `language_model` 前缀的 GLM-OCR MTP 检查点加载。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】Fix GLM-OCR MTP weight loading",
-        "【正文】every nested GLM-OCR MTP weight was classified as a non-MTP weight and skipped"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
+    "contentHash": "sha256:fd78747d06f7972a5e063d0b8970a19eb22175ba1e8d09dc19d1f92704f145c9",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
   },
   {
     "id": "vllm-issue-50095",
@@ -65,10 +113,10 @@
     ],
     "url": "https://github.com/vllm-project/vllm/issues/50095",
     "createdAt": "2026-07-28T06:38:50.000Z",
-    "updatedAt": "2026-09-02T01:34:09.000Z",
+    "updatedAt": "2026-09-02T07:05:50.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:97f0ef1fef6cc774f5bb445c1b5bad2456237d8d49647ae898934fa03376bb73",
+    "contentHash": "sha256:31b405b2a66c74c6d524c6e003d85a24b8148dbc72f29a27239da1df242a13d0",
     "category": "BUG",
     "categorySource": "rules",
     "summary": null
@@ -189,55 +237,6 @@
       "evidence": [
         "【标题】[Bug]: GLM tool_call required + streaming causes JSON repetition",
         "【正文】On vllm version v0.24.0, calling GLM-5.2 or GLM-4.5 with tool_choice==required, and stream==True causes the output to 反复"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-48095",
-    "nodeId": "I_kwDOI7xefs8AAAABILuLaA",
-    "repository": "vllm-project/vllm",
-    "number": 48095,
-    "type": "issue",
-    "title": "[Bug]: GLM 5.2 forced toolcall left unparsed in content  (glm 47 tool parser)",
-    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nvLLM Version                 : 0.24.0\n (image vllm/vllm-openai@sha256:251eba5cc7c12fed0b75da22a9240e582b1c9e39f6fbc064f86781b963bd814f)\n  Model                        : zai-org/GLM-5.2-FP8\n  Tool-call parser             : glm47\n  Reasoning parser             : glm45\n  GPU Topology (TP)            : tensor-parallel-size=8\n\nargs:\n            - \"zai-org/GLM-5.2-FP8\"\n            - \"--tensor-parallel-size=8\"\n            - \"--gpu-memory-utilization=0.90\"\n            - \"--kv-cache-dtype=fp8\"\n            - \"--kv-cache-metrics\"\n            - \"--max-num-seqs=32\"\n            - \"--max-model-len=200000\"\n            - \"--max-num-batched-tokens=8192\"\n            - \"--enable-prefix-caching\"\n            - \"--enable-prompt-tokens-details\"\n            - \"--tool-call-parser=glm47\"\n            - \"--enable-chunked-prefill\"\n            - \"--reasoning-parser=glm45\"\n            - \"--enable-auto-tool-choice\"\n            - \"--speculative-config.method=mtp\"\n            - \"--speculative-config.num_speculative_tokens=5\"\n\nRelevant env:\n    VLLM_ENFORCE_STRICT_TOOL_CALLING=0   ← set manually; bug persists with it 0 AND unset\n```\n\n</details>\n\n\n### 🐛 Describe the bug\n\nWhen sending chat/completions request to GLM 5.2 with tool_choice: required, the parsing of the tool call fails, and the tool call is instead written to the output content.\n\n```sh\n❯ curl -sS \"$BASE_URL/v1/chat/completions\" \\\n  -H \"Authorization: Bearer $API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"model\": \"glm-5-2-fp8\",\n    \"messages\": [\n      {\"role\": \"system\", \"content\": \"You are a coding agent. Use the available tools when appropriate.\"},\n      {\"role\": \"user\", \"content\": \"Run `git status` in /tmp/repo.\"}\n    ],\n    \"tools\": [{\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"bash\",\n        \"description\": \"Run a bash command in the user'\\''s shell.\",\n        \"parameters\": {\n          ",
-    "author": "william-rom",
-    "state": "open",
-    "labels": [
-      "bug",
-      "tool-calling"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/48095",
-    "createdAt": "2026-07-09T07:21:40.000Z",
-    "updatedAt": "2026-08-31T23:39:38.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:a7e875ce947708d990246e182a3886a618d0aa457e65c9f823e1c211524405a2",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5.2 强制工具调用解析失败",
-      "summaryZh": "vLLM 0.24.0 中 GLM-5.2-FP8 的 glm47 工具调用解析：向 GLM-5.2 发送 tool_choice 为 required 的聊天补全请求时，工具调用解析失败，工具调用内容被写入输出 content，而不是作为工具调用返回；问题在 VLLM_ENFORCE_STRICT_TOOL_CALLING 未设置或设为 0 时均可复现",
-      "models": [
-        "GLM-5.2-FP8"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 vLLM 0.24.0 使用 glm47 工具调用解析器为 GLM-5.2 提供强制工具调用的聊天补全场景。",
-      "attention": "IMMEDIATE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】GLM 5.2 forced toolcall left unparsed in content",
-        "【正文】When sending chat/completions request to GLM 5.2 with tool_choice: required, the parsing of the tool call fails, and the"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
@@ -1537,54 +1536,6 @@
       "evidence": [
         "【标题】[Rust Frontend] Add hy_v3 reasoning parser",
         "【正文】This PR is the reasoning half of Hunyuan V3 support in the Rust frontend."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-49856",
-    "nodeId": "I_kwDOI7xefs8AAAABKMs8Kw",
-    "repository": "vllm-project/vllm",
-    "number": 49856,
-    "type": "issue",
-    "title": "[Bug]: [MTP] ValueError when loading zai-org/GLM-OCR with MTP speculative decoding (model.layers.16.mtp_block uninitialized)",
-    "bodyExcerpt": "### Your current environment\n\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 26.04 LTS (x86_64)\nGCC version                  : (conda-forge gcc 14.3.0-20) 14.3.0\nClang version                : Could not collect\nCMake version                : Could not collect\nLibc version                 : glibc-2.43\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.11.0+cu130\nIs debug build               : False\nCUDA used to build PyTorch   : 13.0\nROCM used to build PyTorch   : N/A\nXPU used to build PyTorch    : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0] (64-bit runtime)\nPython platform              : Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.43\n\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 13.3.73\nCUDA_MODULE_LOADING set to   :\nGPU models and configuration : GPU 0: NVIDIA GeForce RTX 4070 Ti SUPER\nNvidia driver version        : Could not collect\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           39 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  28\nOn-line CPU(s) list:                     0-27\nVendor ID:                               GenuineIntel\nModel name:                              Intel(R) Core(TM) i7-14700KF\nCPU family:                              6\nModel: ",
-    "author": "k6G52m4Dz75W",
-    "state": "open",
-    "labels": [
-      "bug"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/49856",
-    "createdAt": "2026-07-26T06:09:16.000Z",
-    "updatedAt": "2026-08-20T02:47:56.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:9f493f5fac0fc6cb7847bd5bd6505940e7d8352c6bf3bb31e4b658eebe788c00",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-OCR 启用 MTP 加载时报 ValueError",
-      "summaryZh": "zai-org/GLM-OCR 的 MTP speculative decoding 加载：启用 MTP speculative decoding 加载 zai-org/GLM-OCR 时发生 ValueError，提示 model.layers.16.mtp_block 未初始化",
-      "models": [
-        "zai-org/GLM-OCR"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "影响在 NVIDIA GeForce RTX 4070 Ti SUPER 上使用 MTP speculative decoding 加载 GLM-OCR 的场景。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】ValueError when loading zai-org/GLM-OCR with MTP speculative decoding (model.layers.16.mtp_block uninitialized)",
-        "【正文】GPU models and configuration : GPU 0: NVIDIA GeForce RTX 4070 Ti SUPER"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",

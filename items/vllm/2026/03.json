@@ -1,5 +1,59 @@
 [
   {
+    "id": "vllm-pr-38476",
+    "nodeId": "PR_kwDOI7xefs7OY_Uk",
+    "repository": "vllm-project/vllm",
+    "number": 38476,
+    "type": "pr",
+    "title": "[Feature] TRITON_MLA_SPARSE backend for SM8x/11x/12x DSA Sparse MLA Support",
+    "bodyExcerpt": "## Purpose\r\n\r\nCloses #38006. Enables sparse MLA models (GLM-5, DeepSeek-V3.2) on SM80 (A100/A800) and SM121 (GB10/DGX Spark), where DeepGEMM / FlashMLA-Sparse / FlashInfer-MLA-Sparse are unavailable.\r\n\r\n## Changes\r\n\r\n1. **Dispatch guard.** `is_deep_gemm_supported()` (SM90+ check) replaces `has_deep_gemm()` in `sparse_attn_indexer.py` / `indexer.py`. Stops DeepGEMM kernels from being invoked on SM80/SM121.\r\n2. **Triton `fp8_mqa_logits` for the indexer.** `mqa_logits_triton.py` reproduces DeepGEMM's prefill + paged MQA logits. Prefill takes bf16 q/k (pre-decoded from FP8 in the Python wrapper) and feeds a straight `tl.dot`; paged decode keeps a 256-entry bf16 LUT for in-kernel FP8 decode. K-side scale applied to the fp32 dot output, per-row K-tile early-exit on the chunked-prefill path.\r\n3. **`TRITON_MLA_SPARSE` backend.** `triton_mla_sparse_kernel.py` adds a split-KV decode with N-way online-softmax merge plus a single-pass fast path. Autotune is warmed at init using indexer-derived `(n_head, head_dim)`. Masked-out sentinel is `-1e30` to avoid `NaN` from `(-inf) − (-inf)` on all-masked tiles.\r\n4. **Cudagraph support.** `TritonMLASparseMetadataBuilder` advertises `AttentionCGSupport.UNIFORM_BATCH`; flips A100 TP=8 back to `FULL_AND_PIECEWISE`.\r\n5. **MXFP4 link stubs.** `mxfp4_experts_quant` / `silu_and_mul_mxfp4_experts_quant` stubs in `nvfp4_quant_entry.cu`. Real impls are SM10.x-only in CMake but `torch_bindings.cpp` references them unconditionally, which breaks source builds on SM 8.x.\r\n\r\n## Benchmarks\r\n\r\n8×A100 SXM TP=8, `lukealonso/GLM-5.1-NVFP4`, single prompt, decode 200 tokens. `cold` = first request on a fresh prompt; `warm` = repeat (prefix cache hit):\r\n\r\n| context | prefix | TTFT | TPOT median | output tok/s |\r\n|---|---|---|---|---|\r\n| short (1,744 in)   | cold | 0.72 s  | 21.7 ms | 39.7 |\r\n| short (1,744 in)   | warm | 0.18 s  | 21.8 ms | 44.3 |\r\n| mid   (65,536 in)  | cold | 37.0 s  | 24.3 ms | 4.8  |\r\n| long  (127,744 in) | cold | 98.1 s  | 25.2 ms | 1.9",
+    "author": "haosdent",
+    "state": "open",
+    "labels": [
+      "documentation",
+      "rocm",
+      "intel-gpu",
+      "needs-rebase",
+      "v1",
+      "nvidia"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/38476",
+    "createdAt": "2026-03-29T15:23:23.000Z",
+    "updatedAt": "2026-09-02T11:26:51.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-03T04:51:51.184Z",
+    "contentHash": "sha256:bf3d6a659d1f04f3734bb186a1d8e03be65177723fe096a0daec3c80b96a0f74",
+    "category": "DOCS",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-38175",
+    "nodeId": "I_kwDOI7xefs72wmqE",
+    "repository": "vllm-project/vllm",
+    "number": 38175,
+    "type": "issue",
+    "title": "[RFC]: Support ViT Full CUDA Graph (Tracker)",
+    "bodyExcerpt": "### Motivation.\n\nMultimodal large language models (e.g., Qwen3-VL, Qwen3.5, GLM-V, Kimi K2.5) rely on a Vision Transformer (ViT) encoder to process visual inputs before feeding them into the language model backbone. In production serving scenarios, the ViT forward pass involves launching a large number of small CUDA kernels — including patch embedding, layer normalization, multi-head self-attention, and MLP projections — each of which incurs non-trivial kernel launch overhead on the host side.\n\nCurrently, vLLM supports CUDA graph capture for the decoder (LLM) portion of the model, which has proven effective at reducing kernel launch costs and improving throughput. However, the ViT encoder is still executed eagerly, meaning every forward pass re-launches all kernels from scratch. Extending full CUDA graph support to the ViT encoder would allow the entire encoder forward pass to be captured and replayed as a single graph, eliminating per-kernel launch overhead and enabling more consistent, low-latency inference for multimodal models.\n\n### Proposed Change.\n\n**Model Integration:**\n- [x] https://github.com/vllm-project/vllm/pull/35963 @b-mu \n- [x] https://github.com/vllm-project/vllm/pull/41736 @johncalesp \n- [x] https://github.com/vllm-project/vllm/pull/40830 @johncalesp\n- [x] https://github.com/vllm-project/vllm/pull/38061 @shen-shanshan \n- [x] https://github.com/vllm-project/vllm/pull/42151 @shen-shanshan \n- [x] https://github.com/vllm-project/vllm/pull/44720 @harsha20032020 \n- [x] https://github.com/vllm-project/vllm/pull/42224 @JisoLya  \n- [x] https://github.com/vllm-project/vllm/pull/40576 @grYe99 \n- [x] https://github.com/vllm-project/vllm/pull/40660 @allgather \n- [x] https://github.com/vllm-project/vllm/pull/41759 @oguzhankir \n- [x] https://github.com/vllm-project/vllm/pull/41992 @oguzhankir \n- [x] https://github.com/vllm-project/vllm/pull/50929 @lk-chen \n- [ ] https://github.com/vllm-project/vllm/pull/42785 @YunzhuLu \n- [x] https://github.com/vllm-project/vllm/p",
+    "author": "shen-shanshan",
+    "state": "open",
+    "labels": [
+      "help wanted",
+      "RFC",
+      "multi-modality",
+      "kimi"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/38175",
+    "createdAt": "2026-03-26T02:22:01.000Z",
+    "updatedAt": "2026-09-02T08:41:41.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-02T04:54:35.079Z",
+    "contentHash": "sha256:4a3dabeb675eb6f361846cc1ea982a16199953f7ab18526fda4d991064ad4503",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-37317",
     "nodeId": "PR_kwDOI7xefs7LRiDX",
     "repository": "vllm-project/vllm",
@@ -74,32 +128,6 @@
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:17:54.490Z"
     }
-  },
-  {
-    "id": "vllm-issue-38175",
-    "nodeId": "I_kwDOI7xefs72wmqE",
-    "repository": "vllm-project/vllm",
-    "number": 38175,
-    "type": "issue",
-    "title": "[RFC]: Support ViT Full CUDA Graph (Tracker)",
-    "bodyExcerpt": "### Motivation.\n\nMultimodal large language models (e.g., Qwen3-VL, Qwen3.5, GLM-V, Kimi K2.5) rely on a Vision Transformer (ViT) encoder to process visual inputs before feeding them into the language model backbone. In production serving scenarios, the ViT forward pass involves launching a large number of small CUDA kernels — including patch embedding, layer normalization, multi-head self-attention, and MLP projections — each of which incurs non-trivial kernel launch overhead on the host side.\n\nCurrently, vLLM supports CUDA graph capture for the decoder (LLM) portion of the model, which has proven effective at reducing kernel launch costs and improving throughput. However, the ViT encoder is still executed eagerly, meaning every forward pass re-launches all kernels from scratch. Extending full CUDA graph support to the ViT encoder would allow the entire encoder forward pass to be captured and replayed as a single graph, eliminating per-kernel launch overhead and enabling more consistent, low-latency inference for multimodal models.\n\n### Proposed Change.\n\n**Model Integration:**\n- [x] https://github.com/vllm-project/vllm/pull/35963 @b-mu \n- [x] https://github.com/vllm-project/vllm/pull/41736 @johncalesp \n- [x] https://github.com/vllm-project/vllm/pull/40830 @johncalesp\n- [x] https://github.com/vllm-project/vllm/pull/38061 @shen-shanshan \n- [x] https://github.com/vllm-project/vllm/pull/42151 @shen-shanshan \n- [x] https://github.com/vllm-project/vllm/pull/44720 @harsha20032020 \n- [x] https://github.com/vllm-project/vllm/pull/42224 @JisoLya  \n- [x] https://github.com/vllm-project/vllm/pull/40576 @grYe99 \n- [x] https://github.com/vllm-project/vllm/pull/40660 @allgather \n- [x] https://github.com/vllm-project/vllm/pull/41759 @oguzhankir \n- [x] https://github.com/vllm-project/vllm/pull/41992 @oguzhankir \n- [x] https://github.com/vllm-project/vllm/pull/50929 @lk-chen \n- [ ] https://github.com/vllm-project/vllm/pull/42785 @YunzhuLu \n- [x] https://github.com/vllm-project/vllm/p",
-    "author": "shen-shanshan",
-    "state": "open",
-    "labels": [
-      "help wanted",
-      "RFC",
-      "multi-modality",
-      "kimi"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/38175",
-    "createdAt": "2026-03-26T02:22:01.000Z",
-    "updatedAt": "2026-09-01T10:18:33.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-02T04:54:35.079Z",
-    "contentHash": "sha256:2e16ba7a70489769471569981f1baa143d0f44c35e55a0f5d4691044f3498c8f",
-    "category": "NEW_SUPPORT",
-    "categorySource": "rules",
-    "summary": null
   },
   {
     "id": "vllm-pr-36920",
