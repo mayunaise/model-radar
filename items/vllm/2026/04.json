@@ -1,5 +1,54 @@
 [
   {
+    "id": "vllm-pr-39001",
+    "nodeId": "PR_kwDOI7xefs7P_mq4",
+    "repository": "vllm-project/vllm",
+    "number": 39001,
+    "type": "pr",
+    "title": "[ROCm] Support unlimited sequence lengths via multi-pass reduction",
+    "bodyExcerpt": "At present, on ROCm for certain models including GLM-4.7, vLLM has a choice between two attention implementations from vllm/v1/attention/ops/chunked_prefill_paged_decode.py. One is a very slow reference Triton kernel and the other is a  hand-coded op. The custom op only supports context length up to 131072 tokens, which means that, unless vLLM is set to eager mode, it'll only be used if max_seq_len is <131072 (otherwise, since actual context length is unknown at graph capture time, it defaults to Triton for all context lengths).\r\n\r\nThis patch drops the 131072 token cap and adds a multi-pass mode to support  unlimited max_seq_len. It also adds unit tests to cover this scenario.\r\n\r\nThis results in a drastic increase in token generation throughput on ROCm for GLM-4.7 for max_seq_len>131072.\r\n\r\n<!-- obsidian -->\r\nThroughput, token/s, 4x MI325x\r\nContext | max_model_len | PR - throughput | Baseline - throughput\r\n-- | -- | -- | --\r\n65536 | 75536 | 57.6 | 57.6\r\n100000 | 110000 | 52.6 | 52.5\r\n150000 | 160000 | 45.1 | 0.84\r\n\r\n\r\n<p><code>VLLM_ROCM_USE_AITER=1 VLLM_ROCM_USE_AITER_MLA=1 VLLM_ROCM_USE_AITER_MOE=1 HIP_VISIBLE_DEVICES=0,1,2,3 python3 ./long_bench.py /data/GLM-4.7/</code><br>\r\n\t</p>",
+    "author": "ekuznetsov139",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "v1"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/39001",
+    "createdAt": "2026-04-04T22:12:20.000Z",
+    "updatedAt": "2026-09-04T04:00:15.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:4921f876c0100b71f84fdbbe8456f9cda3f1eb2f54a9051d67adc946304ec4c3",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "ROCm 支持无限序列长度多遍归约",
+      "summaryZh": "新增多遍归约模式，移除 131072 token 的上下文长度上限，并增加覆盖该场景的单元测试，解决ROCm 自定义注意力算子仅支持不超过 131072 token 的上下文长度；超过该长度时会退回速度较慢的 Triton 参考内核，导致 GLM-4.7 生成吞吐显著下降；在 4 张 MI325x 上，GLM-4.7、上下文长度 150000 时吞吐从基线 0.84 token/s 提升至 45.1 token/s；不超过 131072 token 时吞吐基本不变",
+      "models": [
+        "GLM-4.7"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 ROCm 后端使用 vLLM v1 注意力实现的长上下文推理，尤其是 max_seq_len 大于 131072 token 的场景。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】[ROCm] Support unlimited sequence lengths via multi-pass reduction",
+        "【正文】This patch drops the 131072 token cap and adds a multi-pass mode to support unlimited max_seq_len."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-pr-39168",
     "nodeId": "PR_kwDOI7xefs7QcCsf",
     "repository": "vllm-project/vllm",
@@ -238,55 +287,6 @@
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-25T03:09:28.557Z"
-    }
-  },
-  {
-    "id": "vllm-pr-39001",
-    "nodeId": "PR_kwDOI7xefs7P_mq4",
-    "repository": "vllm-project/vllm",
-    "number": 39001,
-    "type": "pr",
-    "title": "[ROCm] Support unlimited sequence lengths via multi-pass reduction",
-    "bodyExcerpt": "At present, on ROCm for certain models including GLM-4.7, vLLM has a choice between two attention implementations from vllm/v1/attention/ops/chunked_prefill_paged_decode.py. One is a very slow reference Triton kernel and the other is a  hand-coded op. The custom op only supports context length up to 131072 tokens, which means that, unless vLLM is set to eager mode, it'll only be used if max_seq_len is <131072 (otherwise, since actual context length is unknown at graph capture time, it defaults to Triton for all context lengths).\r\n\r\nThis patch drops the 131072 token cap and adds a multi-pass mode to support  unlimited max_seq_len. It also adds unit tests to cover this scenario.\r\n\r\nThis results in a drastic increase in token generation throughput on ROCm for GLM-4.7 for max_seq_len>131072.\r\n\r\n<!-- obsidian -->\r\nThroughput, token/s, 4x MI325x\r\nContext | max_model_len | PR - throughput | Baseline - throughput\r\n-- | -- | -- | --\r\n65536 | 75536 | 57.6 | 57.6\r\n100000 | 110000 | 52.6 | 52.5\r\n150000 | 160000 | 45.1 | 0.84\r\n\r\n\r\n<p><code>VLLM_ROCM_USE_AITER=1 VLLM_ROCM_USE_AITER_MLA=1 VLLM_ROCM_USE_AITER_MOE=1 HIP_VISIBLE_DEVICES=0,1,2,3 python3 ./long_bench.py /data/GLM-4.7/</code><br>\r\n\t</p>",
-    "author": "ekuznetsov139",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "v1"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/39001",
-    "createdAt": "2026-04-04T22:12:20.000Z",
-    "updatedAt": "2026-08-22T14:20:06.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:006107643798a8eb3afa7c85c8e765ad226b27b738582788313c84e7da15b8f1",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "ROCm 支持无限序列长度多遍归约",
-      "summaryZh": "新增多遍归约模式，移除 131072 token 的上下文长度上限，并增加覆盖该场景的单元测试，解决ROCm 自定义注意力算子仅支持不超过 131072 token 的上下文长度；超过该长度时会退回速度较慢的 Triton 参考内核，导致 GLM-4.7 生成吞吐显著下降；在 4 张 MI325x 上，GLM-4.7、上下文长度 150000 时吞吐从基线 0.84 token/s 提升至 45.1 token/s；不超过 131072 token 时吞吐基本不变",
-      "models": [
-        "GLM-4.7"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 ROCm 后端使用 vLLM v1 注意力实现的长上下文推理，尤其是 max_seq_len 大于 131072 token 的场景。",
-      "attention": "WATCH",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】[ROCm] Support unlimited sequence lengths via multi-pass reduction",
-        "【正文】This patch drops the 131072 token cap and adds a multi-pass mode to support unlimited max_seq_len."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
     }
   },
   {
