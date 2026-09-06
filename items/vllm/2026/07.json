@@ -1,5 +1,80 @@
 [
   {
+    "id": "vllm-pr-48726",
+    "nodeId": "PR_kwDOI7xefs7x-6o7",
+    "repository": "vllm-project/vllm",
+    "number": 48726,
+    "type": "pr",
+    "title": "[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
+    "bodyExcerpt": "## 📌 Description\r\n\r\nHi @youkaichao @WoosukKwon @mgoin @hmellor @njhill @Isotr0py @DarkLight1337, could you please take a look at this PR when you have a chance?\r\n\r\nThis PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA):\r\n\r\n- **LiteTopK** accelerates the indexer by fusing MQA scoring, online filtering, and TopK selection without materializing the `[num_q, seq_len]` score matrix.\r\n- **LiteDSA** further accelerates the subsequent sparse-attention computation by packing multiple neighboring queries into one larger masked attention GEMM, reusing their heavily overlapping KV sets.\r\n\r\nTo the best of our knowledge, LiteTopk is the first Indexer-Topk implementation that avoids to store the score matrix, and LiteDSA is the first that converts multiple small per-token sparse-attention GEMMs into a grouped masked GEMM while preserving each query's original attend set. The corresponding paper is available on [arXiv](https://arxiv.org/abs/2607.11976).\r\n\r\n**At 1M-token prefill, LiteTopK accelerates GLM-5.2 and DeepSeek-V4-Flash by 1.29× and 1.08×, respectively. LiteDSA increases the end-to-end speedups to 1.40× and 1.25×, with no accuracy loss.**\r\n\r\nThanks to my collaborators Jianyang Gao ([@gaoj0017](https://github.com/gaoj0017)) from ETH Zurich, Peiqi Yin ([@yinpeiqi](https://github.com/yinpeiqi)) from CUHK, and Jiangneng Li ([@gravesprite](https://github.com/gravesprite)) from NTU.\r\n\r\n### Motivation\r\n\r\nDSA models such as **DeepSeek-V3.2/DeepSeek-V4**, **GLM-4.6/GLM-5.2**, and **LongCat-2.0** use a sparse-attention indexer during prefill. The current indexer computes an FP8 MQA score for every query/KV pair, materializes a `[num_q, seq_len]` matrix in HBM, and then runs a per-row TopK:\r\n\r\n```python\r\nlogits = fp8_fp4_mqa_logits(...)        # materializes [num_q, seq_len] in HBM\r\nops.top_k_per_row_prefill(logits, ...)  # TopK over the materialized matrix\r\n```\r\n\r\nAt 256K–1M context, this transient matrix is both large and expensive to ",
+    "author": "Heisenberg-Yin",
+    "state": "open",
+    "labels": [
+      "documentation",
+      "performance",
+      "new-model",
+      "rocm",
+      "structured-output",
+      "frontend",
+      "intel-gpu",
+      "speculative-decoding",
+      "ci/build",
+      "multi-modality",
+      "tool-calling",
+      "llama",
+      "qwen",
+      "deepseek",
+      "cpu",
+      "gpt-oss",
+      "kv-connector",
+      "nvidia",
+      "quantization",
+      "mrv2",
+      "DSv4",
+      "rust",
+      "kimi"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/48726",
+    "createdAt": "2026-07-15T10:48:12.000Z",
+    "updatedAt": "2026-09-05T06:31:11.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:194515b50da06372ff7eeb860068e1f541f5404309f79cce3bfbc5f7241ecd7e",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "新增DSA LiteTopK与LiteDSA预填充优化",
+      "summaryZh": "新增LiteTopK与LiteDSA两项SM100预填充优化：LiteTopK融合MQA评分、在线过滤和TopK选择，避免物化[num_q, seq_len]评分矩阵；LiteDSA将相邻查询的多个小型稀疏注意力GEMM打包为带掩码的分组GEMM，并保留各查询原有的注意力集合；在1M-token预填充下，LiteTopK使GLM-5.2和DeepSeek-V4-Flash分别加速1.29倍和1.08倍；结合LiteDSA后端到端加速分别达到1.40倍和1.25倍，且无精度损失",
+      "models": [
+        "GLM-5.2",
+        "DeepSeek-V4-Flash",
+        "DeepSeek-V3.2",
+        "DeepSeek-V4",
+        "GLM-4.6",
+        "LongCat-2.0"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "TRAINING"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "面向SM100平台的DSA模型预填充性能优化。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
+        "【正文】This PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA)"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-issue-49349",
     "nodeId": "I_kwDOI7xefs8AAAABJn8gYg",
     "repository": "vllm-project/vllm",
@@ -872,82 +947,6 @@
     "category": "OTHER",
     "categorySource": "rules",
     "summary": null
-  },
-  {
-    "id": "vllm-pr-48726",
-    "nodeId": "PR_kwDOI7xefs7x-6o7",
-    "repository": "vllm-project/vllm",
-    "number": 48726,
-    "type": "pr",
-    "title": "[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
-    "bodyExcerpt": "## 📌 Description\r\n\r\nHi @youkaichao @WoosukKwon @mgoin @hmellor @njhill @Isotr0py @DarkLight1337, could you please take a look at this PR when you have a chance?\r\n\r\nThis PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA):\r\n\r\n- **LiteTopK** accelerates the indexer by fusing MQA scoring, online filtering, and TopK selection without materializing the `[num_q, seq_len]` score matrix.\r\n- **LiteDSA** further accelerates the subsequent sparse-attention computation by packing multiple neighboring queries into one larger masked attention GEMM, reusing their heavily overlapping KV sets.\r\n\r\nTo the best of our knowledge, LiteTopk is the first Indexer-Topk implementation that avoids to store the score matrix, and LiteDSA is the first that converts multiple small per-token sparse-attention GEMMs into a grouped masked GEMM while preserving each query's original attend set. The corresponding paper is available on [arXiv](https://arxiv.org/abs/2607.11976).\r\n\r\n**At 1M-token prefill, LiteTopK accelerates GLM-5.2 and DeepSeek-V4-Flash by 1.29× and 1.08×, respectively. LiteDSA increases the end-to-end speedups to 1.40× and 1.25×, with no accuracy loss.**\r\n\r\nThanks to my collaborators Jianyang Gao ([@gaoj0017](https://github.com/gaoj0017)) from ETH Zurich, Peiqi Yin ([@yinpeiqi](https://github.com/yinpeiqi)) from CUHK, and Jiangneng Li ([@gravesprite](https://github.com/gravesprite)) from NTU.\r\n\r\n### Motivation\r\n\r\nDSA models such as **DeepSeek-V3.2/DeepSeek-V4**, **GLM-4.6/GLM-5.2**, and **LongCat-2.0** use a sparse-attention indexer during prefill. The current indexer computes an FP8 MQA score for every query/KV pair, materializes a `[num_q, seq_len]` matrix in HBM, and then runs a per-row TopK:\r\n\r\n```python\r\nlogits = fp8_fp4_mqa_logits(...)        # materializes [num_q, seq_len] in HBM\r\nops.top_k_per_row_prefill(logits, ...)  # TopK over the materialized matrix\r\n```\r\n\r\nAt 256K–1M context, this transient matrix is both large and expensive to ",
-    "author": "Heisenberg-Yin",
-    "state": "open",
-    "labels": [
-      "documentation",
-      "performance",
-      "new-model",
-      "rocm",
-      "structured-output",
-      "frontend",
-      "intel-gpu",
-      "speculative-decoding",
-      "needs-rebase",
-      "ci/build",
-      "multi-modality",
-      "tool-calling",
-      "llama",
-      "qwen",
-      "deepseek",
-      "cpu",
-      "gpt-oss",
-      "kv-connector",
-      "nvidia",
-      "quantization",
-      "mrv2",
-      "DSv4",
-      "rust",
-      "kimi"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/48726",
-    "createdAt": "2026-07-15T10:48:12.000Z",
-    "updatedAt": "2026-08-29T05:44:36.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:b709113dad8da7729ca78c1f4a8086686f19f552cac8adde2a589ebad98e11e0",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "新增DSA LiteTopK与LiteDSA预填充优化",
-      "summaryZh": "新增LiteTopK与LiteDSA两项SM100预填充优化：LiteTopK融合MQA评分、在线过滤和TopK选择，避免物化[num_q, seq_len]评分矩阵；LiteDSA将相邻查询的多个小型稀疏注意力GEMM打包为带掩码的分组GEMM，并保留各查询原有的注意力集合；在1M-token预填充下，LiteTopK使GLM-5.2和DeepSeek-V4-Flash分别加速1.29倍和1.08倍；结合LiteDSA后端到端加速分别达到1.40倍和1.25倍，且无精度损失",
-      "models": [
-        "GLM-5.2",
-        "DeepSeek-V4-Flash",
-        "DeepSeek-V3.2",
-        "DeepSeek-V4",
-        "GLM-4.6",
-        "LongCat-2.0"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "TRAINING"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "面向SM100平台的DSA模型预填充性能优化。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
-        "【正文】This PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA)"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
   },
   {
     "id": "vllm-pr-49885",
