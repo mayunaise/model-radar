@@ -1,5 +1,28 @@
 [
   {
+    "id": "vllm-issue-41670",
+    "nodeId": "I_kwDOI7xefs8AAAABBRFTZQ",
+    "repository": "vllm-project/vllm",
+    "number": 41670,
+    "type": "issue",
+    "title": "Layerwise reload crashes with CUDA illegal memory access on compressed-tensors channel-wise FP8 MoE",
+    "bodyExcerpt": "# Layerwise reload crashes with CUDA illegal memory access on compressed-tensors channel-wise FP8 MoE\n\n## Summary\n\nIdentity `reload_weights` on a compressed-tensors channel-wise FP8 MoE model crashes with `CUDA error: an illegal memory access was encountered` when CUDA graphs are enabled. Works fine with `enforce_eager=True` or with the TRITON MoE backend.\n\n## Root cause\n\nDuring layerwise reload, `_layerwise_process` calls `quant_method.process_weights_after_loading(layer)` which recreates the `moe_kernel` object (via `make_fp8_moe_kernel`). The new kernel allocates new device tensors for strides (`ab_strides1`, `ab_strides2`, etc.) and a new `moe_quant_config` referencing new scale tensors.\n\nThen `_place_kernel_tensors` restores the old weight/scale tensor data pointers (preserving CUDA graph references), but:\n1. The `moe_quant_config._w1.scale` now points to the **new** (orphaned) scale tensor instead of the layer's actual parameter\n2. The CUDA graph still holds pointers to the **old** kernel's stride tensors, but the old kernel object was replaced\n\nThe TRITON backend doesn't hit this because `TritonExperts.__init__` doesn't allocate device tensors (strides are computed at dispatch time), while `CutlassExpertsFp8Base.__init__` pre-allocates stride tensors on device.\n\n## Reproducer\n\n```python\n# VLLM_ENABLE_V1_MULTIPROCESSING=0 python repro.py\nfrom vllm import LLM, SamplingParams\n\nMODEL = \"zai-org/GLM-4.5-Air-FP8\"  # compressed-tensors channel-wise FP8 MoE\nPROMPT = \"1+1=\"\n\nllm = LLM(MODEL, gpu_memory_utilization=0.95)\nparams = SamplingParams(max_tokens=16, temperature=0)\n\n# Baseline works\nbaseline = llm.generate([PROMPT], params)\nprint(f\"Baseline: {baseline[0].outputs[0].text!r}\")\n\n# Identity reload from same checkpoint\nllm.collective_rpc(\"reload_weights\")\n\n# Crashes: CUDA error: an illegal memory access was encountered\noutput = llm.generate([PROMPT], params)\nprint(f\"After reload: {output[0].outputs[0].text!r}\")\n```\n\n## Output\n\n```\nBaseline: '2\\n1+1=2 is a mathemati",
+    "author": "S1ro1",
+    "state": "closed",
+    "labels": [
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/41670",
+    "createdAt": "2026-05-04T22:06:12.000Z",
+    "updatedAt": "2026-09-08T01:45:20.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-08T05:00:16.848Z",
+    "contentHash": "sha256:8ee12163766ce2052195eff12b0ced0d2c293f216833ef67ca9e3a5d5b2dbc5d",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-issue-41525",
     "nodeId": "I_kwDOI7xefs8AAAABBIDDFQ",
     "repository": "vllm-project/vllm",
