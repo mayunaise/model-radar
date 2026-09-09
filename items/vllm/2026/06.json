@@ -1,5 +1,100 @@
 [
   {
+    "id": "vllm-pr-46326",
+    "nodeId": "PR_kwDOI7xefs7o-GVd",
+    "repository": "vllm-project/vllm",
+    "number": 46326,
+    "type": "pr",
+    "title": "HiSparse: host-resident sparse-MLA decode hot-buffering + GLM-5.2 indexCache opts (vLLM v0.24.0)",
+    "bodyExcerpt": "A port of SGLang's [HiSparse](https://www.lmsys.org/blog/2026-04-10-sglang-hisparse/): full sparse-MLA KV lives in pinned host memory, decode is served from per-request GPU hot buffers holding the indexer top-k working set. Plus GLM-5.2 indexCache plan-once sharing and overlapped prefetch, which do not exist in the SGLang implementation.\n\n**Motivation.** GLM-5 decode instances run wide-EP (DP×EP, one single-GPU engine per rank): each rank replicates attention/dense weights and carries its expert shard, DeepEP buffers, and sparse-stack workspaces — leaving O(10 GiB) of GPU KV per rank, a single-digit ceiling of long-context requests per engine (MLA's single latent head means KV cannot be TP-sharded away). In a P/D deployment that ceiling back-pressures prefill and stalls the pipeline. Sparse MLA only attends to the indexer's top-k (2048) tokens per step, so the full KV does not need to be GPU-resident.\n\n## Results\n\n**16-node production stack** (GLM-5.2-FP8, 8 prefill + 8 decode nodes, DP64 wide-EP decode, llm-d router, NIXL P/D, Mooncake prefill store, 160 GiB pool/rank):\n\n- **26,056 decode tok/s sustained** at 5,173 avg / 6,092 peak of 6,144 seats (99% peak occupancy), ITL p50/p95 201/294 ms, **zero preemptions**, host pool 62% peak — 3.3× the same stack's throughput at c=1000. The binding constraint was the configured seat cap (`max_num_seqs=96` × 64 ranks), not compute, pool, or prefill (which sat nearly idle under shortcut routing).\n- **A/B vs plain GPU-KV decode** — identical topology, traffic, and 50-min saturated measurement window; per-engine cumulative deltas over all 128 engines:\n\n| decode side | GPU-KV | HiSparse |\n|---|---|---|\n| generation throughput | 10,653 tok/s | **12,951 tok/s** (+22%) |\n| requests completed | 84,026 | **101,653** (+21%) |\n| preemptions | 5,174 | **0** |\n| TTFT p99 | 99.9 s | **2.5 s** |\n| queue time p99 | 101 s | **0.8 s** |\n| local prefix-cache hit | 40.4% | **92.2%** |\n| NIXL transfer volume | 26.5 TiB (326 MiB avg) | **7.0 TiB**",
+    "author": "faresobeid",
+    "state": "open",
+    "labels": [
+      "documentation",
+      "performance",
+      "new-model",
+      "rocm",
+      "structured-output",
+      "frontend",
+      "intel-gpu",
+      "speculative-decoding",
+      "ci/build",
+      "v1",
+      "multi-modality",
+      "llama",
+      "qwen",
+      "deepseek",
+      "cpu",
+      "gpt-oss",
+      "kv-connector",
+      "nvidia",
+      "quantization",
+      "mistral",
+      "rust",
+      "kv-cache-manager",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/46326",
+    "createdAt": "2026-06-22T02:05:51.000Z",
+    "updatedAt": "2026-09-08T23:42:44.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:b2cba3e1f7defec111e3c076515f9a4f5f4efdcbb02ae64fe19d685b4d534d55",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "HiSparse 支持 GLM-5.2 稀疏 MLA 解码",
+      "summaryZh": "新增基于主机常驻稀疏 MLA KV 和请求级 GPU 热缓冲区的 HiSparse 解码，并加入 GLM-5.2 indexCache 一次性规划共享与重叠预取；在 16 节点 GLM-5.2-FP8 生产栈中，HiSparse 相比普通 GPU-KV 解码吞吐提升 22%，请求完成数提升 21%，抢占降为 0，TTFT p99 从 99.9 秒降至 2.5 秒",
+      "models": [
+        "GLM-5.2"
+      ],
+      "hardware": [
+        "GPU",
+        "CPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "HIGH",
+      "impactScopeZh": "面向 GLM-5.2 宽 EP 解码及长上下文请求，涉及主机内存 KV、GPU 热缓冲区和 P/D 部署。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】HiSparse: host-resident sparse-MLA decode hot-buffering + GLM-5.2 indexCache opts",
+        "【正文】full sparse-MLA KV lives in pinned host memory, decode is served from per-request GPU hot buffers"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-46196",
+    "nodeId": "PR_kwDOI7xefs7oiU4s",
+    "repository": "vllm-project/vllm",
+    "number": 46196,
+    "type": "pr",
+    "title": "fix(anthropic): resolve model chat template before deciding inline-system merge",
+    "bodyExcerpt": "## What & why\n\nWhen a client (e.g. Claude Code) appends a `system` message to the `messages` array of a `/v1/messages` request, the Anthropic compatibility layer can trigger a full prompt recompute (observed as a ~75s TTFT spike) because the entire prefix-cache block chain is invalidated from the system block onward.\n\n**Root cause:** `AnthropicServingMessages.__init__` calls `self._detect_merge_inline_system(chat_template)` with the raw `--chat-template` arg, which is `None` by default. The detector returns `True` (\"merge inline system into the leading block\") whenever the template is falsy — even for templates like GLM that **already accept mid-conversation system messages**. That merge hoists the trailing system message into the leading system block, changing tokens from offset 0 onward and breaking the chained block hash (`hash_block_tokens` chains `parent_block_hash` into every block), so every subsequent block's hash changes → full recompute.\n\nThis builds on #44283 / #44602 / #46025, which introduced the merge-vs-inplace switch but defaulted to the conservative (merge) path. This PR closes the gap: resolve the model's actual chat template (the same `resolve_chat_template` call the renderer uses) before deciding, so GLM-like templates are treated as \"no merge\" and a trailing system message no longer destroys the prefix.\n\n## Changes\n\n`vllm/entrypoints/anthropic/serving.py`\n- `__init__`: when `chat_template is None`, resolve the model's actual template via `resolve_chat_template(tokenizer, None, None, model_config=...)` (tokenizer from `self.renderer.tokenizer`), then feed it to `_detect_merge_inline_system`. Falls back to the existing conservative behavior only when no template can be resolved.\n- `_detect_merge_inline_system`: import `jinja2.sandbox` / `jinja2.ext` explicitly (the package `__init__` doesn't pull them in, so `jinja2.sandbox.ImmutableSandboxedEnvironment` only worked when something else had imported the submodule as a side effect — it crashed on is",
+    "author": "Stardust-minus",
+    "state": "closed",
+    "labels": [
+      "frontend",
+      "needs-rebase"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/46196",
+    "createdAt": "2026-06-19T22:27:39.000Z",
+    "updatedAt": "2026-09-08T06:56:54.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-09T04:59:30.481Z",
+    "contentHash": "sha256:b04bc298c297ce7ca82810d9da772517cd922a68c366c92bf388e044faed833d",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-46994",
     "nodeId": "PR_kwDOI7xefs7roDCB",
     "repository": "vllm-project/vllm",
@@ -808,76 +903,6 @@
       "evidence": [
         "【标题】sparse indexer off-by-one crashes concurrent decode at max_model_len >= ~325K",
         "【正文】The engine crashes under concurrent decode once max_model_len is set to ~325K or higher."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-46326",
-    "nodeId": "PR_kwDOI7xefs7o-GVd",
-    "repository": "vllm-project/vllm",
-    "number": 46326,
-    "type": "pr",
-    "title": "HiSparse: host-resident sparse-MLA decode hot-buffering + GLM-5.2 indexCache opts (vLLM v0.24.0)",
-    "bodyExcerpt": "A port of SGLang's [HiSparse](https://www.lmsys.org/blog/2026-04-10-sglang-hisparse/): full sparse-MLA KV lives in pinned host memory, decode is served from per-request GPU hot buffers holding the indexer top-k working set. Plus GLM-5.2 indexCache plan-once sharing and overlapped prefetch, which do not exist in the SGLang implementation.\n\n**Motivation.** GLM-5 decode instances run wide-EP (DP×EP, one single-GPU engine per rank): each rank replicates attention/dense weights and carries its expert shard, DeepEP buffers, and sparse-stack workspaces — leaving O(10 GiB) of GPU KV per rank, a single-digit ceiling of long-context requests per engine (MLA's single latent head means KV cannot be TP-sharded away). In a P/D deployment that ceiling back-pressures prefill and stalls the pipeline. Sparse MLA only attends to the indexer's top-k (2048) tokens per step, so the full KV does not need to be GPU-resident.\n\n## Results\n\n**16-node production stack** (GLM-5.2-FP8, 8 prefill + 8 decode nodes, DP64 wide-EP decode, llm-d router, NIXL P/D, Mooncake prefill store, 160 GiB pool/rank):\n\n- **26,056 decode tok/s sustained** at 5,173 avg / 6,092 peak of 6,144 seats (99% peak occupancy), ITL p50/p95 201/294 ms, **zero preemptions**, host pool 62% peak — 3.3× the same stack's throughput at c=1000. The binding constraint was the configured seat cap (`max_num_seqs=96` × 64 ranks), not compute, pool, or prefill (which sat nearly idle under shortcut routing).\n- **A/B vs plain GPU-KV decode** — identical topology, traffic, and 50-min saturated measurement window; per-engine cumulative deltas over all 128 engines:\n\n| decode side | GPU-KV | HiSparse |\n|---|---|---|\n| generation throughput | 10,653 tok/s | **12,951 tok/s** (+22%) |\n| requests completed | 84,026 | **101,653** (+21%) |\n| preemptions | 5,174 | **0** |\n| TTFT p99 | 99.9 s | **2.5 s** |\n| queue time p99 | 101 s | **0.8 s** |\n| local prefix-cache hit | 40.4% | **92.2%** |\n| NIXL transfer volume | 26.5 TiB (326 MiB avg) | **7.0 TiB**",
-    "author": "faresobeid",
-    "state": "open",
-    "labels": [
-      "documentation",
-      "performance",
-      "new-model",
-      "rocm",
-      "structured-output",
-      "frontend",
-      "intel-gpu",
-      "speculative-decoding",
-      "ci/build",
-      "v1",
-      "multi-modality",
-      "tool-calling",
-      "llama",
-      "qwen",
-      "deepseek",
-      "cpu",
-      "gpt-oss",
-      "kv-connector",
-      "nvidia",
-      "quantization",
-      "mistral",
-      "rust"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/46326",
-    "createdAt": "2026-06-22T02:05:51.000Z",
-    "updatedAt": "2026-07-23T17:24:36.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:008da5e6add8e1575d63ffb530eec48d863e26deafcfe51a52be736aee6275d8",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "HiSparse 支持 GLM-5.2 稀疏 MLA 解码",
-      "summaryZh": "新增基于主机常驻稀疏 MLA KV 和请求级 GPU 热缓冲区的 HiSparse 解码，并加入 GLM-5.2 indexCache 一次性规划共享与重叠预取；在 16 节点 GLM-5.2-FP8 生产栈中，HiSparse 相比普通 GPU-KV 解码吞吐提升 22%，请求完成数提升 21%，抢占降为 0，TTFT p99 从 99.9 秒降至 2.5 秒",
-      "models": [
-        "GLM-5.2"
-      ],
-      "hardware": [
-        "GPU",
-        "CPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "HIGH",
-      "impactScopeZh": "面向 GLM-5.2 宽 EP 解码及长上下文请求，涉及主机内存 KV、GPU 热缓冲区和 P/D 部署。",
-      "attention": "WATCH",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】HiSparse: host-resident sparse-MLA decode hot-buffering + GLM-5.2 indexCache opts",
-        "【正文】full sparse-MLA KV lives in pinned host memory, decode is served from per-request GPU hot buffers"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
