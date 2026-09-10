@@ -1,5 +1,30 @@
 [
   {
+    "id": "vllm-pr-45276",
+    "nodeId": "PR_kwDOI7xefs7lTdzX",
+    "repository": "vllm-project/vllm",
+    "number": 45276,
+    "type": "pr",
+    "title": "[Backport][v0.19.1] Fix GLM5.1 Codex Responses API Bad Request",
+    "bodyExcerpt": "## Summary\n\nCloses #45273\n\nThis backport fixes multi-turn **OpenAI `/v1/responses`** failures on **v0.19.1** when used with **Cursor Codex** and **GLM-5.1-FP8**. Single-turn requests work; multi-turn sessions with assistant history and tool calls fail with 400/500 errors.\n\n### 1. Root cause\n\nOn v0.19.1, the Responses API request pipeline does not handle Codex-compatible multi-turn `input` items correctly:\n\n| Layer | Problem |\n|-------|---------|\n| `responses/protocol.py` | `function_call_parsing` only handles `function_call`; historical `assistant` / `reasoning` messages fail Pydantic Union validation (`Field required: status`) → **400 Bad Request** |\n| `responses/utils.py` | `_construct_single_message_from_response_item` assumes non-empty `content[0]` → **500 IndexError** when Codex sends empty assistant content |\n| `responses/utils.py` | Stateful multi-turn leaks prior `system` instructions; `tools=[]` not handled consistently |\n| `responses/api_router.py` | Response serialization missing `by_alias=True` |\n| `tool_parsers/glm4_moe_tool_parser.py` | Expects Chat Completions tool schema (`tool.function.name`) but Responses API passes `FunctionTool` (`tool.name`) → streaming tool-call crash |\n| `entrypoints/chat_utils.py` | `json.loads` on malformed historical `function_call.arguments` → **JSONDecodeError: Extra data** |\n\nv0.21.0 partially fixed assistant parsing via `input_item_parsing`, but GLM-5.1 deployments are pinned to v0.19.1 due to model compatibility.\n\n### 2. Fix approach\n\nMinimal backport from v0.21.0 patterns plus Codex-specific hardening:\n\n- **`protocol.py`**: Replace `function_call_parsing` with `input_item_parsing`; add `check_tool_usage`; normalize `function_call.arguments`\n- **`utils.py`**: Defensive empty-content handling; filter leaked system messages; fix `construct_tool_dicts` for empty tools\n- **`api_router.py`**: Add `by_alias=True` to JSON/SSE responses; fix `serialize_message` return type\n- **`glm4_moe_tool_parser.py`**: Support both `Functio",
+    "author": "ochprince",
+    "state": "open",
+    "labels": [
+      "frontend",
+      "stale",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/45276",
+    "createdAt": "2026-06-11T12:20:42.000Z",
+    "updatedAt": "2026-09-10T01:39:32.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-10T05:02:49.422Z",
+    "contentHash": "sha256:ff7c7518579cb1fdf933e98fd69a57a0b4671972136dc04aeb7ff58f6f51bd1e",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-46326",
     "nodeId": "PR_kwDOI7xefs7o-GVd",
     "repository": "vllm-project/vllm",
