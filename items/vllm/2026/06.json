@@ -1,5 +1,28 @@
 [
   {
+    "id": "vllm-issue-45425",
+    "nodeId": "I_kwDOI7xefs8AAAABFTo49Q",
+    "repository": "vllm-project/vllm",
+    "number": 45425,
+    "type": "issue",
+    "title": "[Bug]: Silent output corruption: MTP + DCP + FULL_AND_PIECEWISE cudagraphs when the attention backend lacks varlen-decode support under DCP",
+    "bodyExcerpt": "## Your current environment\n\n4×H200 NVL (SM90), vLLM v0.22.1 (also reproduced with the sparse-MLA DCP\npatch ported onto current main), CUDA 12.x, GLM-5.1-NVFP4\n(`GlmMoeDsaForCausalLM`, sparse MLA, `fp8_ds_mla` KV cache).\n\n## 🐛 Describe the bug\n\nWhen all three of the following are combined:\n\n- speculative decoding (MTP, `{\"method\": \"mtp\", \"num_speculative_tokens\": 1}`),\n- decode context parallelism (`--decode-context-parallel-size 4`),\n- the **default** cudagraph mode (`FULL_AND_PIECEWISE`),\n\nthe model **silently produces corrupted output**: generations truncate\nafter 1–2 characters or degenerate into repetition loops. There are no\nerrors or warnings in the logs — the server looks perfectly healthy.\n\nAny one of the following makes the same setup fully correct:\n\n- `--compilation-config '{\"cudagraph_mode\": \"PIECEWISE\"}'` (correct, but\n  roughly halves single-stream decode throughput vs full graphs),\n- `--enforce-eager` (correct, much slower),\n- disabling MTP (DCP without MTP is correct **with** full graphs),\n- disabling DCP (MTP without DCP is correct with full graphs).\n\n## Mechanism (analysis)\n\nUnder DCP, `AttentionMetadataBuilder._init_reorder_batch_threshold` forces\n`reorder_batch_threshold` back to 1 for backends that do not declare\n`supports_dcp_with_varlen` (vllm/v1/attention/backend.py). With MTP\nenabled, spec-decode verify rows have q_len = 2, so after the forcing they\nare classified as **prefills** at metadata-build time. The full-cudagraph\ndecode capture, however, is built around the assumption that uniform\nspec-decode batches go down the decode path. The result is a mismatch\nbetween captured and replayed work for the verify rows — and silent\ngarbage instead of a crash.\n\nThe dangerous part is the failure mode: an unsupported combination\ndegrades to *silent corruption* rather than an init-time error or an\nautomatic downgrade of the cudagraph mode. A user enabling MTP + DCP on\nsuch a backend with default settings gets a healthy-looking server that\nemits broken",
+    "author": "drakosha",
+    "state": "open",
+    "labels": [
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/45425",
+    "createdAt": "2026-06-12T16:58:55.000Z",
+    "updatedAt": "2026-09-11T01:39:34.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-11T04:59:40.646Z",
+    "contentHash": "sha256:d0246295be9508a0922a7add7f1ed33be4389b5737b4fc575e27b216383e63b5",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-45276",
     "nodeId": "PR_kwDOI7xefs7lTdzX",
     "repository": "vllm-project/vllm",
