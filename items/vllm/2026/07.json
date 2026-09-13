@@ -1,5 +1,78 @@
 [
   {
+    "id": "vllm-pr-49602",
+    "nodeId": "PR_kwDOI7xefs71bnT9",
+    "repository": "vllm-project/vllm",
+    "number": 49602,
+    "type": "pr",
+    "title": "[Bugfix] Hoist $defs/definitions in Cohere parser tool schema composition",
+    "bodyExcerpt": "\r\n\r\n## Purpose\r\n\r\nFix a bug where any `/v1/chat/completions` request with tools whose JSON Schema\r\ncontains `$defs`/`definitions` fails with HTTP 500 on Cohere models served with\r\n`--reasoning-parser cohere_command3|cohere_command4`.\r\n\r\nResolves the bug class reported in #16467 (closed as stale, never fixed) for the\r\nCohere reasoning parser path specifically. Other parsers that compose their own\r\ngrammars are out of scope (see the GLM case in #47175); the generic tool path in\r\n`vllm/tool_parsers/utils.py` already hoists `$defs` and is unaffected.\r\n\r\n**Root cause.** `collect_tool_schema` in\r\n`vllm/reasoning/cohere_command_reasoning_parser.py` builds the constrained-decoding\r\ngrammar for tool calls by nesting each tool's `parameters` schema inside a\r\n`{tool_call_id, tool_name, parameters}` envelope. The tool schema was spliced in\r\nverbatim, so a definitions block originally at the schema root ends up under\r\n`properties.parameters`, while its `$ref` pointers (`#/$defs/X`) remain\r\nroot-anchored. xgrammar then correctly rejects the dangling JSON pointer:\r\n\r\n```text\r\nRuntimeError: Cannot find field $defs in #/$defs/X\r\n```\r\n\r\nThe request fails during preprocessing, before generation. Agentic frameworks such as pydantic-ai emit `$defs`\r\nfor any nested model, so this breaks effectively all tools defined via such\r\nframeworks (see user reports in #16467).\r\n\r\n**Minimal repro** against a Cohere model served with\r\n`--reasoning-parser cohere_command4 --tool-call-parser cohere_command4 --enable-auto-tool-choice`\r\n(any tool schema whose parameters carry `$defs` + `$ref`; a flat schema without\r\n`$defs` does not reproduce):\r\n\r\n```bash\r\ncurl -s http://localhost:8000/v1/chat/completions \\\r\n  -H \"Content-Type: application/json\" \\\r\n  -d '{\r\n    \"model\": \"CohereLabs/North-Mini-Code-1.0\",\r\n    \"messages\": [{\"role\": \"user\", \"content\": \"Weather in Prague?\"}],\r\n    \"tool_choice\": \"auto\",\r\n    \"tools\": [{\r\n      \"type\": \"function\",\r\n      \"function\": {\r\n        \"name\": \"get_weather\",\r\n        \"",
+    "author": "vaclavcadek",
+    "state": "open",
+    "labels": [
+      "bug",
+      "needs-rebase",
+      "tool-calling",
+      "cohere"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49602",
+    "createdAt": "2026-07-23T15:04:30.000Z",
+    "updatedAt": "2026-09-12T09:00:35.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:6156d1e95ecab8a42846262c4fc424f0d2202ca4812e1238bfefb517ebd0482a",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 Cohere 工具 schema 的 $defs 引用错误",
+      "summaryZh": "修复 Cohere parser 工具 schema 组合逻辑，将根级 $defs/definitions 提升到组合后的 schema 根部，保持 $ref 的根路径有效，解决使用 cohere_command3 或 cohere_command4 reasoning parser 时，工具参数 schema 包含 $defs/definitions 与 $ref 会在 /v1/chat/completions 预处理阶段触发 HTTP 500，xgrammar 报错“Cannot find field $defs in #/$defs/X”；修复 Cohere 模型工具调用对嵌套模型 schema 的支持；不影响通用工具路径，其他自定义 grammar 的 parser 不在范围内",
+      "models": [
+        "CohereLabs/North-Mini-Code-1.0"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "Cohere reasoning parser 的工具调用请求。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Bugfix] Hoist $defs/definitions in Cohere parser tool schema composition",
+        "【正文】any /v1/chat/completions request with tools whose JSON Schema contains $defs/definitions fails with HTTP 500 on Cohere"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-49349",
+    "nodeId": "I_kwDOI7xefs8AAAABJn8gYg",
+    "repository": "vllm-project/vllm",
+    "number": 49349,
+    "type": "issue",
+    "title": "Zero JIT compilation during runtime",
+    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\n## Summary\n\nThis issue tracks adoption and follow-up work for the shared JIT warmup infrastructure proposed in #47456.\n\n## Foundation (blockers)\n\n- [x] #47451\n- [x] #49315\n- [x] #50174\n\n## Model-level de-JITification\n\n### DeepSeek V4\n- [ ] #49627\n    - [x] #50175\n    - [x] https://github.com/vllm-project/vllm/pull/53564\n    - [x] https://github.com/vllm-project/vllm/pull/53565\n    - [x] #50176\n    - [x] https://github.com/vllm-project/vllm/pull/53566\n    - [ ] https://github.com/vllm-project/vllm/pull/56323\n    - [ ] #50177\n    - [ ] https://github.com/vllm-project/vllm/pull/53567\n    - [ ] #50178\n    - [ ] https://github.com/vllm-project/vllm/pull/56494\n    - [ ] Enable `--jit-monitor-mode error` on CI for DSv4: https://github.com/vllm-project/vllm/pull/50109\n\n### Gemma 4\n- [ ] https://github.com/vllm-project/vllm/pull/55768\n    - [ ] Enable `--jit-monitor-mode error` on CI for Gemma 4: https://github.com/vllm-project/vllm/pull/50109\n\n### GLM-5.2/5.3\n- [ ] https://github.com/vllm-project/vllm/pull/55348\n    - [ ] Enable `--jit-monitor-mode error` on CI for GLM-5.2/5.3: https://github.com/vllm-project/vllm/pull/50109\n\n### gpt-oss\n- [ ] https://github.com/vllm-project/vllm/pull/55769\n    - [ ] Enable `--jit-monitor-mode error` on CI for gpt-oss: https://github.com/vllm-project/vllm/pull/50109\n    \n### Kimi-K3\n- [ ] https://github.com/vllm-project/vllm/pull/54784\n    - [ ] Enable `--jit-monitor-mode error` on CI for Kimi-K3: https://github.com/vllm-project/vllm/pull/50109\n\nComplete model de-JITification is achieved when the model can run seamlessly with `--jit-monitor-mode error,` introduced in [#46167](https://github.com/vllm-project/vllm/pull/46167). Enabling this mode in CI will detect any untracked kernels that still compile at runtime and therefore require additional warmup coverage.\n\n## Supporting work. Related backend/kernel coverage\n\n### CuTeDSL\n\n- [ ] #48156\n- [ ] https://github.com/vllm-project/vllm/pull/48619\n\n### T",
+    "author": "LopezCastroRoberto",
+    "state": "open",
+    "labels": [
+      "feature request",
+      "kimi"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/49349",
+    "createdAt": "2026-07-21T16:09:37.000Z",
+    "updatedAt": "2026-09-12T08:56:50.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-05T04:48:46.974Z",
+    "contentHash": "sha256:3b758a84a28cc2e79af7ebae15e9e878581c12826a918500c4f0782c16e929d9",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-49845",
     "nodeId": "PR_kwDOI7xefs72bYW4",
     "repository": "vllm-project/vllm",
@@ -95,30 +168,6 @@
     "firstSeenAt": "2026-09-11T04:59:40.646Z",
     "contentHash": "sha256:bd7fbc187cf324f9ef28c4c5162ff35d503c00fc7c8d7e3b84761461d0c66277",
     "category": "BUG",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-issue-49349",
-    "nodeId": "I_kwDOI7xefs8AAAABJn8gYg",
-    "repository": "vllm-project/vllm",
-    "number": 49349,
-    "type": "issue",
-    "title": "Zero JIT compilation during runtime",
-    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\n## Summary\n\nThis issue tracks adoption and follow-up work for the shared JIT warmup infrastructure proposed in #47456.\n\n## Foundation (blockers)\n\n- [x] #47451\n- [x] #49315\n- [x] #50174\n\n## Model-level de-JITification\n\n### DeepSeek V4\n- [ ] #49627\n    - [x] #50175\n    - [x] https://github.com/vllm-project/vllm/pull/53564\n    - [x] https://github.com/vllm-project/vllm/pull/53565\n    - [x] #50176\n    - [ ] https://github.com/vllm-project/vllm/pull/53566\n    - [ ] https://github.com/vllm-project/vllm/pull/56323\n    - [ ] #50177\n    - [ ] https://github.com/vllm-project/vllm/pull/53567\n    - [ ] #50178\n    - [ ] Enable `--jit-monitor-mode error` on CI for DSv4: https://github.com/vllm-project/vllm/pull/50109\n\n### GLM-5.2/5.3\n- [ ] https://github.com/vllm-project/vllm/pull/55348\n    - [ ] Enable `--jit-monitor-mode error` on CI for GLM-5.2/5.3: https://github.com/vllm-project/vllm/pull/50109\n\n### Gemma 4\n- [ ] https://github.com/vllm-project/vllm/pull/55768\n    - [ ] Enable `--jit-monitor-mode error` on CI for Gemma 4: https://github.com/vllm-project/vllm/pull/50109\n\n### gpt-oss\n- [ ] https://github.com/vllm-project/vllm/pull/55769\n    - [ ] Enable `--jit-monitor-mode error` on CI for gpt-oss: https://github.com/vllm-project/vllm/pull/50109\n    \n### Kimi-K3\n- [ ] https://github.com/vllm-project/vllm/pull/54784\n    - [ ] Enable `--jit-monitor-mode error` on CI for Kimi-K3: https://github.com/vllm-project/vllm/pull/50109\n\nComplete model de-JITification is achieved when the model can run seamlessly with `--jit-monitor-mode error,` introduced in [#46167](https://github.com/vllm-project/vllm/pull/46167). Enabling this mode in CI will detect any untracked kernels that still compile at runtime and therefore require additional warmup coverage.\n\n## Supporting work. Related backend/kernel coverage\n\n### CuTeDSL\n\n- [ ] #48156\n- [ ] https://github.com/vllm-project/vllm/pull/48619\n\n### TileLang\n\n- [ ] #47807\n\n### Triton\n\n- [ ] #48804\n- [ ] #488",
-    "author": "LopezCastroRoberto",
-    "state": "open",
-    "labels": [
-      "feature request",
-      "kimi"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/49349",
-    "createdAt": "2026-07-21T16:09:37.000Z",
-    "updatedAt": "2026-09-10T17:49:52.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-05T04:48:46.974Z",
-    "contentHash": "sha256:5962e059f96724a754fb05a00a8ae10fd06fa1ee0047f3c02a8fc4167c0d748f",
-    "category": "NEW_SUPPORT",
     "categorySource": "rules",
     "summary": null
   },
@@ -843,54 +892,6 @@
     "category": "FIX",
     "categorySource": "rules",
     "summary": null
-  },
-  {
-    "id": "vllm-pr-49602",
-    "nodeId": "PR_kwDOI7xefs71bnT9",
-    "repository": "vllm-project/vllm",
-    "number": 49602,
-    "type": "pr",
-    "title": "[Bugfix] Hoist $defs/definitions in Cohere parser tool schema composition",
-    "bodyExcerpt": "\r\n\r\n## Purpose\r\n\r\nFix a bug where any `/v1/chat/completions` request with tools whose JSON Schema\r\ncontains `$defs`/`definitions` fails with HTTP 500 on Cohere models served with\r\n`--reasoning-parser cohere_command3|cohere_command4`.\r\n\r\nResolves the bug class reported in #16467 (closed as stale, never fixed) for the\r\nCohere reasoning parser path specifically. Other parsers that compose their own\r\ngrammars are out of scope (see the GLM case in #47175); the generic tool path in\r\n`vllm/tool_parsers/utils.py` already hoists `$defs` and is unaffected.\r\n\r\n**Root cause.** `collect_tool_schema` in\r\n`vllm/reasoning/cohere_command_reasoning_parser.py` builds the constrained-decoding\r\ngrammar for tool calls by nesting each tool's `parameters` schema inside a\r\n`{tool_call_id, tool_name, parameters}` envelope. The tool schema was spliced in\r\nverbatim, so a definitions block originally at the schema root ends up under\r\n`properties.parameters`, while its `$ref` pointers (`#/$defs/X`) remain\r\nroot-anchored. xgrammar then correctly rejects the dangling JSON pointer:\r\n\r\n```text\r\nRuntimeError: Cannot find field $defs in #/$defs/X\r\n```\r\n\r\nThe request fails during preprocessing, before generation. Agentic frameworks such as pydantic-ai emit `$defs`\r\nfor any nested model, so this breaks effectively all tools defined via such\r\nframeworks (see user reports in #16467).\r\n\r\n**Minimal repro** against a Cohere model served with\r\n`--reasoning-parser cohere_command4 --tool-call-parser cohere_command4 --enable-auto-tool-choice`\r\n(any tool schema whose parameters carry `$defs` + `$ref`; a flat schema without\r\n`$defs` does not reproduce):\r\n\r\n```bash\r\ncurl -s http://localhost:8000/v1/chat/completions \\\r\n  -H \"Content-Type: application/json\" \\\r\n  -d '{\r\n    \"model\": \"CohereLabs/North-Mini-Code-1.0\",\r\n    \"messages\": [{\"role\": \"user\", \"content\": \"Weather in Prague?\"}],\r\n    \"tool_choice\": \"auto\",\r\n    \"tools\": [{\r\n      \"type\": \"function\",\r\n      \"function\": {\r\n        \"name\": \"get_weather\",\r\n        \"",
-    "author": "vaclavcadek",
-    "state": "open",
-    "labels": [
-      "bug",
-      "tool-calling",
-      "cohere"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/49602",
-    "createdAt": "2026-07-23T15:04:30.000Z",
-    "updatedAt": "2026-08-31T13:27:02.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:4511f81a65650a92e5e967be7ee8ade5424e9e5651036e2a281f383f7d9d1790",
-    "category": "FIX",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "修复 Cohere 工具 schema 的 $defs 引用错误",
-      "summaryZh": "修复 Cohere parser 工具 schema 组合逻辑，将根级 $defs/definitions 提升到组合后的 schema 根部，保持 $ref 的根路径有效，解决使用 cohere_command3 或 cohere_command4 reasoning parser 时，工具参数 schema 包含 $defs/definitions 与 $ref 会在 /v1/chat/completions 预处理阶段触发 HTTP 500，xgrammar 报错“Cannot find field $defs in #/$defs/X”；修复 Cohere 模型工具调用对嵌套模型 schema 的支持；不影响通用工具路径，其他自定义 grammar 的 parser 不在范围内",
-      "models": [
-        "CohereLabs/North-Mini-Code-1.0"
-      ],
-      "hardware": [],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "FIX",
-      "severity": "HIGH",
-      "impactScopeZh": "Cohere reasoning parser 的工具调用请求。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[Bugfix] Hoist $defs/definitions in Cohere parser tool schema composition",
-        "【正文】any /v1/chat/completions request with tools whose JSON Schema contains $defs/definitions fails with HTTP 500 on Cohere"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
   },
   {
     "id": "vllm-pr-50005",
