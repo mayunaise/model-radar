@@ -1,5 +1,28 @@
 [
   {
+    "id": "vllm-pr-40542",
+    "nodeId": "PR_kwDOI7xefs7UZ9UP",
+    "repository": "vllm-project/vllm",
+    "number": 40542,
+    "type": "pr",
+    "title": "[Kernel][MoE] Add A100 tuned config for E=64,N=1408 (Kimi-VL-A3B, GLM-4.5 Air)",
+    "bodyExcerpt": "## Purpose\n\nAdds a tuned `fused_moe` config for `E=64, N=1408` on NVIDIA A100-SXM4-80GB.\n\nThis is the MoE shape used by:\n- `moonshotai/Kimi-VL-A3B-Instruct` (DeepseekV3 text backbone)\n- `zai-org/GLM-4.5-Air`\n\nPrior to this PR, the only tuned config for `E=64, N=1408` was for B200 (from PR #26818). On A100, these models fell through to `get_default_config()`.\n\n## Benchmark (bf16, hidden=2048, top_k=6, 1×A100 80GB SXM4)\n\n| M | default µs | tuned µs | speedup |\n|---:|---:|---:|---:|\n| 1 | 183.5 | 183.5 | 1.00×¹ |\n| 4 | 266.2 | 266.2 | 1.00×¹ |\n| 16 | 542.6 | 523.3 | 1.04× |\n| 64 | 698.1 | 677.6 | 1.03× |\n| 256 | 769.5 | 717.0 | **1.07×** |\n| 1024 | 1022.5 | 929.9 | **1.10×** |\n| 4096 | 2919.0 | 2636.6 | **1.11×** |\n\n¹ M=1, 2, 4, 8 entries mirror `get_default_config(...)` verbatim — the default heuristic was already near-optimal for decode-sized batches and the tuner didn't beat it. Keeping the entries (rather than removing) avoids `try_get_optimal_moe_config` nearest-match picking the M=16 config for tiny batches.\n\nWins grow with batch size: 1.07–1.11× at prefill-sized `M≥256`, small (3-4%) at mid range, parity at decode.\n\n## How it was generated\n\nStandalone tuner using the same reduced search space as `benchmarks/kernels/benchmark_moe.py` (`BLOCK_SIZE_M∈{16,32,64,128}`, `BLOCK_SIZE_N∈{32,64,128}`, `BLOCK_SIZE_K∈{64,128}`, `GROUP_SIZE_M∈{1,16,32}`, `num_warps∈{4,8}`, `num_stages∈{2,3,4}`) — 432 configs × 18 batch sizes, benchmarked via `triton.testing.do_bench(warmup=5, rep=30)`. Total sweep ~15 min on a single A100.\n\nI didn't use `benchmark_moe.py` directly because `get_model_params` doesn't yet handle Kimi-VL's nested `text_config` (same pattern as the Gemma4 issue addressed in #40181). The standalone tuner bypasses model-config parsing by hardcoding the shape.\n\nTriton version recorded: `3.6.0`.\n\n## Test plan\n\n- [x] Generated on 1× A100 80GB SXM4, CUDA 13.0, torch 2.10.0+cu130, triton 3.6.0\n- [x] Validated config loads cleanly via `get_moe_configs(E=64, N=1408, dtype",
+    "author": "varjoranta",
+    "state": "closed",
+    "labels": [
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/40542",
+    "createdAt": "2026-04-21T19:01:49.000Z",
+    "updatedAt": "2026-09-14T01:49:32.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:e99e1b657e1c1617db34aa2b2809bab0a9bbdf2167dc057d4badb4ef8e8c4bb2",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-39001",
     "nodeId": "PR_kwDOI7xefs7P_mq4",
     "repository": "vllm-project/vllm",
@@ -373,55 +396,6 @@
       "evidence": [
         "【标题】[GLM-5] Fix loading of appended NextN/MTP draft layers",
         "【正文】The appended layers have their own draft-layer layout and must be mapped as draft layers, not as normal decoder layers."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-40542",
-    "nodeId": "PR_kwDOI7xefs7UZ9UP",
-    "repository": "vllm-project/vllm",
-    "number": 40542,
-    "type": "pr",
-    "title": "[Kernel][MoE] Add A100 tuned config for E=64,N=1408 (Kimi-VL-A3B, GLM-4.5 Air)",
-    "bodyExcerpt": "## Purpose\n\nAdds a tuned `fused_moe` config for `E=64, N=1408` on NVIDIA A100-SXM4-80GB.\n\nThis is the MoE shape used by:\n- `moonshotai/Kimi-VL-A3B-Instruct` (DeepseekV3 text backbone)\n- `zai-org/GLM-4.5-Air`\n\nPrior to this PR, the only tuned config for `E=64, N=1408` was for B200 (from PR #26818). On A100, these models fell through to `get_default_config()`.\n\n## Benchmark (bf16, hidden=2048, top_k=6, 1×A100 80GB SXM4)\n\n| M | default µs | tuned µs | speedup |\n|---:|---:|---:|---:|\n| 1 | 183.5 | 183.5 | 1.00×¹ |\n| 4 | 266.2 | 266.2 | 1.00×¹ |\n| 16 | 542.6 | 523.3 | 1.04× |\n| 64 | 698.1 | 677.6 | 1.03× |\n| 256 | 769.5 | 717.0 | **1.07×** |\n| 1024 | 1022.5 | 929.9 | **1.10×** |\n| 4096 | 2919.0 | 2636.6 | **1.11×** |\n\n¹ M=1, 2, 4, 8 entries mirror `get_default_config(...)` verbatim — the default heuristic was already near-optimal for decode-sized batches and the tuner didn't beat it. Keeping the entries (rather than removing) avoids `try_get_optimal_moe_config` nearest-match picking the M=16 config for tiny batches.\n\nWins grow with batch size: 1.07–1.11× at prefill-sized `M≥256`, small (3-4%) at mid range, parity at decode.\n\n## How it was generated\n\nStandalone tuner using the same reduced search space as `benchmarks/kernels/benchmark_moe.py` (`BLOCK_SIZE_M∈{16,32,64,128}`, `BLOCK_SIZE_N∈{32,64,128}`, `BLOCK_SIZE_K∈{64,128}`, `GROUP_SIZE_M∈{1,16,32}`, `num_warps∈{4,8}`, `num_stages∈{2,3,4}`) — 432 configs × 18 batch sizes, benchmarked via `triton.testing.do_bench(warmup=5, rep=30)`. Total sweep ~15 min on a single A100.\n\nI didn't use `benchmark_moe.py` directly because `get_model_params` doesn't yet handle Kimi-VL's nested `text_config` (same pattern as the Gemma4 issue addressed in #40181). The standalone tuner bypasses model-config parsing by hardcoding the shape.\n\nTriton version recorded: `3.6.0`.\n\n## Test plan\n\n- [x] Generated on 1× A100 80GB SXM4, CUDA 13.0, torch 2.10.0+cu130, triton 3.6.0\n- [x] Validated config loads cleanly via `get_moe_configs(E=64, N=1408, dtype",
-    "author": "varjoranta",
-    "state": "open",
-    "labels": [
-      "stale"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/40542",
-    "createdAt": "2026-04-21T19:01:49.000Z",
-    "updatedAt": "2026-08-12T02:15:41.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:3accd1a59858a22915e85ffc18a9268d80d84c464114a64be7d6c69afc18b061",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "为A100新增MoE调优配置",
-      "summaryZh": "新增E=64、N=1408在NVIDIA A100-SXM4-80GB上的fused_moe调优配置，覆盖Kimi-VL-A3B-Instruct和GLM-4.5-Air使用的MoE形状；此前A100会回退到get_default_config()；基准显示prefill批量M≥256时加速1.07–1.11倍，解码小批量基本持平",
-      "models": [
-        "moonshotai/Kimi-VL-A3B-Instruct",
-        "zai-org/GLM-4.5-Air"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "影响A100上的E=64、N=1408 MoE推理配置选择与性能。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】Add A100 tuned config for E=64,N=1408 (Kimi-VL-A3B, GLM-4.5 Air)",
-        "【正文】Adds a tuned fused_moe config for E=64, N=1408 on NVIDIA A100-SXM4-80GB."
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
