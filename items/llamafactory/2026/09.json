@@ -1,0 +1,23 @@
+[
+  {
+    "id": "llamafactory-pr-10837",
+    "nodeId": "PR_kwDOJodxvs8AAAABDsNq4w",
+    "repository": "hiyouga/LlamaFactory",
+    "number": 10837,
+    "type": "pr",
+    "title": "[data] fix GLM-4V video prompt expansion for multiple videos",
+    "bodyExcerpt": "# What does this PR do?\n\nFixes #9447\n\n`GLM4VPlugin.process_messages` expanded every `<video>` placeholder with the frame\ncount and the timestamps of the **first** video:\n\n```python\nnum_frames = video_grid_thw[0][0] if len(video_grid_thw) > 0 else 0  # hard code for now\n```\n\nA sample with two videos of different lengths therefore got the first video's frame\ncount twice, while the visual tower still produced one entry per frame of *each*\nvideo, so the prompt and the features disagree. `Qwen3VLPlugin` had the same line and\nlost it in #10518; `GLM4VPlugin` kept it.\n\nMeasured on `zai-org/GLM-4.1V-9B-Thinking` with a 4-frame and an 8-frame video\n(`video_grid_thw = [[2, 4, 4], [4, 4, 4]]`, so 2 + 4 = 6 frames are expected):\n\n| | `<|begin_of_image|>` blocks | timestamps |\n|---|---|---|\n| before, transformers 4.55.0 | 4 | `0 1` / `0 1` |\n| after | **6** | `0 1` / `0 1 2 3` |\n\nThe frame token budget now matches `sum(grid.prod() // merge_size ** 2)`, which is\nwhat the model is going to hand back.\n\n## The metadata contract\n\nThe same method could not run at all on transformers >= 4.57: the metadata still used\nthe pre-4.57 `VideoMetadata` field name and passed `images=None` to the video\nprocessor.\n\n```\nTypeError: VideoMetadata.__init__() got an unexpected keyword argument 'total_frames'\n```\n\nThat part is the same change as #10538 (open since June, still against an older base),\nand it is included here because the multi-video fix is not reachable without it. One\nthing #10538 does not cover: transformers >= 4.57 also dropped the `timestamps` key\nthat carried the frame timestamps, and answers with `video_metadata` instead. With\nonly the metadata change applied, on transformers 4.57.1 the crash is gone but every\nframe is stamped `0`:\n\n```\n...<|end_of_image|>0<|begin_of_image|>...<|end_of_image|>0<|end_of_video|>\n```\n\nSo `_get_frame_timestamps` reads whichever of the two the installed version answers\nwith (`metadata.timestamps[::2]` for mrope, matching `Glm4vProcessor`), and\n`get_mm_in",
+    "author": "L4XB",
+    "state": "open",
+    "labels": [],
+    "url": "https://github.com/hiyouga/LlamaFactory/pull/10837",
+    "createdAt": "2026-09-16T00:06:34.000Z",
+    "updatedAt": "2026-09-16T00:06:34.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-16T05:04:24.144Z",
+    "contentHash": "sha256:c0b0cdffe0e1a74d7d35ee221a1aab743ca8e7d340a9dad4845b1f71a99696ee",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  }
+]

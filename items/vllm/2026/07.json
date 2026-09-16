@@ -1,5 +1,31 @@
 [
   {
+    "id": "vllm-pr-49845",
+    "nodeId": "PR_kwDOI7xefs72bYW4",
+    "repository": "vllm-project/vllm",
+    "number": 49845,
+    "type": "pr",
+    "title": "[Bugfix] Pick a KV block size supported by every attention backend",
+    "bodyExcerpt": "## Purpose\n\nFixes #48286.\n\n`Platform.update_block_size_for_backend()` picks the KV cache block size from the **first** non-SSM attention backend only. Models that mix attention backends with disjoint block-size support break: GLM-DSA / DeepSeek-V3.2-style models pair a sparse-MLA main backend (`FLASHINFER_MLA_SPARSE`, supports `[32, 64]`, prefers 32) with `DeepseekV32IndexerBackend` (supports only `[64]`). The auto-selected 32 then fails much later in `select_common_block_size()` with the opaque\n\n```\nValueError: No common block size for 32.\n```\n\nand the only workaround is a manual `--block-size 64` (undocumented, as #48286 notes).\n\n## Changes\n\n- `Platform._find_non_ssm_backends()`: collect all distinct non-SSM backends in layer order (existing `_find_non_ssm_backend()` now delegates to it; the CPU platform caller is unchanged).\n- `Platform._preferred_block_size_for_backends()`: start from the first backend's preferred size and extend by least common multiple whenever another backend's `supports_block_size()` rejects the candidate. Since a block size satisfies a backend when it is a multiple of one of the backend's supported kernel sizes, the lcm extension preserves already-satisfied backends. Single-backend behavior is unchanged.\n- Phase 1 of `update_block_size_for_backend()` uses the new selection. Phases 2/3 still use the first backend as before.\n\n## Test Plan\n\nUnit tests added in `tests/v1/worker/test_gpu_model_runner.py`:\n- `test_preferred_block_size_satisfies_all_backends` — `[32,64]` + `[64]` → 64 (the #48286 shape); `[32,64]` alone still → 32.\n- `test_preferred_block_size_single_backend_keeps_default` — `MultipleOf(16)` → 16.\n- `test_preferred_block_size_extends_to_common_multiple` — `[32]` + `[48]` → 96.\n\n## Test Result\n\n- New unit tests + the 3 existing `select_common_block_size` tests pass.\n- End-to-end on GLM-5.2 NVFP4 (`GlmMoeDsaForCausalLM`), PP=2 / TP=8 / `--enable-expert-parallel`, Ray executor, 2 nodes × 8× B200: previously crashed at KV-cache init w",
+    "author": "divyvasal",
+    "state": "open",
+    "labels": [
+      "bug",
+      "ready",
+      "v1",
+      "cpu"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49845",
+    "createdAt": "2026-07-25T23:47:24.000Z",
+    "updatedAt": "2026-09-15T19:14:04.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-04T04:56:30.610Z",
+    "contentHash": "sha256:f265ba96884406567304a80f2d681ad2e27a720b6387b798040c44c4079314ac",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-49435",
     "nodeId": "PR_kwDOI7xefs70y0ia",
     "repository": "vllm-project/vllm",
@@ -120,31 +146,6 @@
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:17:54.490Z"
     }
-  },
-  {
-    "id": "vllm-pr-49845",
-    "nodeId": "PR_kwDOI7xefs72bYW4",
-    "repository": "vllm-project/vllm",
-    "number": 49845,
-    "type": "pr",
-    "title": "[Bugfix] Pick a KV block size supported by every attention backend",
-    "bodyExcerpt": "## Purpose\n\nFixes #48286.\n\n`Platform.update_block_size_for_backend()` picks the KV cache block size from the **first** non-SSM attention backend only. Models that mix attention backends with disjoint block-size support break: GLM-DSA / DeepSeek-V3.2-style models pair a sparse-MLA main backend (`FLASHINFER_MLA_SPARSE`, supports `[32, 64]`, prefers 32) with `DeepseekV32IndexerBackend` (supports only `[64]`). The auto-selected 32 then fails much later in `select_common_block_size()` with the opaque\n\n```\nValueError: No common block size for 32.\n```\n\nand the only workaround is a manual `--block-size 64` (undocumented, as #48286 notes).\n\n## Changes\n\n- `Platform._find_non_ssm_backends()`: collect all distinct non-SSM backends in layer order (existing `_find_non_ssm_backend()` now delegates to it; the CPU platform caller is unchanged).\n- `Platform._preferred_block_size_for_backends()`: start from the first backend's preferred size and extend by least common multiple whenever another backend's `supports_block_size()` rejects the candidate. Since a block size satisfies a backend when it is a multiple of one of the backend's supported kernel sizes, the lcm extension preserves already-satisfied backends. Single-backend behavior is unchanged.\n- Phase 1 of `update_block_size_for_backend()` uses the new selection. Phases 2/3 still use the first backend as before.\n\n## Test Plan\n\nUnit tests added in `tests/v1/worker/test_gpu_model_runner.py`:\n- `test_preferred_block_size_satisfies_all_backends` — `[32,64]` + `[64]` → 64 (the #48286 shape); `[32,64]` alone still → 32.\n- `test_preferred_block_size_single_backend_keeps_default` — `MultipleOf(16)` → 16.\n- `test_preferred_block_size_extends_to_common_multiple` — `[32]` + `[48]` → 96.\n\n## Test Result\n\n- New unit tests + the 3 existing `select_common_block_size` tests pass.\n- End-to-end on GLM-5.2 NVFP4 (`GlmMoeDsaForCausalLM`), PP=2 / TP=8 / `--enable-expert-parallel`, Ray executor, 2 nodes × 8× B200: previously crashed at KV-cache init w",
-    "author": "divyvasal",
-    "state": "open",
-    "labels": [
-      "bug",
-      "v1",
-      "cpu"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/49845",
-    "createdAt": "2026-07-25T23:47:24.000Z",
-    "updatedAt": "2026-09-11T19:45:14.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-04T04:56:30.610Z",
-    "contentHash": "sha256:510ab35b89f6569f20dc9f03cddb276a2d81f9e7c086cc1352b08e3d09ff4540",
-    "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
   },
   {
     "id": "vllm-pr-47335",

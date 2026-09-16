@@ -6,7 +6,7 @@
     "number": 39168,
     "type": "pr",
     "title": "[ROCm] Fixing GLM-5.1, DeepSeek-V3.2, DeepSeek-V4 on gfx942 and gfx950",
-    "bodyExcerpt": "This PR:\r\n* Fixes a bug in cache_kernels.cu that resulted in incorrect results for block_stride not multiple of 16\r\n* Adds block size 16 to supported sparse MLA block sizes on ROCm\r\n* Fixes a few bugs in the Python code\r\n* Adds optimized Triton kernels with support of arbitrary block size for two of the steps\r\n* In case of rocm_fp8_paged_mqa_logits, routes to the Triton kernel by default, since AITER  is slower for block size 1 and it does not handle block size 16 correctly\r\n\r\nI've verified that, after this PR, both GLM-5-FP8 and DeepSeek-V3.2 work correctly on ROCm (MI325  / gfx942) with both --block-size 1 and --block-size 16.",
+    "bodyExcerpt": "* An in-tree Triton paged MQA kernel.  It is required unconditionally for DeepSeek V4 (Flash and Pro): V4 shares KV-cache blocks between the indexer and the main MLA cache, so its indexer cache is a non-contiguous strided slice of a larger per-block record written in plain pos-major layout, whereas aiter assumes a contiguous 16×16-preshuffled cache. It is also required when speculative decoding is enabled, because the current AITER implementation of paged_mqa_logits does not work correctly in these cases (the exact cause is yet to be determined).\r\n* Periodically synchronizing the device during FP8-BMM precompilation. Without it, vLLM emits a flood of short kernel launches that sometimes ends in a segfault. \r\n* A fix to cp_gather_indexer_k_quant_cache for unaligned block_stride.\r\n\r\nTest results, MI325 and MI355, AITER 0.1.21 branch (2026/Aug/28) + the fix from https://github.com/ROCm/aiter/pull/5202, https://github.com/ekuznetsov139/llm-comprehension/ (average errors per iteration in a 190 multiple-choice question corpus, lower is better, sigma ~ 0.8 in all cases):\r\n\r\nModel               | Upstream  | Upstream + init fix  | Upstream + init fix + spec   |    PR     |    PR + spec\r\n--------------------|-----------|-----------|------------|-----------|----------\r\nGLM-4.7, MI325      |          |   3.2       |  4.4   | 4.6  |    4.2\r\nGLM-5.1, MI325      | crash     |    2.8    |  9.0+1.2   |   2.8     |    3.0\r\nGLM-5.2, MI325      |               |     1.6  |            |   1.0     |    1.6\r\nGLM-5.3, MI325      |              |     1.4      |  10.0+3.6   |   2.2     |    1.2\r\nDS3.2, MI325        | crash       |    5.0    |  10.6+3.8   |   3.0     |    3.0\r\nDS4-Flash, MI325    | junk      |           |            |   3.6     |    4.0\r\nDS4-Pro, MI325      | junk      |           |            |   3.4     |    3.2\r\nGLM-5.1, MI355      |   1.8     |           |   7.2+1.0  |     |  2.8\r\nDS4-Flash, MI355    | junk      |           |            |     |  5.2\r\nDS4-Pro, MI355      ",
     "author": "ekuznetsov139",
     "state": "open",
     "labels": [
@@ -20,10 +20,10 @@
     ],
     "url": "https://github.com/vllm-project/vllm/pull/39168",
     "createdAt": "2026-04-07T09:10:40.000Z",
-    "updatedAt": "2026-09-14T19:50:54.000Z",
+    "updatedAt": "2026-09-15T11:37:50.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:61b23fb758de4c37edc36d7384127b37ceb98e45fa030b00c113658ab76b3b00",
+    "contentHash": "sha256:827c40271a1064af2e21219db3e84d4d6b86cceab0ae6c531c292963e8a26a4b",
     "category": "DOCS",
     "categorySource": "rules",
     "summary": null

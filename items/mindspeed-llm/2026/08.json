@@ -1,5 +1,54 @@
 [
   {
+    "id": "mindspeed-llm-issue-1820",
+    "nodeId": "gitcode-issue-4294667",
+    "repository": "Ascend/MindSpeed-LLM",
+    "number": 1820,
+    "type": "issue",
+    "title": "[Bug]: 修复 GLM-5.2 A5 kernel 的 K 输入连续性",
+    "bodyExcerpt": "### 需求背景\n\nGLM-5.2 在调用 `npu_sparse_flash_attention` 和 `npu_lightning_indexer` 前，K 张量可能保留融合算子不接受的 stride/非连续内存布局，导致 A5 kernel 路径出现输入连续性问题。类似问题曾在 #1562 中描述，但当前 master 的 MCore attention、FSDP2 GLM-5.2 attention 和 fused lightning indexer 路径仍需要统一处理。\n\n### 问题范围与根因\n\n1. MCore sparse flash attention 调用前的 `key` 未显式规范为连续布局。\n2. FSDP2 GLM-5.2 sparse flash attention 调用前的 `key_bshd` 未显式规范为连续布局。\n3. fused lightning indexer 调用前由 `rearrange` 得到的 `k` 未显式规范为连续布局。\n4. GLM-5.2 210B 4K A3 POC 的默认节点数需要从 32 调整为 8。\n\n### 期望实现\n\n1. 在三条融合算子路径中保持 K 张量形状不变并生成连续内存布局后再调用 NPU 算子。\n2. 同步更新 `tests/mindspeed_llm/` 下对应代码镜像。\n3. 将 210B 4K A3 POC 的 `NNODES` 默认值调整为 8。\n4. 本 Issue 不修改公共 API、命令行参数名称或算子接口。\n\n### 验收标准\n\n- MCore、FSDP2 和 fused lightning indexer 三条路径均在算子调用前规范 K 张量连续性。\n- `tests/mindspeed_llm/` 下的对应实现保持同步。\n- 210B 4K A3 POC 默认使用 8 个节点。\n- 6 个 Python 文件通过语法编译，Shell 脚本通过语法检查。\n- PR 对完整 7 文件范围执行仓库 pre-commit，并如实记录本地依赖阻塞和未执行的硬件功能测试。",
+    "author": "LinShua",
+    "state": "closed",
+    "labels": [
+      "resolved",
+      "bug"
+    ],
+    "url": "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1820",
+    "createdAt": "2026-08-31T11:33:54.000Z",
+    "updatedAt": "2026-09-15T09:22:41.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:b14d7692a5999e5f9366275d1cf620dda7072e78c5a096c5481dc4c405b15506",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "mindspeed-llm-issue-1817",
+    "nodeId": "gitcode-issue-4291034",
+    "repository": "Ascend/MindSpeed-LLM",
+    "number": 1817,
+    "type": "issue",
+    "title": "[Feature]: 完善 GLM-5.2 A3 示例与 POC 脚本",
+    "bodyExcerpt": "### 需求背景\n\nGLM-5.2 A3 脚本需要同时完善现有 744B 生成/预训练配置，并补充 210B 4K 预训练 POC 入口。现有 744B 脚本包含未使用或不需要默认启用的参数组，且 `tests/poc/glm52/` 下缺少 210B A3 预训练脚本，不便于复用对应的分布式、MLA、MoE、DSA 和流水线配置。\n\n### 期望实现\n\n1. 调整 GLM-5.2 744B A3 生成、预训练示例及 POC 脚本，移除未使用的参数定义和不需要的默认参数传递。\n2. 新增 GLM-5.2 210B 4K A3 预训练 POC 脚本，提供路径占位符及分布式、模型、MLA、MoE、DSA、重计算和流水线参数配置。\n3. 本 Issue 仅覆盖上述 4 个 shell 脚本，不修改训练运行时代码或公共 API。\n\n### 验收标准\n\n- 新增 210B 4K A3 POC 脚本，并保留可配置的数据、分词器、权重加载和保存路径。\n- 现有 3 个 744B 脚本仅包含本 Issue 范围内的参数调整。\n- 4 个脚本通过 shell 语法检查。\n- 分支相对目标基线保持一个 review commit。\n- PR 对完整变更文件范围执行仓库 pre-commit，并如实记录通过项与仓库本地依赖造成的阻塞项。",
+    "author": "LinShua",
+    "state": "closed",
+    "labels": [
+      "resolved",
+      "feature",
+      "requirement"
+    ],
+    "url": "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1817",
+    "createdAt": "2026-08-29T09:20:58.000Z",
+    "updatedAt": "2026-09-15T09:21:11.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-30T05:39:24.275Z",
+    "contentHash": "sha256:9c517eefc322dea7c31dfa1ffb5c7af7813a280688ac7c71a00c0af607a48935",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "mindspeed-llm-pr-5006",
     "nodeId": "gitcode-pr-9115732",
     "repository": "Ascend/MindSpeed-LLM",
@@ -23,29 +72,6 @@
     "firstSeenAt": "2026-09-01T05:28:24.707Z",
     "contentHash": "sha256:54808c5e56f654fb8065a86eb1a24069a70f465a6a9606827511403d92e27112",
     "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "mindspeed-llm-issue-1820",
-    "nodeId": "gitcode-issue-4294667",
-    "repository": "Ascend/MindSpeed-LLM",
-    "number": 1820,
-    "type": "issue",
-    "title": "[Bug]: 修复 GLM-5.2 A5 kernel 的 K 输入连续性",
-    "bodyExcerpt": "### 需求背景\n\nGLM-5.2 在调用 `npu_sparse_flash_attention` 和 `npu_lightning_indexer` 前，K 张量可能保留融合算子不接受的 stride/非连续内存布局，导致 A5 kernel 路径出现输入连续性问题。类似问题曾在 #1562 中描述，但当前 master 的 MCore attention、FSDP2 GLM-5.2 attention 和 fused lightning indexer 路径仍需要统一处理。\n\n### 问题范围与根因\n\n1. MCore sparse flash attention 调用前的 `key` 未显式规范为连续布局。\n2. FSDP2 GLM-5.2 sparse flash attention 调用前的 `key_bshd` 未显式规范为连续布局。\n3. fused lightning indexer 调用前由 `rearrange` 得到的 `k` 未显式规范为连续布局。\n4. GLM-5.2 210B 4K A3 POC 的默认节点数需要从 32 调整为 8。\n\n### 期望实现\n\n1. 在三条融合算子路径中保持 K 张量形状不变并生成连续内存布局后再调用 NPU 算子。\n2. 同步更新 `tests/mindspeed_llm/` 下对应代码镜像。\n3. 将 210B 4K A3 POC 的 `NNODES` 默认值调整为 8。\n4. 本 Issue 不修改公共 API、命令行参数名称或算子接口。\n\n### 验收标准\n\n- MCore、FSDP2 和 fused lightning indexer 三条路径均在算子调用前规范 K 张量连续性。\n- `tests/mindspeed_llm/` 下的对应实现保持同步。\n- 210B 4K A3 POC 默认使用 8 个节点。\n- 6 个 Python 文件通过语法编译，Shell 脚本通过语法检查。\n- PR 对完整 7 文件范围执行仓库 pre-commit，并如实记录本地依赖阻塞和未执行的硬件功能测试。",
-    "author": "LinShua",
-    "state": "open",
-    "labels": [
-      "bug"
-    ],
-    "url": "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1820",
-    "createdAt": "2026-08-31T11:33:54.000Z",
-    "updatedAt": "2026-08-31T11:33:54.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-01T05:28:24.707Z",
-    "contentHash": "sha256:ea33568f0cf5e873aedc7f6d1b0d0afe21778acd679df0c95d5be0a3b8281a82",
-    "category": "BUG",
     "categorySource": "rules",
     "summary": null
   },
@@ -98,30 +124,6 @@
     "firstSeenAt": "2026-08-30T05:39:24.275Z",
     "contentHash": "sha256:761b0410c0e2d74b3480f15abc26f2ea7eb98143070d1a71a6aa49a2e2b98710",
     "category": "DOCS",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "mindspeed-llm-issue-1817",
-    "nodeId": "gitcode-issue-4291034",
-    "repository": "Ascend/MindSpeed-LLM",
-    "number": 1817,
-    "type": "issue",
-    "title": "[Feature]: 完善 GLM-5.2 A3 示例与 POC 脚本",
-    "bodyExcerpt": "### 需求背景\n\nGLM-5.2 A3 脚本需要同时完善现有 744B 生成/预训练配置，并补充 210B 4K 预训练 POC 入口。现有 744B 脚本包含未使用或不需要默认启用的参数组，且 `tests/poc/glm52/` 下缺少 210B A3 预训练脚本，不便于复用对应的分布式、MLA、MoE、DSA 和流水线配置。\n\n### 期望实现\n\n1. 调整 GLM-5.2 744B A3 生成、预训练示例及 POC 脚本，移除未使用的参数定义和不需要的默认参数传递。\n2. 新增 GLM-5.2 210B 4K A3 预训练 POC 脚本，提供路径占位符及分布式、模型、MLA、MoE、DSA、重计算和流水线参数配置。\n3. 本 Issue 仅覆盖上述 4 个 shell 脚本，不修改训练运行时代码或公共 API。\n\n### 验收标准\n\n- 新增 210B 4K A3 POC 脚本，并保留可配置的数据、分词器、权重加载和保存路径。\n- 现有 3 个 744B 脚本仅包含本 Issue 范围内的参数调整。\n- 4 个脚本通过 shell 语法检查。\n- 分支相对目标基线保持一个 review commit。\n- PR 对完整变更文件范围执行仓库 pre-commit，并如实记录通过项与仓库本地依赖造成的阻塞项。",
-    "author": "LinShua",
-    "state": "open",
-    "labels": [
-      "feature",
-      "requirement"
-    ],
-    "url": "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1817",
-    "createdAt": "2026-08-29T09:20:58.000Z",
-    "updatedAt": "2026-08-29T09:38:04.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-30T05:39:24.275Z",
-    "contentHash": "sha256:d2c0862da63fd8d58e1d42d0f7593c70f7f184e74ab79baaaa86fc9fe3dd82c7",
-    "category": "NEW_SUPPORT",
     "categorySource": "rules",
     "summary": null
   },
