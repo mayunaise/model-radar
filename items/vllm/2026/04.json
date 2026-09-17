@@ -1,5 +1,32 @@
 [
   {
+    "id": "vllm-pr-40529",
+    "nodeId": "PR_kwDOI7xefs7UXGSQ",
+    "repository": "vllm-project/vllm",
+    "number": 40529,
+    "type": "pr",
+    "title": "[Bugfix] Fix forced tool_choice crash when reasoning_parser consumes all content",
+    "bodyExcerpt": "## Summary\n\nWhen using `--reasoning-parser` (e.g., `glm45`, `deepseek_r1`) with forced `tool_choice`, the reasoning parser may consume the entire model output into `<think>...</think>` tags, leaving `content` as `None`. This causes `AssertionError` crashes in the forced tool_choice code paths.\n\n**Fix**: Normalize `None` content to empty string `\"\"` (consistent with the existing `\"required\"` branch which already does `content = content or \"\"`), and replace the downstream `assert tool_calls` with a defensive fallback.\n\n## Changes\n\n| File | Change |\n|------|--------|\n| `vllm/entrypoints/openai/engine/serving.py` | Replace 2x `assert content is not None` → `content = content or \"\"` |\n| `vllm/parser/abstract_parser.py` | Replace 2x `assert content is not None` → `content = content or \"\"` |\n| `vllm/entrypoints/openai/chat_completion/serving.py` | Replace `assert tool_calls is not None and len(tool_calls) > 0` → `tool_calls = tool_calls or []` |\n\nTotal: 5 lines changed across 3 files.\n\n## How to reproduce\n\n```bash\nvllm serve <reasoning-model> --reasoning-parser glm45 --enable-auto-tool-choice --tool-call-parser hermes\n```\n\n```python\nresponse = client.chat.completions.create(\n    model=\"<model>\",\n    messages=[{\"role\": \"user\", \"content\": \"What's the weather?\"}],\n    tools=[{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"parameters\": {}}}],\n    tool_choice={\"type\": \"function\", \"function\": {\"name\": \"get_weather\"}}\n)\n# Crash: AssertionError (no message) when model output is all <think>...</think>\n```\n\n## Why this is not a duplicate\n\nPR #40148 fixes `engine/serving.py` and `abstract_parser.py` but does **not** fix the downstream `assert` in `chat_completion/serving.py` (line 1417). This PR covers all 5 crash points across all 3 files.\n\nFixes #40528\nRelated: #40147, #40148\n\n## Test\n\nThe fix is consistent with the existing `\"required\"` branch pattern which already uses `content = content or \"\"` and `tool_calls = tool_calls or []`.\n\n## AI Disclosure\n\nAI assistance was us",
+    "author": "Liuchenbing-2026",
+    "state": "open",
+    "labels": [
+      "bug",
+      "frontend",
+      "needs-rebase",
+      "stale",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/40529",
+    "createdAt": "2026-04-21T16:00:43.000Z",
+    "updatedAt": "2026-09-17T01:48:32.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-17T05:07:31.095Z",
+    "contentHash": "sha256:87ca9cbd353634f2176f7d17de1f5c0c144258b6364ed72ce2fe504bb2194fed",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-39168",
     "nodeId": "PR_kwDOI7xefs7QcCsf",
     "repository": "vllm-project/vllm",
