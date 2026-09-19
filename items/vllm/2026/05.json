@@ -1,5 +1,53 @@
 [
   {
+    "id": "vllm-issue-43172",
+    "nodeId": "I_kwDOI7xefs8AAAABCyu-aw",
+    "repository": "vllm-project/vllm",
+    "number": 43172,
+    "type": "issue",
+    "title": "[Usage]: GLM-5/GLM-5.1 deployment on L40 with vLLM",
+    "bodyExcerpt": "### Your current environment\n\nHi,\n\nI'm trying to evaluate the deployment of GLM-5/GLM-5.1 on an NVIDIA L40 (48GB VRAM).  but I'm hitting an \"Operator Unsupported\" error.\n\n```\nValueError: No valid attention backend found for cuda... Reasons: {FLASH_ATTN_MLA: [compute capability not supported], FLASHMLA: [compute capability not supported... only supported on Hopper and Blackwell devices.]}\n```\n\nIs this model fully compatible with L40 currently? If so, are there any known workarounds or specific setup steps for this GPU architecture to fix the kernel issue?\n\n\n### How would you like to use vllm\n\nI want to run inference of a [specific model](put link here). I don't know how to integrate it with vllm.\n\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "zhanghx0905",
+    "state": "closed",
+    "labels": [
+      "usage",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/43172",
+    "createdAt": "2026-05-20T01:30:20.000Z",
+    "updatedAt": "2026-09-19T01:42:52.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:4f249f9fcaf5d032590e9c76f9b561ef0de0f2ab70e2685d40b49f04e48cea62",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-43235",
+    "nodeId": "I_kwDOI7xefs8AAAABC5AVKg",
+    "repository": "vllm-project/vllm",
+    "number": 43235,
+    "type": "issue",
+    "title": "[RFC] NSA is architecturally incompatible with NVIDIA consumer/workstation GPUs — MLA is the only viable sparse attention path",
+    "bodyExcerpt": "### Motivation.\n\nAfter extensive production testing on SM120 (RTX PRO 6000 Blackwell, 8×96GB, PCIe Gen5), NSA (Native Sparse Attention) cannot be made to work reliably for production serving on NVIDIA consumer/workstation GPUs. This is not a bug — it is an architectural incompatibility.\n\nThe fundamental problems:\n\n1. **NSA requires dynamic sparse index computation at every decode step.** This means per-layer, per-token topk selection over the full KV cache. On SM100 (datacenter Blackwell), dedicated FP8 block-scaled GEMM units handle this efficiently. On SM120, these units do not exist — the sparse indexer falls back to software paths that are both slow and correctness-problematic.\n\n2. **PCIe topology makes NSA+MTP catastrophically unreliable.** The b12x PCIe oneshot allreduce has a buffer reuse race under CUDA graph/no-copy mode. The only known fix (a completion barrier in `pcie_oneshot.cu`) costs ~1 tok/s and still does not guarantee correctness under concurrent serving. MTP + TP>1 + concurrent>1 produces deadlocks (see #41402, #41404 — both closed without resolution).\n\n3. **SM120 is not SM100.** FP8 block-scaled GEMM kernels written for SM100 crash or produce garbage on SM120 (#26211, #35566). FP8 KV Cache is slower than BF16 on SM120 because there are no native FP8 block-scaled compute units. NVFP4 KV Cache PRs (#21601 in SGLang) remain unmerged with critical bugs.\n\n4. **NSA's correctness is unacceptably fragile.** The voipmonitor/GLM-5.1 reference image achieves only 93.3% accuracy (28/30), and requires a custom b12x overlay with three patched source files plus a custom vLLM tree. This is not production-grade — it is a fragile experiment.\n\n5. **Every community Docker image for NSA+MTP is broken.** The rtx6kpro wiki images hang or produce incoherent output. Later versions are worse than earlier ones because upstream changes in both vLLM and b12x break the fragile integration points.\n\nMLA avoids all of these problems:\n- MLA compresses KV cache structurally (low-r",
+    "author": "piweb-labs",
+    "state": "closed",
+    "labels": [
+      "RFC",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/43235",
+    "createdAt": "2026-05-20T18:30:05.000Z",
+    "updatedAt": "2026-09-19T01:42:40.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-19T04:52:29.207Z",
+    "contentHash": "sha256:759dbf6676f0f0843fb566aa574b47906abb15c5d53a9cd63ad5ae8173f6649c",
+    "category": "COMPATIBILITY",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-43907",
     "nodeId": "PR_kwDOI7xefs7gXYsX",
     "repository": "vllm-project/vllm",
@@ -18,10 +66,10 @@
     ],
     "url": "https://github.com/vllm-project/vllm/pull/43907",
     "createdAt": "2026-05-28T19:02:23.000Z",
-    "updatedAt": "2026-09-18T00:24:44.000Z",
+    "updatedAt": "2026-09-18T18:27:21.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-09-16T05:04:24.144Z",
-    "contentHash": "sha256:0ec84c765b6b4293c9573bc05197da5c4d34258a700bbedbe7c5dc270cd92164",
+    "contentHash": "sha256:6dd2d96c3da6fdaf8346b4c23dce6c26bc6dcb41b75294046d85d3d76b40fa4f",
     "category": "PERFORMANCE",
     "categorySource": "rules",
     "summary": null
@@ -456,56 +504,6 @@
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T10:27:08.865Z"
-    }
-  },
-  {
-    "id": "vllm-issue-43172",
-    "nodeId": "I_kwDOI7xefs8AAAABCyu-aw",
-    "repository": "vllm-project/vllm",
-    "number": 43172,
-    "type": "issue",
-    "title": "[Usage]: GLM-5/GLM-5.1 deployment on L40 with vLLM",
-    "bodyExcerpt": "### Your current environment\n\nHi,\n\nI'm trying to evaluate the deployment of GLM-5/GLM-5.1 on an NVIDIA L40 (48GB VRAM).  but I'm hitting an \"Operator Unsupported\" error.\n\n```\nValueError: No valid attention backend found for cuda... Reasons: {FLASH_ATTN_MLA: [compute capability not supported], FLASHMLA: [compute capability not supported... only supported on Hopper and Blackwell devices.]}\n```\n\nIs this model fully compatible with L40 currently? If so, are there any known workarounds or specific setup steps for this GPU architecture to fix the kernel issue?\n\n\n### How would you like to use vllm\n\nI want to run inference of a [specific model](put link here). I don't know how to integrate it with vllm.\n\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
-    "author": "zhanghx0905",
-    "state": "open",
-    "labels": [
-      "usage",
-      "stale"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/43172",
-    "createdAt": "2026-05-20T01:30:20.000Z",
-    "updatedAt": "2026-08-19T02:34:46.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:f01912b61ac38b678c3ec32356c71c99c712a8c8056e2be3f5919b15c3a56d59",
-    "category": "COMPATIBILITY",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5 在 L40 上注意力后端不支持",
-      "summaryZh": "NVIDIA L40 上使用 vLLM 部署 GLM-5/GLM-5.1 进行推理：部署 GLM-5/GLM-5.1 时出现“Operator Unsupported”错误，CUDA 未找到有效注意力后端；FLASH_ATTN_MLA 和 FLASHMLA 均因计算能力不支持而不可用，且 FLASHMLA 仅支持 Hopper 和 Blackwell",
-      "models": [
-        "GLM-5",
-        "GLM-5.1"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "COMPATIBILITY",
-      "severity": "MEDIUM",
-      "impactScopeZh": "涉及配备 48GB 显存的 NVIDIA L40 GPU 架构。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】GLM-5/GLM-5.1 deployment on L40 with vLLM",
-        "【正文】ValueError: No valid attention backend found for cuda... FLASH_ATTN_MLA: [compute capability not supported], FLASHMLA: ["
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
     }
   },
   {

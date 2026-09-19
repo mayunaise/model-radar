@@ -1,5 +1,102 @@
 [
   {
+    "id": "vllm-issue-45997",
+    "nodeId": "I_kwDOI7xefs8AAAABF4QyCQ",
+    "repository": "vllm-project/vllm",
+    "number": 45997,
+    "type": "issue",
+    "title": "[RFC]: Kernel-agnostic constant-stride (layer-major) KV cache layout for KV connectors",
+    "bodyExcerpt": "## Motivation\n\n#27743 added \"cross-layer KV blocks\" so a KV connector can stage/transfer a block's KV for\nall layers at once, by allocating all layers in one tensor (`use_uniform_kv_cache` /\n`allocate_uniform_kv_caches`).\n\nFor MLA backends the only supported physical layout was **block-major**\n`(num_blocks, num_layers, ...)`. That makes each per-layer view a *strided* (non-contiguous)\nslice, and MLA kernels require contiguous per-layer views — so #37090 **disabled cross-layer\nKV for all MLA backends** (`get_kv_cache_stride_order(include_num_layers_dimension=True)`\nreturns the identity permutation to signal \"unsupported\").\n\nThe result: the cross-layer connector optimization is off for exactly the models that dominate\ndisaggregated prefill/decode and KV offloading today — DeepSeek V3/V3.2, GLM, Kimi, all MLA.\nWith it disabled, vLLM falls back to **one independent `torch.zeros` per layer**, so a connector\nsees `L` allocations at unrelated base addresses. Two concrete costs:\n\n1. The GPU↔staging layer↔page transpose needs `L` separate copies per block — there is no\n   constant stride across layers to exploit.\n2. RDMA connectors must register `L` memory regions (one per layer) instead of one.\n\n## Proposed Change\n\nAdd a **second uniform layout: layer-major contiguous slices**. Allocate one buffer for all\nsame-spec layers and hand each layer a **contiguous slice** at a constant stride\n`S = num_blocks * page_size_bytes`. The per-layer view stays contiguous and bit-identical to a\nstandalone tensor, so **attention kernels (including MLA) are unaffected** — no\n`get_kv_cache_stride_order` support is required. This is kernel-agnostic, unlike the existing\nblock-major path.\n\n```\nToday — one independent torch.zeros per layer (cross-layer disabled for MLA, #37090):\n\n  layer 0   : [ blk0 blk1 ... blkN ]   @ ptr0\n  layer 1   : [ blk0 blk1 ... blkN ]   @ ptr1     (ptr1 - ptr0 : arbitrary)\n   ...\n  layer L-1 : [ blk0 blk1 ... blkN ]   @ ptr(L-1) (no constant stride)\n\n  => L memory region",
+    "author": "xiaguan",
+    "state": "open",
+    "labels": [
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/45997",
+    "createdAt": "2026-06-18T05:32:39.000Z",
+    "updatedAt": "2026-09-19T01:40:07.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-19T04:52:29.207Z",
+    "contentHash": "sha256:0473e0a4e0a8174e6df4c64061cbec0798c6fe8cdd604d08734300f52846c398",
+    "category": "OTHER",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-46028",
+    "nodeId": "I_kwDOI7xefs8AAAABF5vCXg",
+    "repository": "vllm-project/vllm",
+    "number": 46028,
+    "type": "issue",
+    "title": "[Bug]:[Anthropic API] ValidationError in message_stream_converter masks underlying 500 error when serving GLM-5.2",
+    "bodyExcerpt": "### Your current environment\n\n### Environment & Hardware\n- **Model**: `zai-org/GLM-5.2` (or FP8 variant)\n- **GPU**: NVIDIA H800 (Tensor Parallelism Size: 8)\n- **vLLM Version**: 0.23.0\n- **CUDA Version**: 13.2\n- **OS**: Ubuntu 22.04\n\n### 🐛 Describe the bug\n\n### Describe the bug\nWhen using vLLM 0.23.0 to serve the new `GLM-5.2` model via the Anthropic-compatible streaming API, an underlying engine 500 error triggers a `pydantic_core._pydantic_core.ValidationError` inside `message_stream_converter`.\n\nThe converter fails to handle error dictionaries (`{'error': {...}}`) returned by the engine, leading to a masked error and breaking the client-server interaction.\n\n### vLLM Version\n0.23.0\n\n### Model\nzai-org/GLM-5.2\n\n### Error Traceback\n```text\n(APIServer pid=80348) File \".../vllm/entrypoints/anthropic/serving.py\", line 649, in message_stream_converter\n(APIServer pid=80348) pydantic_core._pydantic_core.ValidationError: 2 validation errors for ChatCompletionStreamResponse\n(APIServer pid=80348) model Field required [type=missing, input_value={'error': {'message': 'Internal Server Error'...}}]\n```\n\n### Expected Behavior\n`message_stream_converter` should gracefully handle or propagate upstream error messages without crashing with a validation error.\n\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "ifnodoraemon",
+    "state": "open",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/46028",
+    "createdAt": "2026-06-18T09:29:58.000Z",
+    "updatedAt": "2026-09-19T01:40:04.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:ebd710aaba9457d16a8948c56462eea594361d72af4268dd94a9f47b0e3cff54",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "Anthropic API 转换器掩盖 GLM-5.2 500 错误",
+      "summaryZh": "vLLM 0.23.0 通过 Anthropic 兼容流式 API 服务 GLM-5.2：引擎返回包含 error 字典的 500 错误时，message_stream_converter 将其作为 ChatCompletionStreamResponse 校验，触发 Pydantic ValidationError，掩盖底层错误并破坏客户端与服务端交互；影响 NVIDIA H800、8 路张量并行环境下服务 GLM-5.2 或其 FP8 变体的 Anthropic 兼容流式请求",
+      "models": [
+        "zai-org/GLM-5.2"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "vLLM 0.23.0 的 Anthropic 兼容流式 API 错误处理。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】ValidationError in message_stream_converter masks underlying 500 error when serving GLM-5.2",
+        "【正文】The converter fails to handle error dictionaries ({'error': {...}}) returned by the engine, leading to a masked error"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-46162",
+    "nodeId": "PR_kwDOI7xefs7oZUK8",
+    "repository": "vllm-project/vllm",
+    "number": 46162,
+    "type": "pr",
+    "title": "[Bugfix] Forward upstream error message in Anthropic streaming converter (#46028)",
+    "bodyExcerpt": "## Purpose\n\nFixes #46028.\n\nWhen the engine fails mid-stream, the OpenAI serving layer emits an `ErrorResponse` payload (`{\"error\": {...}}`) via `create_streaming_error_response`, followed by `[DONE]`. The Anthropic adapter's `message_stream_converter` validated **every** chunk as a `ChatCompletionStreamResponse`, so the error chunk raised a pydantic `ValidationError`. The outer `except` then re-emitted that as a generic `internal_error` carrying the *pydantic* message — masking the real upstream failure. The reporter hit this serving GLM-5.2, where an engine 500 surfaced only as `2 validation errors for ChatCompletionStreamResponse ... model Field required input_value={'error': {'message': 'Internal Server Error'...}}`.\n\nThis PR detects the error payload (new `parse_streaming_error_chunk` helper, mirroring the existing module-level `wrap_data_with_event` helper) and forwards its message as an Anthropic `error` event, reusing the converter's existing `AnthropicStreamEvent(type=\"error\", ...)` shape. Only the failure path changes; valid chunks validate exactly as before.\n\n## Not a duplicate\n\n- `gh pr list --search \"46028 in:body\"` → none.\n- `gh pr list --search \"message_stream_converter\"` → only #45807 (stop_sequence `stop_reason`), unrelated.\n- #34053 (`[Anthropic API]` 6 protocol bugs) also edits `serving.py`, but for message/tool-call ID and `tool_result` formats; it does not touch the streaming error path.\n\n## Test Plan / Test Result\n\nAdded CPU-only unit test `tests/entrypoints/anthropic/test_stream_error.py` (the existing `test_messages.py` needs a live server):\n\n```\n$ .venv/bin/python -m pytest tests/entrypoints/anthropic/test_stream_error.py -v\ntest_parse_streaming_error_chunk_detects_error_payload PASSED\ntest_parse_streaming_error_chunk_ignores_normal_chunk  PASSED\ntest_parse_streaming_error_chunk_ignores_malformed_json PASSED\ntest_converter_forwards_upstream_error_message          PASSED\n4 passed in 1.13s\n\n$ .venv/bin/python -m pytest tests/entrypoints/anthrop",
+    "author": "waynehacking8",
+    "state": "open",
+    "labels": [
+      "bug",
+      "frontend",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/46162",
+    "createdAt": "2026-06-19T13:43:25.000Z",
+    "updatedAt": "2026-09-19T01:39:51.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-19T04:52:29.207Z",
+    "contentHash": "sha256:5da74efd93cda056ef7ac79e4fe4fd462022f7839403bb3eb449ef04933a9c82",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-issue-46654",
     "nodeId": "I_kwDOI7xefs8AAAABGmXBag",
     "repository": "vllm-project/vllm",
@@ -2028,54 +2125,6 @@
       "evidence": [
         "【标题】Fix GLM-5 MTP low per-position acceptance rate",
         "【正文】With num_speculative_tokens > 1, per-position acceptance collapses after position 0"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-46028",
-    "nodeId": "I_kwDOI7xefs8AAAABF5vCXg",
-    "repository": "vllm-project/vllm",
-    "number": 46028,
-    "type": "issue",
-    "title": "[Bug]:[Anthropic API] ValidationError in message_stream_converter masks underlying 500 error when serving GLM-5.2",
-    "bodyExcerpt": "### Your current environment\n\n### Environment & Hardware\n- **Model**: `zai-org/GLM-5.2` (or FP8 variant)\n- **GPU**: NVIDIA H800 (Tensor Parallelism Size: 8)\n- **vLLM Version**: 0.23.0\n- **CUDA Version**: 13.2\n- **OS**: Ubuntu 22.04\n\n### 🐛 Describe the bug\n\n### Describe the bug\nWhen using vLLM 0.23.0 to serve the new `GLM-5.2` model via the Anthropic-compatible streaming API, an underlying engine 500 error triggers a `pydantic_core._pydantic_core.ValidationError` inside `message_stream_converter`.\n\nThe converter fails to handle error dictionaries (`{'error': {...}}`) returned by the engine, leading to a masked error and breaking the client-server interaction.\n\n### vLLM Version\n0.23.0\n\n### Model\nzai-org/GLM-5.2\n\n### Error Traceback\n```text\n(APIServer pid=80348) File \".../vllm/entrypoints/anthropic/serving.py\", line 649, in message_stream_converter\n(APIServer pid=80348) pydantic_core._pydantic_core.ValidationError: 2 validation errors for ChatCompletionStreamResponse\n(APIServer pid=80348) model Field required [type=missing, input_value={'error': {'message': 'Internal Server Error'...}}]\n```\n\n### Expected Behavior\n`message_stream_converter` should gracefully handle or propagate upstream error messages without crashing with a validation error.\n\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
-    "author": "ifnodoraemon",
-    "state": "open",
-    "labels": [
-      "bug"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/46028",
-    "createdAt": "2026-06-18T09:29:58.000Z",
-    "updatedAt": "2026-06-18T09:47:14.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:37320d0fa6b67758f6c56b104f2d45212c92a39e8ddfe157e3eb1cbeb2111658",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "Anthropic API 转换器掩盖 GLM-5.2 500 错误",
-      "summaryZh": "vLLM 0.23.0 通过 Anthropic 兼容流式 API 服务 GLM-5.2：引擎返回包含 error 字典的 500 错误时，message_stream_converter 将其作为 ChatCompletionStreamResponse 校验，触发 Pydantic ValidationError，掩盖底层错误并破坏客户端与服务端交互；影响 NVIDIA H800、8 路张量并行环境下服务 GLM-5.2 或其 FP8 变体的 Anthropic 兼容流式请求",
-      "models": [
-        "zai-org/GLM-5.2"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "vLLM 0.23.0 的 Anthropic 兼容流式 API 错误处理。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】ValidationError in message_stream_converter masks underlying 500 error when serving GLM-5.2",
-        "【正文】The converter fails to handle error dictionaries ({'error': {...}}) returned by the engine, leading to a masked error"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
