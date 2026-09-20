@@ -1,5 +1,30 @@
 [
   {
+    "id": "vllm-pr-46162",
+    "nodeId": "PR_kwDOI7xefs7oZUK8",
+    "repository": "vllm-project/vllm",
+    "number": 46162,
+    "type": "pr",
+    "title": "[Bugfix] Forward upstream error message in Anthropic streaming converter (#46028)",
+    "bodyExcerpt": "## Purpose\n\nFixes #46028.\n\nWhen the engine fails mid-stream, the OpenAI serving layer emits an `ErrorResponse` payload (`{\"error\": {...}}`) via `create_streaming_error_response`, followed by `[DONE]`. The Anthropic adapter's `message_stream_converter` validated **every** chunk as a `ChatCompletionStreamResponse`, so the error chunk raised a pydantic `ValidationError`. The outer `except` then re-emitted that as a generic `internal_error` carrying the *pydantic* message — masking the real upstream failure. The reporter hit this serving GLM-5.2, where an engine 500 surfaced only as `2 validation errors for ChatCompletionStreamResponse ... model Field required input_value={'error': {'message': 'Internal Server Error'...}}`.\n\nThis PR detects the error payload (new `parse_streaming_error_chunk` helper, mirroring the existing module-level `wrap_data_with_event` helper) and forwards its message as an Anthropic `error` event, reusing the converter's existing `AnthropicStreamEvent(type=\"error\", ...)` shape. Only the failure path changes; valid chunks validate exactly as before.\n\n## Not a duplicate\n\n- `gh pr list --search \"46028 in:body\"` → none.\n- `gh pr list --search \"message_stream_converter\"` → only #45807 (stop_sequence `stop_reason`), unrelated.\n- #34053 (`[Anthropic API]` 6 protocol bugs) also edits `serving.py`, but for message/tool-call ID and `tool_result` formats; it does not touch the streaming error path.\n\n## Test Plan / Test Result\n\nAdded CPU-only unit test `tests/entrypoints/anthropic/test_stream_error.py` (the existing `test_messages.py` needs a live server):\n\n```\n$ .venv/bin/python -m pytest tests/entrypoints/anthropic/test_stream_error.py -v\ntest_parse_streaming_error_chunk_detects_error_payload PASSED\ntest_parse_streaming_error_chunk_ignores_normal_chunk  PASSED\ntest_parse_streaming_error_chunk_ignores_malformed_json PASSED\ntest_converter_forwards_upstream_error_message          PASSED\n4 passed in 1.13s\n\n$ .venv/bin/python -m pytest tests/entrypoints/anthrop",
+    "author": "waynehacking8",
+    "state": "open",
+    "labels": [
+      "bug",
+      "frontend",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/46162",
+    "createdAt": "2026-06-19T13:43:25.000Z",
+    "updatedAt": "2026-09-19T08:18:00.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-19T04:52:29.207Z",
+    "contentHash": "sha256:6623004a691d43098b493e799f08a84c142c6f54acc3255eb95e3fce50fa14fc",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-issue-45997",
     "nodeId": "I_kwDOI7xefs8AAAABF4QyCQ",
     "repository": "vllm-project/vllm",
@@ -70,31 +95,6 @@
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:17:54.490Z"
     }
-  },
-  {
-    "id": "vllm-pr-46162",
-    "nodeId": "PR_kwDOI7xefs7oZUK8",
-    "repository": "vllm-project/vllm",
-    "number": 46162,
-    "type": "pr",
-    "title": "[Bugfix] Forward upstream error message in Anthropic streaming converter (#46028)",
-    "bodyExcerpt": "## Purpose\n\nFixes #46028.\n\nWhen the engine fails mid-stream, the OpenAI serving layer emits an `ErrorResponse` payload (`{\"error\": {...}}`) via `create_streaming_error_response`, followed by `[DONE]`. The Anthropic adapter's `message_stream_converter` validated **every** chunk as a `ChatCompletionStreamResponse`, so the error chunk raised a pydantic `ValidationError`. The outer `except` then re-emitted that as a generic `internal_error` carrying the *pydantic* message — masking the real upstream failure. The reporter hit this serving GLM-5.2, where an engine 500 surfaced only as `2 validation errors for ChatCompletionStreamResponse ... model Field required input_value={'error': {'message': 'Internal Server Error'...}}`.\n\nThis PR detects the error payload (new `parse_streaming_error_chunk` helper, mirroring the existing module-level `wrap_data_with_event` helper) and forwards its message as an Anthropic `error` event, reusing the converter's existing `AnthropicStreamEvent(type=\"error\", ...)` shape. Only the failure path changes; valid chunks validate exactly as before.\n\n## Not a duplicate\n\n- `gh pr list --search \"46028 in:body\"` → none.\n- `gh pr list --search \"message_stream_converter\"` → only #45807 (stop_sequence `stop_reason`), unrelated.\n- #34053 (`[Anthropic API]` 6 protocol bugs) also edits `serving.py`, but for message/tool-call ID and `tool_result` formats; it does not touch the streaming error path.\n\n## Test Plan / Test Result\n\nAdded CPU-only unit test `tests/entrypoints/anthropic/test_stream_error.py` (the existing `test_messages.py` needs a live server):\n\n```\n$ .venv/bin/python -m pytest tests/entrypoints/anthropic/test_stream_error.py -v\ntest_parse_streaming_error_chunk_detects_error_payload PASSED\ntest_parse_streaming_error_chunk_ignores_normal_chunk  PASSED\ntest_parse_streaming_error_chunk_ignores_malformed_json PASSED\ntest_converter_forwards_upstream_error_message          PASSED\n4 passed in 1.13s\n\n$ .venv/bin/python -m pytest tests/entrypoints/anthrop",
-    "author": "waynehacking8",
-    "state": "open",
-    "labels": [
-      "bug",
-      "frontend",
-      "stale"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/46162",
-    "createdAt": "2026-06-19T13:43:25.000Z",
-    "updatedAt": "2026-09-19T01:39:51.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-19T04:52:29.207Z",
-    "contentHash": "sha256:5da74efd93cda056ef7ac79e4fe4fd462022f7839403bb3eb449ef04933a9c82",
-    "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
   },
   {
     "id": "vllm-issue-46654",

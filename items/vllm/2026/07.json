@@ -1,5 +1,30 @@
 [
   {
+    "id": "vllm-pr-49249",
+    "nodeId": "PR_kwDOI7xefs70FCy0",
+    "repository": "vllm-project/vllm",
+    "number": 49249,
+    "type": "pr",
+    "title": "[Bugfix] glm47 parser: tolerate missing opening <arg_value> tag",
+    "bodyExcerpt": "## Purpose\n\nFIX #49248\n\nUnder concurrent load, GLM-4.7-family models sporadically skip the opening `<arg_value>` tag when emitting tool calls, producing\n\n```\n<tool_call>search<arg_key>query</arg_key>how many vacation days left</arg_value></tool_call>\n```\n\nwith the argument value fully intact (raw sampled tokens captured via `logprobs: true`; reproduces at `temperature: 0` too, ~5–17% of calls at concurrency 6 on our production trace family, 0 sequentially).\n\n`_ARG_RE`/`_PARTIAL_ARG_RE` in `vllm/parser/glm47_moe.py` require the opening tag, so such calls silently parse to `arguments: \"{}\"`, which then fails the client's tool schema validation and degrades agent loops (the broken `{}` call gets rendered back into history, so retries tend to fail the same way).\n\nThis PR makes the opening `<arg_value>` optional in both regexes. The closing `</arg_value>` still delimits the value, so:\n- well-formed output parses exactly as before (the optional group matches the tag when present);\n- streaming is unaffected: the incremental lexer buffers ambiguous tag prefixes, so a partially streamed `<arg_value>` never leaks into a value snapshot.\n\n## Test Plan\n\n- `tests/tool_parsers/test_glm47_moe_tool_parser.py`: new non-streaming cases (single arg with missing opening tag; mixed malformed + well-formed args in one call) and a streaming case with the malformed sequence split across chunks; all pre-existing cases unchanged.\n- Live validation on a 4×GPU GLM-5.2 deployment (`--tool-call-parser glm47`), replaying the production request that triggers the malformation at concurrency 6 with `logprobs: true`:\n  - before: 12/120 responses parsed to `arguments: \"{}\"`;\n  - after: 12/72 responses still show the raw malformation in sampled tokens (model-side quirk, expected), **all 12 parse to full arguments**, 0 empty; streaming replay 0/72 empty.\n\n## Test Result\n\n`pytest tests/tool_parsers/test_glm47_moe_tool_parser.py` — 16 passed.\n",
+    "author": "drakosha",
+    "state": "open",
+    "labels": [
+      "bug",
+      "tool-calling",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49249",
+    "createdAt": "2026-07-20T22:15:10.000Z",
+    "updatedAt": "2026-09-19T18:24:47.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-18T05:00:02.795Z",
+    "contentHash": "sha256:dc159870cf30c4fbbdd273b16827a0bffd182a87594a3de7e42acd9e4bdfbb99",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-issue-48297",
     "nodeId": "I_kwDOI7xefs8AAAABIawJbA",
     "repository": "vllm-project/vllm",
@@ -20,31 +45,6 @@
     "firstSeenAt": "2026-09-17T05:07:31.095Z",
     "contentHash": "sha256:aaea79b0272b8108130293d8cf39c2a0fabd460d383613706b7d4595e32d4522",
     "category": "BUG",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-49249",
-    "nodeId": "PR_kwDOI7xefs70FCy0",
-    "repository": "vllm-project/vllm",
-    "number": 49249,
-    "type": "pr",
-    "title": "[Bugfix] glm47 parser: tolerate missing opening <arg_value> tag",
-    "bodyExcerpt": "## Purpose\n\nFIX #49248\n\nUnder concurrent load, GLM-4.7-family models sporadically skip the opening `<arg_value>` tag when emitting tool calls, producing\n\n```\n<tool_call>search<arg_key>query</arg_key>how many vacation days left</arg_value></tool_call>\n```\n\nwith the argument value fully intact (raw sampled tokens captured via `logprobs: true`; reproduces at `temperature: 0` too, ~5–17% of calls at concurrency 6 on our production trace family, 0 sequentially).\n\n`_ARG_RE`/`_PARTIAL_ARG_RE` in `vllm/parser/glm47_moe.py` require the opening tag, so such calls silently parse to `arguments: \"{}\"`, which then fails the client's tool schema validation and degrades agent loops (the broken `{}` call gets rendered back into history, so retries tend to fail the same way).\n\nThis PR makes the opening `<arg_value>` optional in both regexes. The closing `</arg_value>` still delimits the value, so:\n- well-formed output parses exactly as before (the optional group matches the tag when present);\n- streaming is unaffected: the incremental lexer buffers ambiguous tag prefixes, so a partially streamed `<arg_value>` never leaks into a value snapshot.\n\n## Test Plan\n\n- `tests/tool_parsers/test_glm47_moe_tool_parser.py`: new non-streaming cases (single arg with missing opening tag; mixed malformed + well-formed args in one call) and a streaming case with the malformed sequence split across chunks; all pre-existing cases unchanged.\n- Live validation on a 4×GPU GLM-5.2 deployment (`--tool-call-parser glm47`), replaying the production request that triggers the malformation at concurrency 6 with `logprobs: true`:\n  - before: 12/120 responses parsed to `arguments: \"{}\"`;\n  - after: 12/72 responses still show the raw malformation in sampled tokens (model-side quirk, expected), **all 12 parse to full arguments**, 0 empty; streaming replay 0/72 empty.\n\n## Test Result\n\n`pytest tests/tool_parsers/test_glm47_moe_tool_parser.py` — 16 passed.\n",
-    "author": "drakosha",
-    "state": "open",
-    "labels": [
-      "bug",
-      "tool-calling",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/49249",
-    "createdAt": "2026-07-20T22:15:10.000Z",
-    "updatedAt": "2026-09-18T01:01:07.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-18T05:00:02.795Z",
-    "contentHash": "sha256:5acac265fa88cb9f8c80fe31fd65132f845f3ef6aacba43c56f4290e86ab8db9",
-    "category": "FIX",
     "categorySource": "rules",
     "summary": null
   },
