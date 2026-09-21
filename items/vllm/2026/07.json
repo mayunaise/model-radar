@@ -1,5 +1,53 @@
 [
   {
+    "id": "vllm-issue-48297",
+    "nodeId": "I_kwDOI7xefs8AAAABIawJbA",
+    "repository": "vllm-project/vllm",
+    "number": 48297,
+    "type": "issue",
+    "title": "[RFC] LoRA Adapter Lifecycle for RL Training",
+    "bodyExcerpt": "# [RFC] LoRA Adapter Lifecycle for RL Training\n\n## Problem\n\nRL + LoRA workflows have three vLLM-side issues:\n\n1. **sleep/wake crash**: Level-2 sleep with `enable_lora=True` crashes with KeyError — LoRA adapter parameters are not in cumem's tag set ([#39934](https://github.com/vllm-project/vllm/issues/39934))\n2. **Adapter-only sync missing**: frameworks must merge LoRA → send full weights → unmerge. Adapter-only sync (send only LoRA delta, load via vLLM's LoRA serving) would eliminate the merge round-trip ([trl#5975](https://github.com/huggingface/trl/issues/5975))\n3. **LoRA + MoE mismatch**: logprob divergence between training and inference grows with LoRA rank on MoE models (Qwen3.6, GLM-4.7-Flash) ([SkyRL#1776](https://github.com/NovaSky-AI/SkyRL/issues/1776))\n\n## Downstream demand\n\n- [trl#5975](https://github.com/huggingface/trl/issues/5975): Adapter-only vLLM LoRA sync for GRPO/AsyncGRPO\n- [SkyRL#1776](https://github.com/NovaSky-AI/SkyRL/issues/1776): LoRA + MoE inference mismatch investigation\n- [verl#6782](https://github.com/verl-project/verl/issues/6782): Qwen3.5-27B LoRA GRPO — vLLM never emits EOS with rank=64\n\n## Exit criterion\n\n- sleep/wake + LoRA (#39934) no longer crashes\n- Adapter-only sync path available (no full-weight merge required)\n\n## Feedback Period\n\nTwo weeks from posting.",
+    "author": "aoshen02",
+    "state": "open",
+    "labels": [
+      "RFC",
+      "rl"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/48297",
+    "createdAt": "2026-07-11T01:28:02.000Z",
+    "updatedAt": "2026-09-20T13:57:54.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-17T05:07:31.095Z",
+    "contentHash": "sha256:c36651a495054f51bb8a0cc5af812d75b56adb67651c68ebb0dfff0826fea7ea",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-48479",
+    "nodeId": "PR_kwDOI7xefs7w-0TC",
+    "repository": "vllm-project/vllm",
+    "number": 48479,
+    "type": "pr",
+    "title": "Update vendored LMCache connector for current IPCCacheServerKey API",
+    "bodyExcerpt": "## What\n\nThe vendored fallback LMCache connector (`vllm/distributed/kv_transfer/kv_connector/v1/lmcache_integration/multi_process_adapter.py`) was stale relative to the current `lmcache` package API:\n\n1. **`IPCCacheEngineKey` → `IPCCacheServerKey`**: The key class was renamed in the LMCache codebase. The vendored connector still imported the old name, which would cause `ImportError` if the fallback path were ever reached.\n\n2. **`tp_size` field → `use_mla` field**: `IPCCacheServerKey` no longer has a `tp_size` constructor argument. It now has `use_mla: bool` (backward-compatible msgspec field, defaults `False`). Both `_create_key` methods updated to pass `use_mla=self.parallel_strategy.use_mla`.\n\n3. **`chunk_hash` field removed**: `IPCCacheServerKey` no longer supports hash-mode keys (the `chunk_hash` field was removed). The `_create_hash_key` methods now raise `NotImplementedError` with a clear message directing users to the token-based `_create_key` path or to install the `lmcache` package (which has the current, fully-maintained adapter).\n\n## Why\n\nThis vendored connector is a **fallback** — it is only used when `from lmcache.integration.vllm.vllm_multi_process_adapter import ...` fails (i.e., the `lmcache` package is not installed). In the normal case (lmcache installed), the LMCache-tree adapter is used instead, which is kept in sync with the API.\n\nHowever, if the fallback is ever reached (e.g., partial install, version mismatch), the stale imports would cause confusing `ImportError`/`TypeError` crashes. This PR makes the fallback at least importable and gives clear error messages for the removed hash-mode API.\n\n## Companion PR\n\nThis pairs with [LMCache PR #4082](https://github.com/LMCache/LMCache/pull/4082), which:\n- Enables pipeline parallelism (PP) for MLA models (Kimi K2, GLM-4.6) in multi-server MP mode\n- Adds explicit `use_mla` flag to `IPCCacheServerKey` (replacing the fragile `tp > world_size` heuristic)\n- Adds full ROCm platform support (pin memory, IPC ",
+    "author": "hamstergamerszhang-ops",
+    "state": "closed",
+    "labels": [
+      "needs-rebase",
+      "kv-connector"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/48479",
+    "createdAt": "2026-07-13T08:56:33.000Z",
+    "updatedAt": "2026-09-20T12:55:45.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-18T05:00:02.795Z",
+    "contentHash": "sha256:738e0a8a7dcf08ba197098cddea468c9f40e6fef87dc6b450d8922da369fc14c",
+    "category": "OTHER",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-49249",
     "nodeId": "PR_kwDOI7xefs70FCy0",
     "repository": "vllm-project/vllm",
@@ -21,30 +69,6 @@
     "firstSeenAt": "2026-09-18T05:00:02.795Z",
     "contentHash": "sha256:dc159870cf30c4fbbdd273b16827a0bffd182a87594a3de7e42acd9e4bdfbb99",
     "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-issue-48297",
-    "nodeId": "I_kwDOI7xefs8AAAABIawJbA",
-    "repository": "vllm-project/vllm",
-    "number": 48297,
-    "type": "issue",
-    "title": "[RFC] LoRA Adapter Lifecycle for RL Training",
-    "bodyExcerpt": "# [RFC] LoRA Adapter Lifecycle for RL Training\n\n## Problem\n\nRL + LoRA workflows have three vLLM-side issues:\n\n1. **sleep/wake crash**: Level-2 sleep with `enable_lora=True` crashes with KeyError — LoRA adapter parameters are not in cumem's tag set ([#39934](https://github.com/vllm-project/vllm/issues/39934))\n2. **Adapter-only sync missing**: frameworks must merge LoRA → send full weights → unmerge. Adapter-only sync (send only LoRA delta, load via vLLM's LoRA serving) would eliminate the merge round-trip ([trl#5975](https://github.com/huggingface/trl/issues/5975))\n3. **LoRA + MoE mismatch**: logprob divergence between training and inference grows with LoRA rank on MoE models (Qwen3.6, GLM-4.7-Flash) ([SkyRL#1776](https://github.com/NovaSky-AI/SkyRL/issues/1776))\n\n## Downstream demand\n\n- [trl#5975](https://github.com/huggingface/trl/issues/5975): Adapter-only vLLM LoRA sync for GRPO/AsyncGRPO\n- [SkyRL#1776](https://github.com/NovaSky-AI/SkyRL/issues/1776): LoRA + MoE inference mismatch investigation\n- [verl#6782](https://github.com/verl-project/verl/issues/6782): Qwen3.5-27B LoRA GRPO — vLLM never emits EOS with rank=64\n\n## Exit criterion\n\n- sleep/wake + LoRA (#39934) no longer crashes\n- Adapter-only sync path available (no full-weight merge required)\n\n## Feedback Period\n\nTwo weeks from posting.",
-    "author": "aoshen02",
-    "state": "open",
-    "labels": [
-      "RFC",
-      "rl"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/48297",
-    "createdAt": "2026-07-11T01:28:02.000Z",
-    "updatedAt": "2026-09-18T15:21:09.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-17T05:07:31.095Z",
-    "contentHash": "sha256:aaea79b0272b8108130293d8cf39c2a0fabd460d383613706b7d4595e32d4522",
-    "category": "BUG",
     "categorySource": "rules",
     "summary": null
   },
@@ -100,30 +124,6 @@
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T10:27:08.865Z"
     }
-  },
-  {
-    "id": "vllm-pr-48479",
-    "nodeId": "PR_kwDOI7xefs7w-0TC",
-    "repository": "vllm-project/vllm",
-    "number": 48479,
-    "type": "pr",
-    "title": "Update vendored LMCache connector for current IPCCacheServerKey API",
-    "bodyExcerpt": "## What\n\nThe vendored fallback LMCache connector (`vllm/distributed/kv_transfer/kv_connector/v1/lmcache_integration/multi_process_adapter.py`) was stale relative to the current `lmcache` package API:\n\n1. **`IPCCacheEngineKey` → `IPCCacheServerKey`**: The key class was renamed in the LMCache codebase. The vendored connector still imported the old name, which would cause `ImportError` if the fallback path were ever reached.\n\n2. **`tp_size` field → `use_mla` field**: `IPCCacheServerKey` no longer has a `tp_size` constructor argument. It now has `use_mla: bool` (backward-compatible msgspec field, defaults `False`). Both `_create_key` methods updated to pass `use_mla=self.parallel_strategy.use_mla`.\n\n3. **`chunk_hash` field removed**: `IPCCacheServerKey` no longer supports hash-mode keys (the `chunk_hash` field was removed). The `_create_hash_key` methods now raise `NotImplementedError` with a clear message directing users to the token-based `_create_key` path or to install the `lmcache` package (which has the current, fully-maintained adapter).\n\n## Why\n\nThis vendored connector is a **fallback** — it is only used when `from lmcache.integration.vllm.vllm_multi_process_adapter import ...` fails (i.e., the `lmcache` package is not installed). In the normal case (lmcache installed), the LMCache-tree adapter is used instead, which is kept in sync with the API.\n\nHowever, if the fallback is ever reached (e.g., partial install, version mismatch), the stale imports would cause confusing `ImportError`/`TypeError` crashes. This PR makes the fallback at least importable and gives clear error messages for the removed hash-mode API.\n\n## Companion PR\n\nThis pairs with [LMCache PR #4082](https://github.com/LMCache/LMCache/pull/4082), which:\n- Enables pipeline parallelism (PP) for MLA models (Kimi K2, GLM-4.6) in multi-server MP mode\n- Adds explicit `use_mla` flag to `IPCCacheServerKey` (replacing the fragile `tp > world_size` heuristic)\n- Adds full ROCm platform support (pin memory, IPC ",
-    "author": "hamstergamerszhang-ops",
-    "state": "open",
-    "labels": [
-      "needs-rebase",
-      "kv-connector"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/48479",
-    "createdAt": "2026-07-13T08:56:33.000Z",
-    "updatedAt": "2026-09-17T06:14:21.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-18T05:00:02.795Z",
-    "contentHash": "sha256:85d40e95e2f0d47ed1e36cfd38b6fc70f51d5d27f1f968b151ca230b2ba2eeb7",
-    "category": "OTHER",
-    "categorySource": "rules",
-    "summary": null
   },
   {
     "id": "vllm-pr-49845",

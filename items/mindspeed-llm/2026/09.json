@@ -1,5 +1,53 @@
 [
   {
+    "id": "mindspeed-llm-issue-1881",
+    "nodeId": "gitcode-issue-4361172",
+    "repository": "Ascend/MindSpeed-LLM",
+    "number": 1881,
+    "type": "issue",
+    "title": "[Feature]: 支持 GLM5.2 非 CP 场景下的 LoRA 微调及权重导出",
+    "bodyExcerpt": "\n\n**提交提案之前，请先检索仓库内是否已有相同的提案，如已有请在同一提案中进行讨论。**\n\n### 💻 需求背景、当前现状、期望实现的功能内容、具体的设计方案、以及测试方案\n            \n  ### 需求背景\n\n  希望在 MindSpeed-LLM 中支持 GLM5.2 的 LoRA 微调，并支持训练结果保存、加载及合并导出。\n\n  ### 当前现状\n\n  现有框架已有 LoRA 基础能力，但融合 QKV 投影中的 Q、KV 共用 A 矩阵，缺少独立 A 支持。专家 LoRA 的并行属性、部分梯度同步，以及 router bias 保存和加载精度也需要完善。\n\n  ### 期望实现的功能内容\n\n  - 支持融合 QKV 中 Q、KV 使用独立、可训练的 A 矩阵。\n  - 支持 Q-up 两个投影使用已有 LoRA 实现。\n  - 完善 TP、EP、ETP、PP 场景下的训练正确性。\n  - 支持完整保存 adapter 配套状态，并将独立 A 的 LoRA 权重合并导出为 HF 格式。\n\n  ### 具体设计方案\n\n  - 增加 --lora-qkv-independent-a 开关，在 PEFT 创建 LoRA 后、DDP 和优化器构建前，为 KV 分支复制独立 A；B 保持融合存储，按 Q/KV 输出行分别计算增量。\n  - 补齐专家 LoRA 并行属性、ETP 复制参数梯度归约、MLA absorb 的 TP 梯度处理。\n  - adapter 保存时保留 router bias，加载前保护其 FP32 精度；\n  - 导出时分别使用 Q、KV 对应的 A 合并权重，并检查形状、异常数值及遗漏参数。\n\n  ### 测试方案\n\n  - 组件测试：对照未切分参考实现，检查前向、梯度及多步优化器更新。\n  - 并行对照：固定数据和逻辑初值，在 CP=1 下比较不同 TP、EP、ETP、PP 配置的 loss 与参数更新。\n  - 端到端测试：执行减层及全层训练，检查保存、重载和 HF 合并导出；\n\n### 替代方案\n            \n\n### 补充说明\n            \n\n\n\n欢迎加入社区，感谢您对社区的贡献 🎉!\n\n",
+    "author": "xiejiahao2333",
+    "state": "open",
+    "labels": [
+      "feature",
+      "triaged"
+    ],
+    "url": "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1881",
+    "createdAt": "2026-09-20T09:59:21.000Z",
+    "updatedAt": "2026-09-20T10:00:17.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-21T05:16:41.987Z",
+    "contentHash": "sha256:a37e26991963bfd6d9a62d600c7a508ec3f21ce4390c4bc18041cd0088902a93",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "mindspeed-llm-pr-5055",
+    "nodeId": "gitcode-pr-9201484",
+    "repository": "Ascend/MindSpeed-LLM",
+    "number": 5055,
+    "type": "pr",
+    "title": "feat: support GLM5.2 LoRA training and checkpoint correctness",
+    "bodyExcerpt": "\n\n## What this PR does / why we need it?\n\n\n 完善 GLM5.2 原生 LoRA 训练的参数结构、并行梯度处理、checkpoint 保存与加载，以及独立 A 的 HF 合并导出能力。\n\n  主要修改：\n\n  - 支持 Q/KV 独立 A：在原生 PEFT LoRA 中为 Q、KV 分别维护可训练的 A 矩阵，保留原有 B 的输出分块。新增参数在 DDP 和优化器初始化前注册，克隆初值不额外消耗随机数。\n  - 修正专家并行梯度：补齐专家 LoRA 参数的 expert-DP 属性，区分 ETP 复制参数与分片参数，对复制参数累加各特征分片产生的梯度。\n  - 补齐 MLA 的 TP 输入梯度：在 absorb 路径中保留 SP gather 行为，并为非 SP 的 TP 场景补充 KV 输入梯度求和。\n  - 修正非均匀 PP 层号：补齐新版 Megatron 全局层偏移函数的注册，避免非均匀分层时出现层编号及 DSA 共享关系错位。\n  - 完善 checkpoint 正确性：LoRA checkpoint 保留训练期间更新的 router bias；首次加载底座及 adapter 重载前将对应 buffer 保持为 FP32，避免复制过程中的精度损失；修复 swap optimizer 与禁用 Gloo 的分布式 Adam 保存路径组合下读取已释放设备存储的问题。\n  - 支持独立 A 的 HF 合并导出：对 Q、KV 输出行分别使用对应的 A 矩阵计算 LoRA 增量，并支持普通线性层及 grouped 专家权重合并。补充形状、配置、非有限值及未处理 LoRA 参数检查；逐层导出采用 mmap 读取和按层释放，降低内存峰值。\n\n  训练侧适配通过 MindSpeed-LLM 的 feature 机制及模型构建流程接入，导出修改位于 checkpoint 转换模块，无需修改 MindSpeed 或 Megatron-LM 源文件。CP 序列布局、标签对齐及 aux loss 适配单独处理，不包含在本 PR 中。\n\n## Does this PR introduce any user-facing change?\n\n  主要包括以下变化：\n\n  - 新增可选参数 --lora-qkv-independent-a，默认关闭。开启后，Q/KV 使用初值相同但独立训练的 A 矩阵；要求 LoRA targets 包含 linear_qkv，并配置 --mla-mm-split 和 --q-lora-rank。\n  - 本 PR 中独立 Q/KV A 暂要求 context_parallel_size=1；开启该功能时使用 CP>1 会明确报错，待后续 CP 适配补齐。这一限制不针对原有共享 A 路线。\n  - 独立 A 当前支持普通、未融合的单 adapter LoRA，不支持 DoRA 或训练层的 PEFT 在线 adapter merge；支持通过 checkpoint 转换器离线合并并导出 HF 权重。\n  - 开启独立 A 后，adapter checkpoint 新增 lora_A_kv 参数，加载时需使用匹配配置。启用 expert bias 时，LoRA checkpoint 同时保存 router bias。\n  - HF 合并导出支持底座与 adapter 分开加载，以及统一 checkpoint 路径。需使用匹配的 LoRA rank、alpha 和权重布局；检测到不兼容或遗漏参数时明确报错。\n  - 并行梯度和 checkpoint 修复在对应配置下生效，可能改变原错误路径下的参数更新或加载结果；关闭独立 A 开关不会关闭这些正确性修复。\n\n## How was this patch tested?\n\nPlease explain how to verify the correctness and effectiveness of this feature, as well as its usage constraints and limitations.\n\n![image.png](https://raw.gitcode.com/user-images/assets/7623105/a7f8e306-ca15-471b-8fd5-feb677d17496/image.png 'image.png')\n![image.png](https://raw.gitcode.com/user-images/assets/7623105/5e82beef-e114-40f6-8abb-a23c22c7c9d7/image.png 'image.png')",
+    "author": "xiejiahao2333",
+    "state": "open",
+    "labels": [
+      "ascend-cla/yes",
+      "docs-ci-pipeline-success"
+    ],
+    "url": "https://gitcode.com/Ascend/MindSpeed-LLM/merge_requests/5055",
+    "createdAt": "2026-09-16T03:55:56.000Z",
+    "updatedAt": "2026-09-20T09:59:44.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-16T05:04:24.144Z",
+    "contentHash": "sha256:a1f2773d970a6fe0c879ca2aae3c15113f1caad86127d38b946849869113a20c",
+    "category": "DOCS",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "mindspeed-llm-pr-5054",
     "nodeId": "gitcode-pr-9201421",
     "repository": "Ascend/MindSpeed-LLM",
@@ -73,30 +121,6 @@
     "firstSeenAt": "2026-09-18T05:00:02.795Z",
     "contentHash": "sha256:1d6dbc39f8413554fd3f32dff1cfa4096a8df393a826e94d1cf815ad6db211b2",
     "category": "NEW_SUPPORT",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "mindspeed-llm-pr-5055",
-    "nodeId": "gitcode-pr-9201484",
-    "repository": "Ascend/MindSpeed-LLM",
-    "number": 5055,
-    "type": "pr",
-    "title": "feat: support GLM5.2 LoRA training and checkpoint correctness",
-    "bodyExcerpt": "\n\n## What this PR does / why we need it?\n\n\n  完善 GLM5.2 原生 LoRA 训练的参数结构、并行梯度处理及 checkpoint 保存与加载，解决专家参数归约不完整、MLA 输入梯度缺失和训练状态保存不完整等问题。\n\n  主要修改：\n\n  - 支持 Q/KV 独立 A：在原生 PEFT LoRA 中为 Q、KV 分别维护可训练的 A 矩阵，保留原有 B 的输出分块。新增参数在 DDP 和优化器初始化前注册，克隆初值不额外消耗随机数。\n  - 修正专家并行梯度：补齐专家 LoRA 参数的 expert-DP 属性，区分 ETP 复制参数与分片参数，对复制参数累加各特征分片产生的梯度。\n  - 补齐 MLA 的 TP 输入梯度：在 absorb 路径中保留 SP gather 行为，并为非 SP 的 TP 场景补充 KV 输入梯度求和。\n  - 修正非均匀 PP 层号：补齐新版 Megatron 全局层偏移函数的注册，避免非均匀分层时出现层编号及 DSA 共享关系错位。\n  - 完善 checkpoint 正确性：LoRA checkpoint 保留训练期间更新的 router bias；首次加载底座及 adapter 重载前将对应 buffer 保持为 FP32，避免复制过程中的精度损失；修复 swap optimizer 场景下保存时读取已释放设备存储的问题。\n\n  相关实现通过 MindSpeed-LLM 的 feature 机制接入，无需修改 MindSpeed 或 Megatron-LM 源文件。CP 序列布局、标签对齐及 aux loss 适配单独处理，不包含在本 PR 中。\n\n## Does this PR introduce any user-facing change?\n\n主要包括以下变化：\n\n  - 新增可选参数 --lora-qkv-independent-a，默认关闭。开启后，Q/KV 使用初值相同但独立训练的 A 矩阵；要求 LoRA targets 包含 linear_qkv，并配置 --mla-mm-split 和 --q-lora-rank。\n  - 本 PR 中独立 Q/KV A 暂要求 context_parallel_size=1；开启该功能时使用 CP>1 会明确报错，待后续 CP 适配补齐。这一限制不针对原有共享 A 路线。\n  - 独立 A 当前支持普通、未融合的单 adapter LoRA，不支持 DoRA 或 adapter merge；对不兼容的配置增加检查。\n  - 开启独立 A 后，adapter checkpoint 新增 lora_A_kv 参数，加载时需使用匹配配置。启用 expert bias 时，LoRA checkpoint 同时保存 router bias。\n  - 并行梯度和 checkpoint 修复在对应配置下生效，可能改变原错误路径下的参数更新或加载结果；关闭独立 A 开关不会关闭这些正确性修复。\n\n## How was this patch tested?\n\nPlease explain how to verify the correctness and effectiveness of this feature, as well as its usage constraints and limitations.\n\n![image.png](https://raw.gitcode.com/user-images/assets/7623105/a7f8e306-ca15-471b-8fd5-feb677d17496/image.png 'image.png')\n![image.png](https://raw.gitcode.com/user-images/assets/7623105/5e82beef-e114-40f6-8abb-a23c22c7c9d7/image.png 'image.png')",
-    "author": "xiejiahao2333",
-    "state": "open",
-    "labels": [
-      "ascend-cla/yes",
-      "docs-ci-pipeline-success"
-    ],
-    "url": "https://gitcode.com/Ascend/MindSpeed-LLM/merge_requests/5055",
-    "createdAt": "2026-09-16T03:55:56.000Z",
-    "updatedAt": "2026-09-18T08:49:15.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-16T05:04:24.144Z",
-    "contentHash": "sha256:9adc38cf2ad1a384465e4a0a5e8ff5da2dd3c71feca579c76620d3d20c03302d",
-    "category": "DOCS",
     "categorySource": "rules",
     "summary": null
   },
