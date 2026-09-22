@@ -1,5 +1,26 @@
 [
   {
+    "id": "vllm-issue-47654",
+    "nodeId": "I_kwDOI7xefs8AAAABHuvh2A",
+    "repository": "vllm-project/vllm",
+    "number": 47654,
+    "type": "issue",
+    "title": "sleep-mode leaks HBM for models loaded with --mm-encoder-tp-mode data (blocks multi-container sleep-swap)",
+    "bodyExcerpt": "## Summary\n\n`--enable-sleep-mode` leaks physical GPU HBM for models loaded with `--mm-encoder-tp-mode data` (multimodal). `POST /sleep` returns 200, but `nvidia-smi --query-compute-apps=used_memory` shows the worker still holding almost all of its awake-state HBM. When this container coexists with other sleep-mode-enabled containers on the same GPUs, a subsequent `POST /wake_up` on any of them fails with:\n\n```\nRuntimeError: CUDA Error: out of memory at /workspace/csrc/cumem_allocator.cpp:163\n```\n\n## Environment\n\n- 8× NVIDIA B200 180 GB, driver 580, CUDA 12.8\n- vLLM 0.11.0 (`vllm/vllm-openai:latest`)\n- Docker containers with `--network host --ipc=host --runtime=nvidia`\n\n## Repro\n\nBoot three vLLM processes on the same 8 GPUs, each with `--enable-sleep-mode` and `VLLM_SERVER_DEV_MODE=1`:\n\n- **gpt-oss-120b** TP4 on GPUs 0-3: `--max-model-len 49152 --max-num-seqs 256 --gpu-memory-utilization 0.85`\n- **kimi-k2.6** TP8 on GPUs 0-7: `--max-model-len 131072 --max-num-seqs 256 --gpu-memory-utilization 0.85 --mm-encoder-tp-mode data --trust-remote-code --reasoning-parser kimi_k2 --tool-call-parser kimi_k2`\n- **glm-5.2** TP8 on GPUs 0-7: `--max-model-len 32768 --max-num-seqs 128 --gpu-memory-utilization 0.70`\n\nFor each, wait `/health = 200`, then `POST /sleep`. All three sleep endpoints return **200**.\n\n## Observed vs expected\n\nPer-process GPU memory captured via `nvidia-smi --query-compute-apps=pid,process_name,used_memory` immediately after all three `POST /sleep` returned:\n\n| Container | TP | HBM per GPU worker after sleep |\n|---|---|---:|\n| gpt-oss | TP4 (0-3) | **17 GB** — ✅ released |\n| **kimi (mm-encoder-tp-mode=data)** | TP8 (0-7) | **157-160 GB** — ❌ **not released** |\n| glm | TP8 (0-7) | **8-22 GB** — ✅ released |\n\nExpected: kimi should release ~all of its 160 GB/GPU, matching gpt-oss and glm behavior (each keeps only a small CUDA-context residual ~5-20 GB/GPU).\n\nAfter the leak, `nvidia-smi --query-gpu=memory.free` reports ~34 MiB / 260 MiB free per GPU. `POST /wake_u",
+    "author": "hiteshjain118",
+    "state": "closed",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/issues/47654",
+    "createdAt": "2026-07-05T17:18:09.000Z",
+    "updatedAt": "2026-09-21T07:47:13.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-11T04:59:40.646Z",
+    "contentHash": "sha256:ac8e4f466b634d7b9bd8553a91b2bc57722730608a79d9979506db616fa70a07",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-issue-48297",
     "nodeId": "I_kwDOI7xefs8AAAABIawJbA",
     "repository": "vllm-project/vllm",
@@ -272,27 +293,6 @@
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:17:54.490Z"
     }
-  },
-  {
-    "id": "vllm-issue-47654",
-    "nodeId": "I_kwDOI7xefs8AAAABHuvh2A",
-    "repository": "vllm-project/vllm",
-    "number": 47654,
-    "type": "issue",
-    "title": "sleep-mode leaks HBM for models loaded with --mm-encoder-tp-mode data (blocks multi-container sleep-swap)",
-    "bodyExcerpt": "## Summary\n\n`--enable-sleep-mode` leaks physical GPU HBM for models loaded with `--mm-encoder-tp-mode data` (multimodal). `POST /sleep` returns 200, but `nvidia-smi --query-compute-apps=used_memory` shows the worker still holding almost all of its awake-state HBM. When this container coexists with other sleep-mode-enabled containers on the same GPUs, a subsequent `POST /wake_up` on any of them fails with:\n\n```\nRuntimeError: CUDA Error: out of memory at /workspace/csrc/cumem_allocator.cpp:163\n```\n\n## Environment\n\n- 8× NVIDIA B200 180 GB, driver 580, CUDA 12.8\n- vLLM 0.11.0 (`vllm/vllm-openai:latest`)\n- Docker containers with `--network host --ipc=host --runtime=nvidia`\n\n## Repro\n\nBoot three vLLM processes on the same 8 GPUs, each with `--enable-sleep-mode` and `VLLM_SERVER_DEV_MODE=1`:\n\n- **gpt-oss-120b** TP4 on GPUs 0-3: `--max-model-len 49152 --max-num-seqs 256 --gpu-memory-utilization 0.85`\n- **kimi-k2.6** TP8 on GPUs 0-7: `--max-model-len 131072 --max-num-seqs 256 --gpu-memory-utilization 0.85 --mm-encoder-tp-mode data --trust-remote-code --reasoning-parser kimi_k2 --tool-call-parser kimi_k2`\n- **glm-5.2** TP8 on GPUs 0-7: `--max-model-len 32768 --max-num-seqs 128 --gpu-memory-utilization 0.70`\n\nFor each, wait `/health = 200`, then `POST /sleep`. All three sleep endpoints return **200**.\n\n## Observed vs expected\n\nPer-process GPU memory captured via `nvidia-smi --query-compute-apps=pid,process_name,used_memory` immediately after all three `POST /sleep` returned:\n\n| Container | TP | HBM per GPU worker after sleep |\n|---|---|---:|\n| gpt-oss | TP4 (0-3) | **17 GB** — ✅ released |\n| **kimi (mm-encoder-tp-mode=data)** | TP8 (0-7) | **157-160 GB** — ❌ **not released** |\n| glm | TP8 (0-7) | **8-22 GB** — ✅ released |\n\nExpected: kimi should release ~all of its 160 GB/GPU, matching gpt-oss and glm behavior (each keeps only a small CUDA-context residual ~5-20 GB/GPU).\n\nAfter the leak, `nvidia-smi --query-gpu=memory.free` reports ~34 MiB / 260 MiB free per GPU. `POST /wake_u",
-    "author": "hiteshjain118",
-    "state": "closed",
-    "labels": [],
-    "url": "https://github.com/vllm-project/vllm/issues/47654",
-    "createdAt": "2026-07-05T17:18:09.000Z",
-    "updatedAt": "2026-09-11T02:35:22.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-11T04:59:40.646Z",
-    "contentHash": "sha256:bd7fbc187cf324f9ef28c4c5162ff35d503c00fc7c8d7e3b84761461d0c66277",
-    "category": "BUG",
-    "categorySource": "rules",
-    "summary": null
   },
   {
     "id": "vllm-pr-49756",

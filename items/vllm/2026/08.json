@@ -1,5 +1,33 @@
 [
   {
+    "id": "vllm-pr-53875",
+    "nodeId": "PR_kwDOI7xefs8AAAABBER5GA",
+    "repository": "vllm-project/vllm",
+    "number": 53875,
+    "type": "pr",
+    "title": "[Kernel][Perf] Fuse clamped MoE activation and UE8M0 FP8 block quantization",
+    "bodyExcerpt": "## Purpose\r\n\r\nFuse the clamped MoE activation path into FP8 block-128 activation quantization:\r\n\r\n1. finite SwiGLU clamping;\r\n2. BF16 SiLU and gated multiplication;\r\n3. dynamic E4M3 block quantization, including Hopper DeepGEMM UE8M0 scales; and\r\n4. optional filtering of invalid or non-local expert rows.\r\n\r\nThe CUDA implementation extends the existing stable-ABI `silu_and_mul_per_block_quant` op and has two execution strategies:\r\n\r\n- a lightweight one-block-per-quant-group kernel for launch-bound TP decode shapes without an `expert_map`;\r\n- an occupancy-driven persistent kernel when EP filtering is present or the output has at least 1M elements.\r\n\r\nThe persistent variant uses vectorized BF16 loads/FP8 stores and half-warp reductions. Both clamped variants preserve the BF16 activation materialization point and are bit-exact with the original two-kernel UE8M0 path.\r\n\r\nThe Triton experts dispatch remains narrow: CUDA, gated SiLU with a finite clamp, int32 routing IDs, FP8 W8A8 block shape `[128, 128]`, and no LoRA activation consumer. Large unfiltered prefills fall back to the existing kernels at the measured crossover. The existing unclamped E8M0 path remains excluded because its activation semantics are not bit-exact. `VLLM_USE_DSV4_FUSED_ACT_QUANT=0` is the matched A/B fallback.\r\n\r\n## Trace evidence\r\n\r\nPyTorch profiler trace of `zai-org/GLM-5.3-Flash` on 4x H200, TP4, MTP=5, BF16 KV cache, CUDA graphs:\r\n\r\n| Rank-0 stable window | Calls | Total | Average |\r\n|---|---:|---:|---:|\r\n| Baseline clamp | 658 | 2042.672 us | 3.104 us |\r\n| Baseline per-token-group quant (all paths) | 1316 | 3297.808 us | 2.506 us |\r\n| Fused target kernel | 658 | 1389.724 us | 2.112 us |\r\n| Remaining non-target quant | 658 | 1762.810 us | 2.679 us |\r\n\r\nFor each target MoE layer, the relevant baseline route is one clamp plus one of the two quant launches: approximately 5.65 us to 2.11 us, or **2.68x**, while removing one launch. With 45 target MoE layers this saves about 159 us per target forwa",
+    "author": "zigzagcai",
+    "state": "open",
+    "labels": [
+      "performance",
+      "needs-rebase",
+      "deepseek",
+      "quantization",
+      "DSv4",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/53875",
+    "createdAt": "2026-08-26T11:26:49.000Z",
+    "updatedAt": "2026-09-22T03:57:23.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-28T11:38:19.166Z",
+    "contentHash": "sha256:3f37119b0d85c0368fd260e55b4e2710e306a2dab8797ffae81cc6fa2d395f13",
+    "category": "PERFORMANCE",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-51915",
     "nodeId": "PR_kwDOI7xefs791uYz",
     "repository": "vllm-project/vllm",
@@ -12,16 +40,17 @@
     "labels": [
       "bug",
       "rocm",
+      "ready",
       "deepseek",
       "verified",
       "glm"
     ],
     "url": "https://github.com/vllm-project/vllm/pull/51915",
     "createdAt": "2026-08-12T02:59:15.000Z",
-    "updatedAt": "2026-09-20T22:49:16.000Z",
+    "updatedAt": "2026-09-21T20:33:49.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:fa1f67df85a6af925311ecfd46cde6729a3e50e598c3e0d62221cb27cd04e670",
+    "contentHash": "sha256:1bbb4cec32a3b27278d9f5f955549f2ca0ecb688abb0584b9fb18f8424a5ba52",
     "category": "NEW_SUPPORT",
     "categorySource": "ai",
     "summary": {
@@ -52,6 +81,108 @@
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T10:27:08.865Z"
     }
+  },
+  {
+    "id": "vllm-pr-53953",
+    "nodeId": "PR_kwDOI7xefs8AAAABBIYQ_g",
+    "repository": "vllm-project/vllm",
+    "number": 53953,
+    "type": "pr",
+    "title": "[ROCm][Model][AMD][Performance]: Added AITER fusion on top of the existing TRITON fusion path for GLM-5.2-MXFP4 through deepseek_v32",
+    "bodyExcerpt": "## Purpose\r\n\r\nAdds an AITER-backed fusion path for the ROCm `deepseek_v32` (DeepSeek Sparse\r\nAttention) forward, used by both DeepSeek-V3.2 and GLM-5.2. The existing\r\nshared-Triton fusion path is untouched and remains the default; the AITER path\r\nis selected at runtime per fusion via opt-in env flags, so behaviour on ROCm is\r\nunchanged unless a flag is set.\r\n\r\nThis PR is stacked on top of: https://github.com/vllm-project/vllm/pull/51915, so needs enablement to land first before this fusion add-on.\r\n\r\n### Fusions added\r\n\r\n**1. MLA dual RMSNorm** \r\nFuses the q and kv-a RMSNorms into one AITER call\r\n(`fused_mla_dual_rms_norm_out`). An out-variant was added so the norms write\r\nmodel-owned buffers rather than allocating per layer, which lets the call be\r\nhoisted out of the eager region and captured by cudagraph. Also wires the\r\nper-token-quant variant for the quantized case.\r\n\r\n**2. Fused QK RoPE + concat + MLA cache write** \r\n`rocm_aiter_fused_qk_rope_concat_and_cache_mla` replaces the separate RoPE,\r\nconcat and KV-cache-write steps on the MLA path. The uint8 KV cache allocated by\r\n`--kv-cache-dtype fp8` is viewed as `float8_e4m3fn` before the call, since the\r\nAITER op rejects the raw uint8 buffer.\r\n\r\n**3. Fused indexer QK RoPE + fp8 quant + cache write**\r\n`rocm_aiter_indexer_qk_rope_quant_and_cache` fuses the lightning-indexer key\r\nLayerNorm, RoPE, fp8 quantization, and cache write into one call for the 21\r\nindexer layers.\r\n\r\n**4. Fused all-reduce + RMSNorm**\r\nUses AITER's custom all-reduce with an in-kernel RMSNorm. Gated on custom-AR\r\neligibility (`should_custom_ar`) because the op asserts the kernel ran, and\r\noversized batches must fall back to the standard path — this is the check the\r\ntorch.compile pass performs at compile time and which an inline call has to do\r\nitself.\r\n\r\n**5. `VLLM_ROCM_USE_AITER_CUSTOM_AR`** exposes AITER's custom all-reduce\r\nindependently of the fused variant.\r\n\r\n## Test Plan\r\n\r\nTo switch between the two fusion paths, use the env var below:\r\n",
+    "author": "jhu960213",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "needs-rebase",
+      "deepseek",
+      "verified",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/53953",
+    "createdAt": "2026-08-26T21:23:27.000Z",
+    "updatedAt": "2026-09-21T19:37:24.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-27T10:07:19.897Z",
+    "contentHash": "sha256:6cd79926f9dd625c9560f841ca8bd4e98d135c58342669e95680b3c06e8fc16a",
+    "category": "PERFORMANCE",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-51315",
+    "nodeId": "PR_kwDOI7xefs77xddu",
+    "repository": "vllm-project/vllm",
+    "number": 51315,
+    "type": "pr",
+    "title": "[ROCm][Perf] Fuse the DSA indexer prologue with AITER",
+    "bodyExcerpt": "## Summary\n\nThe DSA indexer prologue uses four kernels for K normalization, Q/K RoPE,\nFP8 quantization, and the K-cache write.\n\nThis PR uses AITER's fused `indexer_qk_rope_quant_and_cache` kernel instead.\nThe fused path is enabled only for its supported BF16/FP8 shape; other\nconfigurations keep the existing path.\n\n## Results\n\nMI355X, TP=4, rank 0:\n\n| indexer stage | before | after | change |\n|---|---:|---:|---:|\n| launches | 4 | 1 | **-75%** |\n| decode time | 17.4 µs | 5.9 µs | **-66%** |\n| prefill time | 163.9 µs | 270.6 µs | **+65%** |\n\nThe fused kernel is faster for decode but slower for prefill. Across the full\ntrace, prologue GPU time changes from 1,093.6 ms to 1,041.4 ms (**-4.8%**).\n\nOne decode indexer stage at the same zoom:\n\n![Before: four prologue kernels](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr3_before.png)\n\n![After: one fused prologue kernel](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr3_after.png)\n\nEnd-to-end geomean:\n\n| metric | before | after | change |\n|---|---:|---:|---:|\n| throughput | 811.75 | 817.58 | **+0.72%** |\n| TPOT | 24.12 ms | 23.96 ms | **-0.66%** |\n| ITL | 23.85 ms | 23.69 ms | **-0.67%** |\n\n## Model-level e2e results\n\n### Test conditions\n\n| | |\n|---|---|\n| Hardware | MI355X (gfx950), TP=4 |\n| Model | `amd/GLM-5.2-MXFP4`, fp8 KV cache |\n| Stack | vLLM `69715823`, AITER `4a1cc77`, flydsl `0.3.0` |\n| Server | `--async-scheduling --max-num-seqs 256 --max-num-batched-tokens 16384 --block-size 64 --no-enable-prefix-caching`, `index_topk_freq=4` |\n| Env | `VLLM_ROCM_USE_AITER=1`, `VLLM_ROCM_USE_AITER_SPARSE_INDEXER=1`, `AITER_USE_FLYDSL_MOE_SORTING=1`, `VLLM_ROCM_QUICK_REDUCE_QUANTIZATION=INT4` |\n| Perf | `vllm bench serve`, random dataset, `--ignore-eos --request-rate inf`, ISL 1024 and 8192, OSL 1024, concurrency 1-256 (16 points) |\n| Accuracy | `lm_eval` gsm8k 5-shot chat template with thinking enabled, `max_gen_tok",
+    "author": "amd-sriram",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "needs-rebase",
+      "deepseek"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/51315",
+    "createdAt": "2026-08-06T21:41:29.000Z",
+    "updatedAt": "2026-09-21T17:47:39.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T06:14:38.090Z",
+    "contentHash": "sha256:f754e9e6ec72f8b3ec9070c832e4ce4f1a73f6f7f8c9e9ed5cf1d74e998d41bc",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "ROCm用AITER融合DSA索引器前导阶段",
+      "summaryZh": "新增AITER融合的indexer_qk_rope_quant_and_cache内核，将DSA索引器前导阶段从四次内核启动合并为一次；仅对支持的BF16/FP8形状启用，其他配置保留原有路径；在MI355X、TP=4测试中，decode时间由17.4微秒降至5.9微秒，端到端吞吐提升0.72%；prefill时间增加65%，整体前导阶段GPU时间下降4.8%",
+      "models": [
+        "amd/GLM-5.2-MXFP4"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响启用ROCm AITER稀疏索引器、使用支持形状的推理配置；decode受益，prefill变慢。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[ROCm][Perf] Fuse the DSA indexer prologue with AITER",
+        "【正文】The fused path is enabled only for its supported BF16/FP8 shape; other configurations keep the existing path."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-54575",
+    "nodeId": "PR_kwDOI7xefs8AAAABBm5Ybg",
+    "repository": "vllm-project/vllm",
+    "number": 54575,
+    "type": "pr",
+    "title": "[Perf] Add exact distributed MRV2 prompt logprobs",
+    "bodyExcerpt": "# MRV2: exact target-only prompt logprobs without a TP vocab gather\n\n## Summary\n\nThis change adds an exact target-token path for V2/MRV2 GLM\n`prompt_logprobs=0`. Production commit `7f727ac0ce` is a single commit atop\nupstream `c5d840ff6a`. It avoids gathering a full TP vocabulary and avoids\nmaterializing `[rows, vocab]` logits for eligible chunks, while preserving the\nexisting gathered behavior everywhere else.\n\n## Dataflow\n\nAS-IS:\n\n```text\nhidden states -> per-TP-rank vocabulary logits -> TP vocabulary gather or\nall-gather -> full [rows, vocab] logits -> target score, rank, and logsumexp\n```\n\nPR (eligible GLM target-only chunk):\n\n```text\nhidden states -> per-TP-rank local vocabulary logits -> owner target SUM,\nrow MAX/SUM normalizer, and rank-count SUM -> exact target score and rank\n```\n\nOnly original-vocabulary entries participate in ownership, rank, and\nnormalization. Padded and added-vocabulary tails are excluded.\n\n## Scope and fallback\n\n- Opt-in is limited to GLM `GlmMoeDsaForCausalLM` and the NVIDIA DSA GLM path.\n- DCP must be one. Non-GLM models and DCP greater than one retain gathering.\n- Only `prompt_logprobs=0` is local. Prompt top-N and `prompt_logprobs=-1`\n  always use the existing gathered computation.\n- Dispatch is per actual MRV2 chunk. Chunks below 512 rows gather before local\n  projection, so a 1050-token prompt uses local scoring for 1024 rows and\n  gathering for the 26-row tail.\n\n## Validation\n\nCPU validation on this replayed source:\n\n```text\nPYTHONPATH=$PWD .venv/bin/python -m pytest \\\n  tests/v1/sample/test_prompt_logprob_local.py -q\n# 12 passed\n\n.venv/bin/python -m ruff check <seven changed Python files>\n.venv/bin/python -m ruff format --check <seven changed Python files>\ngit diff --check\ngit commit -s ...\n# repository pre-commit suite passed, including Python mypy and DCO\n```\n\nCoverage includes one-rank exactness; TP2 Gloo cross-owner selection; an\nasymmetric original-vocabulary layout with a dominant padded/added tail;\nraw-logit and raw-logpr",
+    "author": "foraxe",
+    "state": "open",
+    "labels": [
+      "needs-rebase",
+      "deepseek",
+      "mrv2"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/54575",
+    "createdAt": "2026-08-31T13:38:15.000Z",
+    "updatedAt": "2026-09-21T11:56:40.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:012f7e052e82c124b4dfbf8a8dd00a095c45513ee6fc1196c7053ea3f3183632",
+    "category": "PERFORMANCE",
+    "categorySource": "rules",
+    "summary": null
   },
   {
     "id": "vllm-pr-51309",
@@ -174,55 +305,6 @@
     "category": "BUG",
     "categorySource": "rules",
     "summary": null
-  },
-  {
-    "id": "vllm-pr-51315",
-    "nodeId": "PR_kwDOI7xefs77xddu",
-    "repository": "vllm-project/vllm",
-    "number": 51315,
-    "type": "pr",
-    "title": "[ROCm][Perf] Fuse the DSA indexer prologue with AITER",
-    "bodyExcerpt": "## Summary\n\nThe DSA indexer prologue uses four kernels for K normalization, Q/K RoPE,\nFP8 quantization, and the K-cache write.\n\nThis PR uses AITER's fused `indexer_qk_rope_quant_and_cache` kernel instead.\nThe fused path is enabled only for its supported BF16/FP8 shape; other\nconfigurations keep the existing path.\n\n## Results\n\nMI355X, TP=4, rank 0:\n\n| indexer stage | before | after | change |\n|---|---:|---:|---:|\n| launches | 4 | 1 | **-75%** |\n| decode time | 17.4 µs | 5.9 µs | **-66%** |\n| prefill time | 163.9 µs | 270.6 µs | **+65%** |\n\nThe fused kernel is faster for decode but slower for prefill. Across the full\ntrace, prologue GPU time changes from 1,093.6 ms to 1,041.4 ms (**-4.8%**).\n\nOne decode indexer stage at the same zoom:\n\n![Before: four prologue kernels](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr3_before.png)\n\n![After: one fused prologue kernel](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr3_after.png)\n\nEnd-to-end geomean:\n\n| metric | before | after | change |\n|---|---:|---:|---:|\n| throughput | 811.75 | 817.58 | **+0.72%** |\n| TPOT | 24.12 ms | 23.96 ms | **-0.66%** |\n| ITL | 23.85 ms | 23.69 ms | **-0.67%** |\n\n## Model-level e2e results\n\n### Test conditions\n\n| | |\n|---|---|\n| Hardware | MI355X (gfx950), TP=4 |\n| Model | `amd/GLM-5.2-MXFP4`, fp8 KV cache |\n| Stack | vLLM `69715823`, AITER `4a1cc77`, flydsl `0.3.0` |\n| Server | `--async-scheduling --max-num-seqs 256 --max-num-batched-tokens 16384 --block-size 64 --no-enable-prefix-caching`, `index_topk_freq=4` |\n| Env | `VLLM_ROCM_USE_AITER=1`, `VLLM_ROCM_USE_AITER_SPARSE_INDEXER=1`, `AITER_USE_FLYDSL_MOE_SORTING=1`, `VLLM_ROCM_QUICK_REDUCE_QUANTIZATION=INT4` |\n| Perf | `vllm bench serve`, random dataset, `--ignore-eos --request-rate inf`, ISL 1024 and 8192, OSL 1024, concurrency 1-256 (16 points) |\n| Accuracy | `lm_eval` gsm8k 5-shot chat template with thinking enabled, `max_gen_tok",
-    "author": "amd-sriram",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "deepseek"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/51315",
-    "createdAt": "2026-08-06T21:41:29.000Z",
-    "updatedAt": "2026-09-20T11:23:30.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T06:14:38.090Z",
-    "contentHash": "sha256:e273e9f7e4a79029096f6dd6cc2a092a85c1bf440ec72fee5c8dafe0ea92ee61",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "ROCm用AITER融合DSA索引器前导阶段",
-      "summaryZh": "新增AITER融合的indexer_qk_rope_quant_and_cache内核，将DSA索引器前导阶段从四次内核启动合并为一次；仅对支持的BF16/FP8形状启用，其他配置保留原有路径；在MI355X、TP=4测试中，decode时间由17.4微秒降至5.9微秒，端到端吞吐提升0.72%；prefill时间增加65%，整体前导阶段GPU时间下降4.8%",
-      "models": [
-        "amd/GLM-5.2-MXFP4"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "影响启用ROCm AITER稀疏索引器、使用支持形状的推理配置；decode受益，prefill变慢。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[ROCm][Perf] Fuse the DSA indexer prologue with AITER",
-        "【正文】The fused path is enabled only for its supported BF16/FP8 shape; other configurations keep the existing path."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
   },
   {
     "id": "vllm-issue-54317",
@@ -1003,33 +1085,6 @@
     "summary": null
   },
   {
-    "id": "vllm-pr-53875",
-    "nodeId": "PR_kwDOI7xefs8AAAABBER5GA",
-    "repository": "vllm-project/vllm",
-    "number": 53875,
-    "type": "pr",
-    "title": "[Kernel][Perf] Fuse clamped MoE activation and UE8M0 FP8 block quantization",
-    "bodyExcerpt": "## Purpose\r\n\r\nFuse the clamped MoE activation path into FP8 block-128 activation quantization:\r\n\r\n1. finite SwiGLU clamping;\r\n2. BF16 SiLU and gated multiplication;\r\n3. dynamic E4M3 block quantization, including Hopper DeepGEMM UE8M0 scales; and\r\n4. optional filtering of invalid or non-local expert rows.\r\n\r\nThe CUDA implementation extends the existing stable-ABI `silu_and_mul_per_block_quant` op and has two execution strategies:\r\n\r\n- a lightweight one-block-per-quant-group kernel for launch-bound TP decode shapes without an `expert_map`;\r\n- an occupancy-driven persistent kernel when EP filtering is present or the output has at least 1M elements.\r\n\r\nThe persistent variant uses vectorized BF16 loads/FP8 stores and half-warp reductions. Both clamped variants preserve the BF16 activation materialization point and are bit-exact with the original two-kernel UE8M0 path.\r\n\r\nThe Triton experts dispatch remains narrow: CUDA, gated SiLU with a finite clamp, int32 routing IDs, FP8 W8A8 block shape `[128, 128]`, and no LoRA activation consumer. Large unfiltered prefills fall back to the existing kernels at the measured crossover. The existing unclamped E8M0 path remains excluded because its activation semantics are not bit-exact. `VLLM_USE_DSV4_FUSED_ACT_QUANT=0` is the matched A/B fallback.\r\n\r\n## Trace evidence\r\n\r\nPyTorch profiler trace of `zai-org/GLM-5.3-Flash` on 4x H200, TP4, MTP=5, BF16 KV cache, CUDA graphs:\r\n\r\n| Rank-0 stable window | Calls | Total | Average |\r\n|---|---:|---:|---:|\r\n| Baseline clamp | 658 | 2042.672 us | 3.104 us |\r\n| Baseline per-token-group quant (all paths) | 1316 | 3297.808 us | 2.506 us |\r\n| Fused target kernel | 658 | 1389.724 us | 2.112 us |\r\n| Remaining non-target quant | 658 | 1762.810 us | 2.679 us |\r\n\r\nFor each target MoE layer, the relevant baseline route is one clamp plus one of the two quant launches: approximately 5.65 us to 2.11 us, or **2.68x**, while removing one launch. With 45 target MoE layers this saves about 159 us per target forwa",
-    "author": "zigzagcai",
-    "state": "open",
-    "labels": [
-      "performance",
-      "deepseek",
-      "quantization",
-      "DSv4",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/53875",
-    "createdAt": "2026-08-26T11:26:49.000Z",
-    "updatedAt": "2026-09-14T10:13:11.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-28T11:38:19.166Z",
-    "contentHash": "sha256:517cb0fb6c24684c083d6d85a5a35b20659f254434b492d30a77e7aa3cbecc46",
-    "category": "PERFORMANCE",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
     "id": "vllm-issue-50719",
     "nodeId": "I_kwDOI7xefs8AAAABLHEvsA",
     "repository": "vllm-project/vllm",
@@ -1097,32 +1152,6 @@
     "firstSeenAt": "2026-08-25T03:09:28.557Z",
     "contentHash": "sha256:1a138dbfa6282fdca191dcf3a30a209dd0956761cb93990fe064b0e861d2ae5b",
     "category": "BUG",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-53953",
-    "nodeId": "PR_kwDOI7xefs8AAAABBIYQ_g",
-    "repository": "vllm-project/vllm",
-    "number": 53953,
-    "type": "pr",
-    "title": "[ROCm][Model][AMD][Performance]: Added AITER fusion on top of the existing TRITON fusion path for GLM-5.2-MXFP4 through deepseek_v32",
-    "bodyExcerpt": "## Purpose\r\n\r\nAdds an AITER-backed fusion path for the ROCm `deepseek_v32` (DeepSeek Sparse\r\nAttention) forward, used by both DeepSeek-V3.2 and GLM-5.2. The existing\r\nshared-Triton fusion path is untouched and remains the default; the AITER path\r\nis selected at runtime per fusion via opt-in env flags, so behaviour on ROCm is\r\nunchanged unless a flag is set.\r\n\r\nThis PR is stacked on top of: https://github.com/vllm-project/vllm/pull/51915, so needs enablement to land first before this fusion add-on.\r\n\r\n### Fusions added\r\n\r\n**1. MLA dual RMSNorm** \r\nFuses the q and kv-a RMSNorms into one AITER call\r\n(`fused_mla_dual_rms_norm_out`). An out-variant was added so the norms write\r\nmodel-owned buffers rather than allocating per layer, which lets the call be\r\nhoisted out of the eager region and captured by cudagraph. Also wires the\r\nper-token-quant variant for the quantized case.\r\n\r\n**2. Fused QK RoPE + concat + MLA cache write** \r\n`rocm_aiter_fused_qk_rope_concat_and_cache_mla` replaces the separate RoPE,\r\nconcat and KV-cache-write steps on the MLA path. The uint8 KV cache allocated by\r\n`--kv-cache-dtype fp8` is viewed as `float8_e4m3fn` before the call, since the\r\nAITER op rejects the raw uint8 buffer.\r\n\r\n**3. Fused indexer QK RoPE + fp8 quant + cache write**\r\n`rocm_aiter_indexer_qk_rope_quant_and_cache` fuses the lightning-indexer key\r\nLayerNorm, RoPE, fp8 quantization, and cache write into one call for the 21\r\nindexer layers.\r\n\r\n**4. Fused all-reduce + RMSNorm**\r\nUses AITER's custom all-reduce with an in-kernel RMSNorm. Gated on custom-AR\r\neligibility (`should_custom_ar`) because the op asserts the kernel ran, and\r\noversized batches must fall back to the standard path — this is the check the\r\ntorch.compile pass performs at compile time and which an inline call has to do\r\nitself.\r\n\r\n**5. `VLLM_ROCM_USE_AITER_CUSTOM_AR`** exposes AITER's custom all-reduce\r\nindependently of the fused variant.\r\n\r\n## Test Plan\r\n\r\nTo switch between the two fusion paths, use the env var below:\r\n",
-    "author": "jhu960213",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "needs-rebase",
-      "deepseek",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/53953",
-    "createdAt": "2026-08-26T21:23:27.000Z",
-    "updatedAt": "2026-09-12T06:13:58.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-27T10:07:19.897Z",
-    "contentHash": "sha256:29aafdc7d2136e85784f92dd8edb01e47475606705757481e55e9893011c6e3f",
-    "category": "PERFORMANCE",
     "categorySource": "rules",
     "summary": null
   },
@@ -2400,30 +2429,6 @@
     "firstSeenAt": "2026-09-01T05:28:24.707Z",
     "contentHash": "sha256:24e7053034e7dbf12dd632506dbfb6efd7574eefe3aa01d8237e95733548a3a9",
     "category": "BUG",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-54575",
-    "nodeId": "PR_kwDOI7xefs8AAAABBm5Ybg",
-    "repository": "vllm-project/vllm",
-    "number": 54575,
-    "type": "pr",
-    "title": "[Perf] Add exact distributed MRV2 prompt logprobs",
-    "bodyExcerpt": "# MRV2: exact target-only prompt logprobs without a TP vocab gather\n\n## Summary\n\nThis change adds an exact target-token path for V2/MRV2 GLM\n`prompt_logprobs=0`. Production commit `7f727ac0ce` is a single commit atop\nupstream `c5d840ff6a`. It avoids gathering a full TP vocabulary and avoids\nmaterializing `[rows, vocab]` logits for eligible chunks, while preserving the\nexisting gathered behavior everywhere else.\n\n## Dataflow\n\nAS-IS:\n\n```text\nhidden states -> per-TP-rank vocabulary logits -> TP vocabulary gather or\nall-gather -> full [rows, vocab] logits -> target score, rank, and logsumexp\n```\n\nPR (eligible GLM target-only chunk):\n\n```text\nhidden states -> per-TP-rank local vocabulary logits -> owner target SUM,\nrow MAX/SUM normalizer, and rank-count SUM -> exact target score and rank\n```\n\nOnly original-vocabulary entries participate in ownership, rank, and\nnormalization. Padded and added-vocabulary tails are excluded.\n\n## Scope and fallback\n\n- Opt-in is limited to GLM `GlmMoeDsaForCausalLM` and the NVIDIA DSA GLM path.\n- DCP must be one. Non-GLM models and DCP greater than one retain gathering.\n- Only `prompt_logprobs=0` is local. Prompt top-N and `prompt_logprobs=-1`\n  always use the existing gathered computation.\n- Dispatch is per actual MRV2 chunk. Chunks below 512 rows gather before local\n  projection, so a 1050-token prompt uses local scoring for 1024 rows and\n  gathering for the 26-row tail.\n\n## Validation\n\nCPU validation on this replayed source:\n\n```text\nPYTHONPATH=$PWD .venv/bin/python -m pytest \\\n  tests/v1/sample/test_prompt_logprob_local.py -q\n# 12 passed\n\n.venv/bin/python -m ruff check <seven changed Python files>\n.venv/bin/python -m ruff format --check <seven changed Python files>\ngit diff --check\ngit commit -s ...\n# repository pre-commit suite passed, including Python mypy and DCO\n```\n\nCoverage includes one-rank exactness; TP2 Gloo cross-owner selection; an\nasymmetric original-vocabulary layout with a dominant padded/added tail;\nraw-logit and raw-logpr",
-    "author": "foraxe",
-    "state": "open",
-    "labels": [
-      "deepseek",
-      "mrv2"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/54575",
-    "createdAt": "2026-08-31T13:38:15.000Z",
-    "updatedAt": "2026-08-31T13:39:17.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-01T05:28:24.707Z",
-    "contentHash": "sha256:d7872e44b9f02ce6194680e5f29eb52a8a1516f72c82923d57ca8cb8a1285465",
-    "category": "PERFORMANCE",
     "categorySource": "rules",
     "summary": null
   },

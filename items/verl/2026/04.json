@@ -1,0 +1,25 @@
+[
+  {
+    "id": "verl-pr-6212",
+    "nodeId": "PR_kwDONIZfbs7Wst-d",
+    "repository": "volcengine/verl",
+    "number": 6212,
+    "type": "pr",
+    "title": "[model] fix: Ulysses SP support for Qwen3.5/Qwen3.5-MoE",
+    "bodyExcerpt": "## Fix\n\nTwo bugs prevent Ulysses Sequence Parallelism (SP > 1) from working\nwith Qwen3.5 / Qwen3.5-MoE models:\n\n1. `_ulysses_flash_attention_forward` passes sliced `position_ids`\n   (a non-contiguous view) directly to `all_gather`, which requires\n   contiguous tensors. Crashes with\n   `RuntimeError: Tensors must be contiguous` at step 0.\n\n2. `patch_vlm_for_ulysses_input_slicing` was never registered for\n   `Qwen3_5TextModel` / `Qwen3_5MoeTextModel`. Other VLMs (Qwen2.5VL,\n   Qwen3VL, GLM4V) all have this Step 3 registration; Qwen3.5 was\n   the only one missing it. Without it, `inputs_embeds` and\n   `position_ids` are not sliced per SP rank, causing shape mismatch\n   in the forward pass.\n\n## Relation to #5957 and #6094\n\n#5957 reports shape mismatch (`logits_rmpad` vs `temperature_rmpad`)\non NPU with Qwen3.5 + SP > 1. #6094 reports SP works for Qwen-3 but\nfails for Qwen-3.5 with tensor shape mismatch. Both share the same\nroot cause: missing `patch_vlm_for_ulysses_input_slicing` for Qwen3.5.\n\n## Duplicate-work check\n\n```\ngh pr list --repo verl-project/verl --state open --search \"patch_vlm_for_ulysses\"\ngh pr list --repo verl-project/verl --state open --search \"position_ids contiguous\"\n```\n\nFirst query returns no results. Second returns #5886 and #5829 which\naddress different issues (nested tensor / mrope), not the Ulysses SP\n`all_gather` path.\n\n## Test plan\n\n- Qwen3.5-35B-A3B GRPO + Ulysses SP=2 + FSDP2 param_offload,\n  10x Ascend 910B.\n- Without fix 1: `RuntimeError: Tensors must be contiguous` at step 0\n  `compute_log_prob`.\n- Without fix 2: shape mismatch -- `inputs_embeds` not sliced per rank.\n- With both fixes: training completes step 1 with correct metrics.\n- `pre-commit run --files verl/models/transformers/monkey_patch.py`:\n  all hooks pass.\n\n## AI-assisted disclosure\n\nAI assistance (Claude) used. Submitter reviewed every changed line.",
+    "author": "nev8rz",
+    "state": "open",
+    "labels": [
+      "status: test in process"
+    ],
+    "url": "https://github.com/verl-project/verl/pull/6212",
+    "createdAt": "2026-04-29T11:47:57.000Z",
+    "updatedAt": "2026-09-21T11:35:00.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-22T05:15:06.899Z",
+    "contentHash": "sha256:fe511daed568fd52910b4c9870c3270384490b7dab7e0a4682b3574859446b80",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  }
+]

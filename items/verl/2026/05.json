@@ -1,5 +1,26 @@
 [
   {
+    "id": "verl-pr-6434",
+    "nodeId": "PR_kwDONIZfbs7d300x",
+    "repository": "volcengine/verl",
+    "number": 6434,
+    "type": "pr",
+    "title": "[rollout] feat: add reasoning parser to strip think blocks before tool extraction (fixes #6424)",
+    "bodyExcerpt": "## Summary\n\nCloses #6424 (and the three sibling issues #4757 / #6223 / #6252 that share the same root cause).\n\nThe agent loop's token-in-token-out pipeline has been `apply chat template → generate() → decode → tool parser` with no reasoning-parser step in between. Reasoning models (Qwen3 thinking, DeepSeek-R1, GLM-4 thinking) often emit `<tool_call>` patterns *inside* `<think>...</think>` blocks as part of their chain of thought. The regex-based `ToolParser` then treats those think-block tool calls as real invocations and executes them during training — polluting the conversation history (#4757), teaching the model that loose tool-call placement is acceptable, and triggering benchmark regression once eval harnesses use stricter parsing (#6223 / #6252).\n\nThis PR adds an **opt-in** reasoning-parser step that mirrors what vLLM and SGLang already apply on the chat-completion serving path:\n\n```\ngenerate() → decode → reasoning_parser → tool_parser → execute\n```\n\n`reasoning_parser=None` (the default) keeps the legacy behavior, so existing pipelines are unchanged.\n\n## What changed\n\n- **`verl/experimental/agent_loop/reasoning_parser.py`** (new): `ReasoningParser` ABC with a registry, mirroring the existing `ToolParser` design. `ThinkBlockReasoningParser` strips both fully-bracketed `<think>...</think>` (regex.DOTALL) and unclosed `<think>` truncations to end-of-text. Registered as `qwen3` and `deepseek_r1` aliases. Users register custom parsers with `@ReasoningParser.register(\"your-format\")`.\n- **`verl/workers/config/rollout.py`**: `MultiTurnConfig.reasoning_parser: Optional[str] = None`.\n- **`verl/trainer/config/rollout/rollout.yaml`** + generated PPO yamls: surface the new field so `reasoning_parser=qwen3` Hydra overrides work without `+` and config dumps include it.\n- **`verl/experimental/agent_loop/tool_agent_loop.py`**: `ToolAgentLoop.__init__` instantiates the parser when configured. `_handle_generating_state` decodes once, strips reasoning, re-encodes with `add_specia",
+    "author": "abinggo",
+    "state": "open",
+    "labels": [],
+    "url": "https://github.com/verl-project/verl/pull/6434",
+    "createdAt": "2026-05-21T09:24:44.000Z",
+    "updatedAt": "2026-09-21T11:35:00.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-22T05:15:06.899Z",
+    "contentHash": "sha256:b8f1fa2fab935b763234656c8b64ec2a5bdc1927ecd71fad571ce952f987d062",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "verl-pr-6525",
     "nodeId": "PR_kwDONIZfbs7gWP5r",
     "repository": "volcengine/verl",
