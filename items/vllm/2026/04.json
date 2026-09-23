@@ -1,5 +1,79 @@
 [
   {
+    "id": "vllm-pr-38786",
+    "nodeId": "PR_kwDOI7xefs7PdAC-",
+    "repository": "vllm-project/vllm",
+    "number": 38786,
+    "type": "pr",
+    "title": "Splitting MLA attention Triton kernel",
+    "bodyExcerpt": "A revival of PR #19774  (which, surprisingly, still seems relevant).\r\n\r\nThis splits _fwd_grouped_kernel_stage1 operation in two parts, using a temporary buffer.\r\n\r\n## Rationale\r\n_fwd_grouped_kernel_stage1 becomes a significant bottleneck with large context lengths due to severe GPU under-utilization (very small grid size). This patch breaks it into two kernels:\r\n- _fwd_grouped_kernel_stage1_part1: launched with larger grid, writes into temporary buffer\r\n- _fwd_grouped_kernel_stage1_part2: smaller grid but much lighter operation\r\n\r\n## Affected Models\r\nAt least on ROCm, this optimization benefits GLM-4.7-Flash, DeepSeek-V3 (when AITER is off), and potentially other GLM models. (DeepSeek can handle longer contexts when AITER is on, but AITER MLA does not support the head size of GLM-4.7-Flash.)\r\n\r\n<p>Token/s generation</p>\r\n<p>GLM-4.7-Flash, 1x MI325</p>\r\n\r\nContext size | patch | AITER + patch | baseline | AITER\r\n-- | -- | -- | -- | --\r\n16384 | 73.1 | 76.8 | 21.2 | 21.5\r\n32768 | 64.2 | 67.2 | 12.1 | 12.2\r\n65536 | 53.9 | 55.6 | 6.5 | 6.5\r\n100000 | 45.5 | 46.7 | 4.4 | 4.4\r\n\r\n\r\n<p>'AITER':  VLLM_ROCM_VLLM_ROCM_USE_AITER=1 VLLM_ROCM_USE_AITER_MLA=0 VLLM_ROCM_USE_AITER_MOE=1 </p>",
+    "author": "ekuznetsov139",
+    "state": "open",
+    "labels": [
+      "needs-rebase",
+      "stale",
+      "v1"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/38786",
+    "createdAt": "2026-04-02T05:32:59.000Z",
+    "updatedAt": "2026-09-23T01:44:42.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-23T04:59:29.150Z",
+    "contentHash": "sha256:8aa3a98f3ad3a913e8b588f6b3bff546ea67a10b27ff941822a28c67bf75aa81",
+    "category": "OTHER",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-39630",
+    "nodeId": "PR_kwDOI7xefs7RyHy9",
+    "repository": "vllm-project/vllm",
+    "number": 39630,
+    "type": "pr",
+    "title": "Fix GLM tool results with auto chat template content format",
+    "bodyExcerpt": "## Summary\n- special-case GLM-style chat templates during `auto` content-format detection\n- keep these templates on the `string` path when they require raw string tool responses\n- add renderer regressions for format detection and prompt rendering of tool results\n\nFixes #39614.\n\n## Why this is not duplicating an existing PR\n- I checked open PRs that reference `#39614` and did not find another open PR for this issue.\n- I also checked nearby GLM-related PRs; the open PR `#39253` is about GLM tool parser streaming and does not address prompt rendering of tool result content.\n\n## Root cause\n`resolve_chat_template_content_format(..., given_format=\"auto\", ...)` classified certain GLM templates as `openai` because they iterate over `message.content` for regular messages. That causes tool-role messages to be converted into OpenAI-style structured content items before rendering. For GLM templates that explicitly expect `m.content is string` for tool responses, the rendered prompt then falls into the wrong branch and emits an empty `<tools>` wrapper instead of the actual tool result text.\n\n## Tests run\n- `python -m py_compile vllm/renderers/hf.py tests/renderers/test_hf.py` ✅\n- `python -m pytest --noconftest tests/renderers/test_hf.py -k \"glm_tool_response_template\" -q` ❌\n  - blocked by local environment mismatch during import: the machine's installed `torch` is older than current vLLM expects (`torch.library.infer_schema` is missing)\n\n## AI assistance\nThis PR was prepared with AI assistance. I reviewed the changed files, commit, and PR description before submission.\n",
+    "author": "Yonsun-w",
+    "state": "open",
+    "labels": [
+      "needs-rebase",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/39630",
+    "createdAt": "2026-04-12T15:08:34.000Z",
+    "updatedAt": "2026-09-23T01:44:03.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:ef054cf3e81c9f43f601fcb5d2e6df7116dbe22dd4f67014bff7f742b0dc4edd",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM 工具结果内容格式检测",
+      "summaryZh": "修复 auto 内容格式检测对 GLM 风格聊天模板的特殊处理：当模板要求工具响应使用原始字符串时保持 string 路径，并新增格式检测与工具结果提示词渲染回归测试，解决在 auto 内容格式检测下，某些 GLM 模板因遍历普通消息的 message.content 被误判为 openai 格式，导致工具消息在渲染前被转换为结构化内容；需要字符串工具响应的模板最终输出空的 <tools> 包裹，而不是实际工具结果文本；避免 GLM 工具响应提示词丢失实际结果文本。测试执行受本地 torch 版本过旧、缺少 torch.library.infer_schema 影响",
+      "models": [
+        "GLM"
+      ],
+      "hardware": [
+        "CPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响使用 auto 内容格式检测及要求字符串工具响应的 GLM 聊天模板。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Fix GLM tool results with auto chat template content format",
+        "【正文】certain GLM templates ... classified ... as openai ... emits an empty <tools> wrapper instead of the actual tool result"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-pr-39168",
     "nodeId": "PR_kwDOI7xefs7QcCsf",
     "repository": "vllm-project/vllm",
@@ -665,54 +739,6 @@
       "evidence": [
         "【标题】ROCM_AITER_MLA_SPARSE prefill produces garbage for prompt_len > ~20K tokens on gfx950 (GLM-5.1-FP8)",
         "【正文】silently produces corrupt output when the prefill prompt exceeds approximately 20,000 tokens"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-39630",
-    "nodeId": "PR_kwDOI7xefs7RyHy9",
-    "repository": "vllm-project/vllm",
-    "number": 39630,
-    "type": "pr",
-    "title": "Fix GLM tool results with auto chat template content format",
-    "bodyExcerpt": "## Summary\n- special-case GLM-style chat templates during `auto` content-format detection\n- keep these templates on the `string` path when they require raw string tool responses\n- add renderer regressions for format detection and prompt rendering of tool results\n\nFixes #39614.\n\n## Why this is not duplicating an existing PR\n- I checked open PRs that reference `#39614` and did not find another open PR for this issue.\n- I also checked nearby GLM-related PRs; the open PR `#39253` is about GLM tool parser streaming and does not address prompt rendering of tool result content.\n\n## Root cause\n`resolve_chat_template_content_format(..., given_format=\"auto\", ...)` classified certain GLM templates as `openai` because they iterate over `message.content` for regular messages. That causes tool-role messages to be converted into OpenAI-style structured content items before rendering. For GLM templates that explicitly expect `m.content is string` for tool responses, the rendered prompt then falls into the wrong branch and emits an empty `<tools>` wrapper instead of the actual tool result text.\n\n## Tests run\n- `python -m py_compile vllm/renderers/hf.py tests/renderers/test_hf.py` ✅\n- `python -m pytest --noconftest tests/renderers/test_hf.py -k \"glm_tool_response_template\" -q` ❌\n  - blocked by local environment mismatch during import: the machine's installed `torch` is older than current vLLM expects (`torch.library.infer_schema` is missing)\n\n## AI assistance\nThis PR was prepared with AI assistance. I reviewed the changed files, commit, and PR description before submission.\n",
-    "author": "Yonsun-w",
-    "state": "open",
-    "labels": [
-      "needs-rebase"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/39630",
-    "createdAt": "2026-04-12T15:08:34.000Z",
-    "updatedAt": "2026-06-25T00:52:50.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:c0bb8f48dbdf64e1d75c0ef5ad0f1b3ad91dc658790f459abde4424dc1be4681",
-    "category": "FIX",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "修复 GLM 工具结果内容格式检测",
-      "summaryZh": "修复 auto 内容格式检测对 GLM 风格聊天模板的特殊处理：当模板要求工具响应使用原始字符串时保持 string 路径，并新增格式检测与工具结果提示词渲染回归测试，解决在 auto 内容格式检测下，某些 GLM 模板因遍历普通消息的 message.content 被误判为 openai 格式，导致工具消息在渲染前被转换为结构化内容；需要字符串工具响应的模板最终输出空的 <tools> 包裹，而不是实际工具结果文本；避免 GLM 工具响应提示词丢失实际结果文本。测试执行受本地 torch 版本过旧、缺少 torch.library.infer_schema 影响",
-      "models": [
-        "GLM"
-      ],
-      "hardware": [
-        "CPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "FIX",
-      "severity": "MEDIUM",
-      "impactScopeZh": "影响使用 auto 内容格式检测及要求字符串工具响应的 GLM 聊天模板。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】Fix GLM tool results with auto chat template content format",
-        "【正文】certain GLM templates ... classified ... as openai ... emits an empty <tools> wrapper instead of the actual tool result"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",

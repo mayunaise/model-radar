@@ -1,5 +1,105 @@
 [
   {
+    "id": "vllm-issue-45350",
+    "nodeId": "I_kwDOI7xefs8AAAABFOq0xg",
+    "repository": "vllm-project/vllm",
+    "number": 45350,
+    "type": "issue",
+    "title": "[Feature]: IndexCache support for DeepSeek V4",
+    "bodyExcerpt": "### Summary\n\nExtend the existing IndexCache feature (currently only supported for DeepSeek-V3.2 / GLM-5 DSA models) to DeepSeek V4's c4a attention layers, which also use DSA lightning indexer with top-k token selection.\n\n### Motivation\n\nDeepSeek V4 uses a hybrid compressed attention architecture with two layer types:\n\n- **c4a layers** (30 layers): Compressed KV + **DSA lightning indexer** (top-k=1024) + sparse attention\n- **c128a layers** (31 layers): Heavily compressed KV, near-full attention (no indexer needed)\n- **SWA layer** (1 layer): Pure sliding window, no indexer\n\nThe 30 c4a layers have the same DSA lightning indexer as V3.2, making them **directly amenable to IndexCache optimization** — skipping redundant top-k computation across layers by reusing cached `topk_indices`.\n\nThis is not theoretical — **vllm-ascend has already implemented and validated it**:\n\n\n### Existing Implementation & Validation\n\n**vllm-ascend PR**: [[Feature] IndexCache: reuse topk_indices across decode steps for DSA models (DeepSeek V4)](https://github.com/vllm-project/vllm-ascend/pull/9390) — **Merged** on 2026-05-25\n\n**Performance (DeepSeek V4-Flash, Ascend 910B4, 32K input / 1K output)**:\n\n| Metric | Baseline | IndexCache (freq=4) | Improvement |\n|--------|----------|---------------------|-------------|\n| Throughput (tok/s) | 1,423 | 1,554 | **+9.18%** |\n| TTFT (ms) | 6,182 | 5,813 | **-5.97%** |\n| TPOT (ms) | 186.4 | 171.8 | **-7.83%** |\n\n**Accuracy (GPQA-diamond)**: −0.51 pt (within acceptable range)\n\n### Technical Feasibility\n\nThe V4 model config confirms c4a layers have full DSA indexer support:\n\n```json\n// DeepSeek-V4-Pro config.json\n{\n  \"index_topk\": 1024,\n  \"index_n_heads\": 64,\n  \"index_head_dim\": 128,\n  \"compress_ratios\": [128, 128, 4, 128, 4, 128, 4, ...]  // 30 layers with ratio=4 (c4a)\n}\n```\n\nKey observations from the vLLM v0.22.0 codebase:\n\n1. **V3.2 IndexCache is already implemented** in `deepseek_v2.py` (lines ~1009-1019), using `use_index_cache` / `index_topk_freq` / `in",
+    "author": "wangziyao3",
+    "state": "open",
+    "labels": [
+      "feature request"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/45350",
+    "createdAt": "2026-06-12T03:05:19.000Z",
+    "updatedAt": "2026-09-23T01:05:30.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:9ef71cdc64890d6fabffef01cbfc2127a3bd5a4a3522dc9f5b251ffe554817d3",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "DeepSeek V4 c4a层支持IndexCache",
+      "summaryZh": "请求将现有 IndexCache 功能扩展到 DeepSeek V4 的 c4a 注意力层，复用缓存的 topk_indices，减少跨层重复的 top-k 计算；vllm-ascend 已实现并验证：Ascend 910B4 上吞吐提升 9.18%，TTFT 降低 5.97%，TPOT 降低 7.83%，GPQA-diamond 准确率下降 0.51 分",
+      "models": [
+        "DeepSeek V4"
+      ],
+      "hardware": [
+        "NPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响 DeepSeek V4 推理中的 30 个 c4a 层；c128a 层和 SWA 层不需要索引缓存。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】[Feature]: IndexCache support for DeepSeek V4",
+        "【正文】Extend the existing IndexCache feature ... to DeepSeek V4's c4a attention layers ... reusing cached topk_indices."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-44508",
+    "nodeId": "PR_kwDOI7xefs7ikuSD",
+    "repository": "vllm-project/vllm",
+    "number": 44508,
+    "type": "pr",
+    "title": "[ROCm][Perf] Enable torch.compile / Inductor fusion passes on GLM-4 MTP draft",
+    "bodyExcerpt": "## Purpose\n\n`Glm4MoeMTP` is not decorated with `@support_torch_compile`. As a result, the MTP draft forward executes as eager Python and misses every Inductor fusion pass that the target forward enjoys - most notably the AITER allreduce + RMSNorm fusion, RMSNorm + quant fusion, and silu+mul+fp8-quant fusion.\n\nAdding the decorator brings MTP behaviour in line with the canonical `DeepSeekMTP` pattern (`vllm/model_executor/models/deepseek_mtp.py`, L185) and makes the draft eligible for the same compile-time fusions as the target.\n\n## Changes\n\nSingle-file, two-line wiring in `vllm/model_executor/models/glm4_moe_mtp.py`, mirroring `deepseek_mtp.py`:\n\n- Add `from vllm.compilation.decorators import support_torch_compile`.\n- Decorate the top-level `Glm4MoeMTP` class with `@support_torch_compile`.\n\nNo changes to the forward signature, the loader, or `Glm4MoeMultiTokenPredictor`. `dynamic_arg_dims` is inferred from the existing `forward` annotations (the four `Tensor | None` / `IntermediateTensors | None` args become dim-0 dynamic), exactly as for `DeepSeekMTP`.\n\n## Test Plan\n\n- Model: `zai-org/GLM-4.7-FP8`\n- Hardware: 1x MI355X node, TP=4 + EP\n- AITER: >= v0.1.13.post1 (#44265)\n- Accuracy: `lm_eval --tasks gsm8k --num_fewshot 5`\n- Throughput: `vllm bench serve --dataset-name random` sweep over `(ISL, OSL, MC)` in `{1000/100, 5000/500, 10000/1000} x {4, 16, 64}`\n- Two arms: (A) `Glm4MoeMTP` without `@support_torch_compile` (baseline / eager draft), (B) with the decorator (this PR). All other knobs identical.\n\n### Server invocation (MTP=2 spec tokens, `attention-backend ROCM_AITER_UNIFIED_ATTN`)\n\n```bash\nVLLM_ROCM_USE_AITER=1 \\\nVLLM_ROCM_USE_AITER_MOE=1 \\\nVLLM_ROCM_SHUFFLE_KV_CACHE_LAYOUT=1 \\\nVLLM_ROCM_USE_AITER_RMSNORM=0 \\\nVLLM_ROCM_QUICK_REDUCE_QUANTIZATION=INT4 \\\nvllm serve zai-org/GLM-4.7-FP8 \\\n  --tensor-parallel-size 4 --enable-expert-parallel --trust-remote-code \\\n  --no-enable-prefix-caching --async-scheduling \\\n  --max-num-batched-tokens 32768 --max-model-len 131072 \\",
+    "author": "omirosh",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "ready",
+      "torch.compile",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/44508",
+    "createdAt": "2026-06-04T07:23:38.000Z",
+    "updatedAt": "2026-09-22T12:05:43.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:f2fad8b5c48c772dae94bfbb001b8dd7dca1760ff15aea84a57bd0c9e9721dc0",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "为 GLM-4 MTP 启用 Inductor 融合",
+      "summaryZh": "新增 @support_torch_compile 装饰器，使 Glm4MoeMTP 草稿前向符合 DeepSeekMTP 模式并参与 TorchInductor 编译融合；MTP 草稿可获得与目标前向相同的 Inductor 融合，包括 AITER allreduce+RMSNorm、RMSNorm+量化及 SiLU+乘法+FP8 量化融合；未修改 forward 签名、加载器或 Glm4MoeMultiTokenPredictor",
+      "models": [
+        "GLM-4.7-FP8",
+        "Glm4MoeMTP"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "ROCm 推理中的 GLM-4 MTP 草稿路径",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[ROCm][Perf] Enable torch.compile / Inductor fusion passes on GLM-4 MTP draft",
+        "【正文】Glm4MoeMTP is not decorated with @support_torch_compile... Adding the decorator brings MTP behaviour in line with the..."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-pr-46162",
     "nodeId": "PR_kwDOI7xefs7oZUK8",
     "repository": "vllm-project/vllm",
@@ -760,54 +860,6 @@
     "summary": null
   },
   {
-    "id": "vllm-issue-45350",
-    "nodeId": "I_kwDOI7xefs8AAAABFOq0xg",
-    "repository": "vllm-project/vllm",
-    "number": 45350,
-    "type": "issue",
-    "title": "[Feature]: IndexCache support for DeepSeek V4",
-    "bodyExcerpt": "### Summary\n\nExtend the existing IndexCache feature (currently only supported for DeepSeek-V3.2 / GLM-5 DSA models) to DeepSeek V4's c4a attention layers, which also use DSA lightning indexer with top-k token selection.\n\n### Motivation\n\nDeepSeek V4 uses a hybrid compressed attention architecture with two layer types:\n\n- **c4a layers** (30 layers): Compressed KV + **DSA lightning indexer** (top-k=1024) + sparse attention\n- **c128a layers** (31 layers): Heavily compressed KV, near-full attention (no indexer needed)\n- **SWA layer** (1 layer): Pure sliding window, no indexer\n\nThe 30 c4a layers have the same DSA lightning indexer as V3.2, making them **directly amenable to IndexCache optimization** — skipping redundant top-k computation across layers by reusing cached `topk_indices`.\n\nThis is not theoretical — **vllm-ascend has already implemented and validated it**:\n\n\n### Existing Implementation & Validation\n\n**vllm-ascend PR**: [[Feature] IndexCache: reuse topk_indices across decode steps for DSA models (DeepSeek V4)](https://github.com/vllm-project/vllm-ascend/pull/9390) — **Merged** on 2026-05-25\n\n**Performance (DeepSeek V4-Flash, Ascend 910B4, 32K input / 1K output)**:\n\n| Metric | Baseline | IndexCache (freq=4) | Improvement |\n|--------|----------|---------------------|-------------|\n| Throughput (tok/s) | 1,423 | 1,554 | **+9.18%** |\n| TTFT (ms) | 6,182 | 5,813 | **-5.97%** |\n| TPOT (ms) | 186.4 | 171.8 | **-7.83%** |\n\n**Accuracy (GPQA-diamond)**: −0.51 pt (within acceptable range)\n\n### Technical Feasibility\n\nThe V4 model config confirms c4a layers have full DSA indexer support:\n\n```json\n// DeepSeek-V4-Pro config.json\n{\n  \"index_topk\": 1024,\n  \"index_n_heads\": 64,\n  \"index_head_dim\": 128,\n  \"compress_ratios\": [128, 128, 4, 128, 4, 128, 4, ...]  // 30 layers with ratio=4 (c4a)\n}\n```\n\nKey observations from the vLLM v0.22.0 codebase:\n\n1. **V3.2 IndexCache is already implemented** in `deepseek_v2.py` (lines ~1009-1019), using `use_index_cache` / `index_topk_freq` / `in",
-    "author": "wangziyao3",
-    "state": "open",
-    "labels": [
-      "feature request"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/45350",
-    "createdAt": "2026-06-12T03:05:19.000Z",
-    "updatedAt": "2026-08-23T12:13:18.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:3c2be1bad2e034c86da4998405af724c0db6f17cd4b308623a33628f748dbee1",
-    "category": "NEW_SUPPORT",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "DeepSeek V4 c4a层支持IndexCache",
-      "summaryZh": "请求将现有 IndexCache 功能扩展到 DeepSeek V4 的 c4a 注意力层，复用缓存的 topk_indices，减少跨层重复的 top-k 计算；vllm-ascend 已实现并验证：Ascend 910B4 上吞吐提升 9.18%，TTFT 降低 5.97%，TPOT 降低 7.83%，GPQA-diamond 准确率下降 0.51 分",
-      "models": [
-        "DeepSeek V4"
-      ],
-      "hardware": [
-        "NPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "NEW_SUPPORT",
-      "severity": "MEDIUM",
-      "impactScopeZh": "影响 DeepSeek V4 推理中的 30 个 c4a 层；c128a 层和 SWA 层不需要索引缓存。",
-      "attention": "WATCH",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】[Feature]: IndexCache support for DeepSeek V4",
-        "【正文】Extend the existing IndexCache feature ... to DeepSeek V4's c4a attention layers ... reusing cached topk_indices."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
     "id": "vllm-pr-46178",
     "nodeId": "PR_kwDOI7xefs7od1v7",
     "repository": "vllm-project/vllm",
@@ -852,58 +904,6 @@
       "evidence": [
         "【标题】Support DCP for DeepSeek Sparse Attention",
         "【正文】Add Decode Context Parallelism (DCP) support for DeepSeek Sparse Attention through the FLASHMLA_SPARSE MLA backend."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-44508",
-    "nodeId": "PR_kwDOI7xefs7ikuSD",
-    "repository": "vllm-project/vllm",
-    "number": 44508,
-    "type": "pr",
-    "title": "[ROCm][Perf] Enable torch.compile / Inductor fusion passes on GLM-4 MTP draft",
-    "bodyExcerpt": "## Purpose\n\n`Glm4MoeMTP` is not decorated with `@support_torch_compile`. As a result, the MTP draft forward executes as eager Python and misses every Inductor fusion pass that the target forward enjoys - most notably the AITER allreduce + RMSNorm fusion, RMSNorm + quant fusion, and silu+mul+fp8-quant fusion.\n\nAdding the decorator brings MTP behaviour in line with the canonical `DeepSeekMTP` pattern (`vllm/model_executor/models/deepseek_mtp.py`, L185) and makes the draft eligible for the same compile-time fusions as the target.\n\n## Changes\n\nSingle-file, two-line wiring in `vllm/model_executor/models/glm4_moe_mtp.py`, mirroring `deepseek_mtp.py`:\n\n- Add `from vllm.compilation.decorators import support_torch_compile`.\n- Decorate the top-level `Glm4MoeMTP` class with `@support_torch_compile`.\n\nNo changes to the forward signature, the loader, or `Glm4MoeMultiTokenPredictor`. `dynamic_arg_dims` is inferred from the existing `forward` annotations (the four `Tensor | None` / `IntermediateTensors | None` args become dim-0 dynamic), exactly as for `DeepSeekMTP`.\n\n## Test Plan\n\n- Model: `zai-org/GLM-4.7-FP8`\n- Hardware: 1x MI355X node, TP=4 + EP\n- AITER: >= v0.1.13.post1 (#44265)\n- Accuracy: `lm_eval --tasks gsm8k --num_fewshot 5`\n- Throughput: `vllm bench serve --dataset-name random` sweep over `(ISL, OSL, MC)` in `{1000/100, 5000/500, 10000/1000} x {4, 16, 64}`\n- Two arms: (A) `Glm4MoeMTP` without `@support_torch_compile` (baseline / eager draft), (B) with the decorator (this PR). All other knobs identical.\n\n### Server invocation (MTP=2 spec tokens, `attention-backend ROCM_AITER_UNIFIED_ATTN`)\n\n```bash\nVLLM_ROCM_USE_AITER=1 \\\nVLLM_ROCM_USE_AITER_MOE=1 \\\nVLLM_ROCM_SHUFFLE_KV_CACHE_LAYOUT=1 \\\nVLLM_ROCM_USE_AITER_RMSNORM=0 \\\nVLLM_ROCM_QUICK_REDUCE_QUANTIZATION=INT4 \\\nvllm serve zai-org/GLM-4.7-FP8 \\\n  --tensor-parallel-size 4 --enable-expert-parallel --trust-remote-code \\\n  --no-enable-prefix-caching --async-scheduling \\\n  --max-num-batched-tokens 32768 --max-model-len 131072 \\",
-    "author": "omirosh",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "ready",
-      "torch.compile",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/44508",
-    "createdAt": "2026-06-04T07:23:38.000Z",
-    "updatedAt": "2026-08-20T12:54:40.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:dc3761acd56f4b331dda7c5dbd6f438c627952c193911de89f5e672d465011df",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "为 GLM-4 MTP 启用 Inductor 融合",
-      "summaryZh": "新增 @support_torch_compile 装饰器，使 Glm4MoeMTP 草稿前向符合 DeepSeekMTP 模式并参与 TorchInductor 编译融合；MTP 草稿可获得与目标前向相同的 Inductor 融合，包括 AITER allreduce+RMSNorm、RMSNorm+量化及 SiLU+乘法+FP8 量化融合；未修改 forward 签名、加载器或 Glm4MoeMultiTokenPredictor",
-      "models": [
-        "GLM-4.7-FP8",
-        "Glm4MoeMTP"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "ROCm 推理中的 GLM-4 MTP 草稿路径",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[ROCm][Perf] Enable torch.compile / Inductor fusion passes on GLM-4 MTP draft",
-        "【正文】Glm4MoeMTP is not decorated with @support_torch_compile... Adding the decorator brings MTP behaviour in line with the..."
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
