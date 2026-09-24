@@ -1,5 +1,31 @@
 [
   {
+    "id": "vllm-pr-43907",
+    "nodeId": "PR_kwDOI7xefs7gXYsX",
+    "repository": "vllm-project/vllm",
+    "number": 43907,
+    "type": "pr",
+    "title": "[ROCm][Perf] DSv3.2: fuse indexer Q-RoPE+quant + K-norm/RoPE/quant/cache",
+    "bodyExcerpt": "Port [ROCm/ATOM#788](https://github.com/ROCm/ATOM/pull/788)'s indexer fused-kernel shape into vLLM. Replaces the `k_norm → rotary_emb → per_token_group_quant_fp8 → cache` chain (and the Q-side `per_token_group_quant_fp8`) inside `Indexer.forward` with a single AITER kernel `aiter.indexer_qk_rope_quant_and_cache` (ROCm/aiter#3185, correctness fixes in ROCm/aiter#3451).\r\n\r\n> **Companion:** ROCm/aiter#3451 — required. Without it GSM8K strict-match drops 0.95 → 0.49.\r\n\r\n## Gating\r\n\r\n`VLLM_ROCM_USE_AITER_DSV32_INDEXER_FUSION` (default off) + main AITER toggle; auto-disabled when the running AITER build does not expose `indexer_qk_rope_quant_and_cache`. The kernel hard-asserts `index_head_dim == 128`, `qk_rope_head_dim == 64`, `head_dim == quant_block_size`; `Indexer.__init__` only enables the path if all three hold and `model_type != \"glm_moe_dsa\"`.\r\n\r\n## Design notes\r\n\r\n- **Stays inside the existing custom op.** Calling the fused kernel from inside `rocm_aiter_sparse_attn_indexer` keeps `q_fp8` and `weights_out` from escaping — an earlier version that registered them as a separate op leaked pointers across piecewise-cudagraph segments and tanked GSM8K to ~1%.\r\n- **Persistent workspace** for `q_fp8` / `weights_out`, grown monotonically. Otherwise 61 indexer layers × 2 allocations per decode step churn the eager allocator.\r\n- **K stride fixup.** The kernel asserts `k.stride(0) == head_dim`, but the upstream `.contiguous()` is a no-op on `size(0) == 1` views. We rewrite the metadata via `as_strided` when it's safe, else `empty + copy_`.\r\n- **`preshuffle=True`.** Downstream consumers read MFMA 16×16 SHUFFLE; the original call site passed `False` and silently produced garbage. Bytewise-equal to the unfused triton write after the fix.\r\n- **fp32 LN params** passed through as-is (required by ROCm/aiter#3451).\r\n\r\n## Correctness (GSM8K 20-shot strict-match, 1319 questions, `num_concurrent=256`)\r\n\r\n| Configuration | strict-match |\r\n|---|---|\r\n| Fusion off, fp8 KV cache (baseline) ",
+    "author": "frida-andersson",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "v1",
+      "deepseek",
+      "quantization"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/43907",
+    "createdAt": "2026-05-28T19:02:23.000Z",
+    "updatedAt": "2026-09-23T10:24:49.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-16T05:04:24.144Z",
+    "contentHash": "sha256:4ba263011834c5b56d64f142e3f4a5ac96ee310563c9f85c2b7fb3a1685c73cd",
+    "category": "PERFORMANCE",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-issue-43263",
     "nodeId": "I_kwDOI7xefs8AAAABC6xFvQ",
     "repository": "vllm-project/vllm",
@@ -44,32 +70,6 @@
     "firstSeenAt": "2026-09-22T05:15:06.899Z",
     "contentHash": "sha256:593ffad99e8ef0f3873a14c8b8afc211d8b86d360ea08df3d5b5a44b22c68bf3",
     "category": "BUG",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-43907",
-    "nodeId": "PR_kwDOI7xefs7gXYsX",
-    "repository": "vllm-project/vllm",
-    "number": 43907,
-    "type": "pr",
-    "title": "[ROCm][Perf] DSv3.2: fuse indexer Q-RoPE+quant + K-norm/RoPE/quant/cache",
-    "bodyExcerpt": "Port [ROCm/ATOM#788](https://github.com/ROCm/ATOM/pull/788)'s indexer fused-kernel shape into vLLM. Replaces the `k_norm → rotary_emb → per_token_group_quant_fp8 → cache` chain (and the Q-side `per_token_group_quant_fp8`) inside `Indexer.forward` with a single AITER kernel `aiter.indexer_qk_rope_quant_and_cache` (ROCm/aiter#3185, correctness fixes in ROCm/aiter#3451).\r\n\r\n> **Companion:** ROCm/aiter#3451 — required. Without it GSM8K strict-match drops 0.95 → 0.49.\r\n\r\n## Gating\r\n\r\n`VLLM_ROCM_USE_AITER_DSV32_INDEXER_FUSION` (default off) + main AITER toggle; auto-disabled when the running AITER build does not expose `indexer_qk_rope_quant_and_cache`. The kernel hard-asserts `index_head_dim == 128`, `qk_rope_head_dim == 64`, `head_dim == quant_block_size`; `Indexer.__init__` only enables the path if all three hold and `model_type != \"glm_moe_dsa\"`.\r\n\r\n## Design notes\r\n\r\n- **Stays inside the existing custom op.** Calling the fused kernel from inside `rocm_aiter_sparse_attn_indexer` keeps `q_fp8` and `weights_out` from escaping — an earlier version that registered them as a separate op leaked pointers across piecewise-cudagraph segments and tanked GSM8K to ~1%.\r\n- **Persistent workspace** for `q_fp8` / `weights_out`, grown monotonically. Otherwise 61 indexer layers × 2 allocations per decode step churn the eager allocator.\r\n- **K stride fixup.** The kernel asserts `k.stride(0) == head_dim`, but the upstream `.contiguous()` is a no-op on `size(0) == 1` views. We rewrite the metadata via `as_strided` when it's safe, else `empty + copy_`.\r\n- **`preshuffle=True`.** Downstream consumers read MFMA 16×16 SHUFFLE; the original call site passed `False` and silently produced garbage. Bytewise-equal to the unfused triton write after the fix.\r\n- **fp32 LN params** passed through as-is (required by ROCm/aiter#3451).\r\n\r\n## Correctness (GSM8K 20-shot strict-match, 1319 questions, `num_concurrent=256`)\r\n\r\n| Configuration | strict-match |\r\n|---|---|\r\n| Fusion off, fp8 KV cache (baseline) ",
-    "author": "frida-andersson",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "v1",
-      "deepseek",
-      "quantization"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/43907",
-    "createdAt": "2026-05-28T19:02:23.000Z",
-    "updatedAt": "2026-09-21T07:59:14.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-16T05:04:24.144Z",
-    "contentHash": "sha256:dc60291506e5de319971dd61f7a9c0cc06f5b458ad730798b492bdcfccc031de",
-    "category": "PERFORMANCE",
     "categorySource": "rules",
     "summary": null
   },

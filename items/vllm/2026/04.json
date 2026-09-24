@@ -1,5 +1,51 @@
 [
   {
+    "id": "vllm-issue-40926",
+    "nodeId": "I_kwDOI7xefs8AAAABAikNWg",
+    "repository": "vllm-project/vllm",
+    "number": 40926,
+    "type": "issue",
+    "title": "[Bug]: V1 engine + MTP + GLM-5.1 (DSA + MoE + MLA) — workers hang under sustained traffic, sample_tokens RPC timeout, EngineDeadError",
+    "bodyExcerpt": "### 🐛 Describe the bug\n\nUnder V1 engine + MTP speculative decoding + TP=8 + GLM-5.1-FP8 (`GlmMoeDsaForCausalLM`), workers hang under sustained production traffic. The scheduler is unable to advance — `step_counter=0` in the dump, requests stuck in flight — and after 30s the `sample_tokens` RPC times out, killing EngineCore. The container's outer process survives so vLLM internally restarts the engine (~12-17 min downtime), but this is a recurring failure pattern.\n\nThis is the same bug `jsboige` diagnosed for `new-TonyWang` in [#35104](https://github.com/vllm-project/vllm/issues/35104#issuecomment-4308377748) — a different bug than what PR #40303 fixes (no `SystemError`, no `memory_fence` on the stack). new-TonyWang's report is buried in #35104 comments and has no standalone issue, so filing here.\n\n### Stack trace\n\n```\nFile \".../vllm/v1/engine/core.py\", line 1205, in _process_engine_step\n    outputs, model_executed = self.step_fn()\nFile \".../vllm/v1/engine/core.py\", line 523, in step_with_batch_queue\n    model_output = future.result()\n...\nFile \".../vllm/v1/executor/multiproc_executor.py\", line 388, in get_response\n    raise TimeoutError(f\"RPC call to {method} timed out.\") from e\nTimeoutError: RPC call to sample_tokens timed out.\n```\n\nThe underlying cause:\n\n```\nFile \".../vllm/distributed/device_communicators/shm_broadcast.py\", line 756, in dequeue\n    with self.acquire_read(timeout, indefinite) as buf:\nFile \".../shm_broadcast.py\", line 675, in acquire_read\n    self._spin_condition.wait(timeout_ms=read_timeout.timeout_ms())\nFile \".../shm_broadcast.py\", line 632, in timeout_ms\n    raise TimeoutError\n```\n\nWorkers are stuck upstream of the message queue — no output coming back. Scheduler dump confirms it:\n\n```\nSchedulerStats(num_running_reqs=2, num_waiting_reqs=0, step_counter=0,\n  kv_cache_usage=0.405, prefix_cache_stats=PrefixCacheStats(reset=False, requests=0, ...),\n  spec_decoding_stats=None, ...)\n```\n\n### Reproduction (deterministic given enough wall clock)\n\n| Setup",
+    "author": "ccgibson",
+    "state": "open",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/issues/40926",
+    "createdAt": "2026-04-26T15:17:40.000Z",
+    "updatedAt": "2026-09-23T18:09:19.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:523ee92a7c80cd9abd88503a9906244e53fcb88991ca4e41cf7e3d9e29587813",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.1 MTP 持续流量下工作进程挂起",
+      "summaryZh": "V1 引擎中启用 MTP、TP=8 和 GLM-5.1-FP8（GlmMoeDsaForCausalLM）的持续生产流量场景：工作进程在持续流量下挂起，调度器无法推进且 step_counter=0；sample_tokens RPC 在 30 秒后超时并触发 EngineDeadError。外层容器进程仍存活，但 vLLM 内部重启引擎；该故障会导致引擎重启并造成约 12–17 分钟停机，且存在 recurring failure pattern",
+      "models": [
+        "GLM-5.1-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "V1 引擎、MTP 推测解码、TP=8 的 GLM-5.1-FP8 持续生产流量。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】workers hang under sustained traffic, sample_tokens RPC timeout, EngineDeadError",
+        "【正文】Under V1 engine + MTP speculative decoding + TP=8 + GLM-5.1-FP8 ... workers hang under sustained production traffic ...`"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T10:27:08.865Z"
+    }
+  },
+  {
     "id": "vllm-pr-38786",
     "nodeId": "PR_kwDOI7xefs7PdAC-",
     "repository": "vllm-project/vllm",
@@ -223,52 +269,6 @@
     "category": "BUG",
     "categorySource": "rules",
     "summary": null
-  },
-  {
-    "id": "vllm-issue-40926",
-    "nodeId": "I_kwDOI7xefs8AAAABAikNWg",
-    "repository": "vllm-project/vllm",
-    "number": 40926,
-    "type": "issue",
-    "title": "[Bug]: V1 engine + MTP + GLM-5.1 (DSA + MoE + MLA) — workers hang under sustained traffic, sample_tokens RPC timeout, EngineDeadError",
-    "bodyExcerpt": "### 🐛 Describe the bug\n\nUnder V1 engine + MTP speculative decoding + TP=8 + GLM-5.1-FP8 (`GlmMoeDsaForCausalLM`), workers hang under sustained production traffic. The scheduler is unable to advance — `step_counter=0` in the dump, requests stuck in flight — and after 30s the `sample_tokens` RPC times out, killing EngineCore. The container's outer process survives so vLLM internally restarts the engine (~12-17 min downtime), but this is a recurring failure pattern.\n\nThis is the same bug `jsboige` diagnosed for `new-TonyWang` in [#35104](https://github.com/vllm-project/vllm/issues/35104#issuecomment-4308377748) — a different bug than what PR #40303 fixes (no `SystemError`, no `memory_fence` on the stack). new-TonyWang's report is buried in #35104 comments and has no standalone issue, so filing here.\n\n### Stack trace\n\n```\nFile \".../vllm/v1/engine/core.py\", line 1205, in _process_engine_step\n    outputs, model_executed = self.step_fn()\nFile \".../vllm/v1/engine/core.py\", line 523, in step_with_batch_queue\n    model_output = future.result()\n...\nFile \".../vllm/v1/executor/multiproc_executor.py\", line 388, in get_response\n    raise TimeoutError(f\"RPC call to {method} timed out.\") from e\nTimeoutError: RPC call to sample_tokens timed out.\n```\n\nThe underlying cause:\n\n```\nFile \".../vllm/distributed/device_communicators/shm_broadcast.py\", line 756, in dequeue\n    with self.acquire_read(timeout, indefinite) as buf:\nFile \".../shm_broadcast.py\", line 675, in acquire_read\n    self._spin_condition.wait(timeout_ms=read_timeout.timeout_ms())\nFile \".../shm_broadcast.py\", line 632, in timeout_ms\n    raise TimeoutError\n```\n\nWorkers are stuck upstream of the message queue — no output coming back. Scheduler dump confirms it:\n\n```\nSchedulerStats(num_running_reqs=2, num_waiting_reqs=0, step_counter=0,\n  kv_cache_usage=0.405, prefix_cache_stats=PrefixCacheStats(reset=False, requests=0, ...),\n  spec_decoding_stats=None, ...)\n```\n\n### Reproduction (deterministic given enough wall clock)\n\n| Setup",
-    "author": "ccgibson",
-    "state": "open",
-    "labels": [],
-    "url": "https://github.com/vllm-project/vllm/issues/40926",
-    "createdAt": "2026-04-26T15:17:40.000Z",
-    "updatedAt": "2026-09-04T21:21:04.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:8fc031c5942725cea85215a50e76c1c879c5fb20c148fcf68963278e2b246542",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5.1 MTP 持续流量下工作进程挂起",
-      "summaryZh": "V1 引擎中启用 MTP、TP=8 和 GLM-5.1-FP8（GlmMoeDsaForCausalLM）的持续生产流量场景：工作进程在持续流量下挂起，调度器无法推进且 step_counter=0；sample_tokens RPC 在 30 秒后超时并触发 EngineDeadError。外层容器进程仍存活，但 vLLM 内部重启引擎；该故障会导致引擎重启并造成约 12–17 分钟停机，且存在 recurring failure pattern",
-      "models": [
-        "GLM-5.1-FP8"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "V1 引擎、MTP 推测解码、TP=8 的 GLM-5.1-FP8 持续生产流量。",
-      "attention": "IMMEDIATE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】workers hang under sustained traffic, sample_tokens RPC timeout, EngineDeadError",
-        "【正文】Under V1 engine + MTP speculative decoding + TP=8 + GLM-5.1-FP8 ... workers hang under sustained production traffic ...`"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T10:27:08.865Z"
-    }
   },
   {
     "id": "vllm-issue-40528",
