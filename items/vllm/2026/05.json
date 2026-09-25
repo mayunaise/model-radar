@@ -1,5 +1,52 @@
 [
   {
+    "id": "vllm-issue-43497",
+    "nodeId": "I_kwDOI7xefs8AAAABDMyDzA",
+    "repository": "vllm-project/vllm",
+    "number": 43497,
+    "type": "issue",
+    "title": "[Feature]: Porting `QKNormRoPEFusionPass` to manual fusion",
+    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\nSee https://github.com/vllm-project/vllm/issues/43224\n\nThis should be covering `q_norm + k_norm + rope` fusion (currently `QKNormRoPEFusionPass` in the compilation pass manager) used in the GLM4 / Qwen3 / Gemma path\n\n### Alternatives\n\n_No response_\n\n### Additional context\n\n_No response_\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "mgoin",
+    "state": "closed",
+    "labels": [
+      "feature request",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/43497",
+    "createdAt": "2026-05-23T21:48:28.000Z",
+    "updatedAt": "2026-09-25T01:46:17.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:3bfaf160f9c30ca6b62869892782073192740b9d7e3d4121c4cdde61ffd4f1ad",
+    "category": "PERFORMANCE",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-43888",
+    "nodeId": "I_kwDOI7xefs8AAAABDrfhkQ",
+    "repository": "vllm-project/vllm",
+    "number": 43888,
+    "type": "issue",
+    "title": "MLA: kv_b_proj.weight.dtype AttributeError on quantized ColumnParallelLinear in chunked prefill",
+    "bodyExcerpt": "## Description\n\nWhen using a quantized (AWQ/GPTQ/compressed-tensors) model with MLA attention, vLLM crashes with an `AttributeError` during chunked prefill because `kv_b_proj` is a `ColumnParallelLinear` that lacks a `.weight` attribute after quantization.\n\n## Error\n\n```\nAttributeError: 'ColumnParallelLinear' object has no attribute 'weight'\n```\n\nat `vllm/model_executor/layers/attention/mla_attention.py:2094` in `_compute_prefill_context`:\n\n```python\nkv_c_normed = kv_c_normed.to(self.kv_b_proj.weight.dtype)\n```\n\n## Root Cause\n\nLines 2084-2087 already correctly handle quantized layers:\n\n```python\n_kv_b_proj_w_dtype = (\n    self.kv_b_proj.weight.dtype\n    if hasattr(self.kv_b_proj, \"weight\")\n    else self.kv_b_proj.params_dtype\n)\n```\n\nBut line 2094 ignores `_kv_b_proj_w_dtype` and directly accesses `self.kv_b_proj.weight.dtype` without the `hasattr` guard.\n\n## Fix\n\nOn line 2094, replace:\n\n```python\nkv_c_normed = kv_c_normed.to(self.kv_b_proj.weight.dtype)\n```\n\nwith:\n\n```python\nkv_c_normed = kv_c_normed.to(_kv_b_proj_w_dtype)\n```\n\nThe variable `_kv_b_proj_w_dtype` is already computed with the correct `hasattr` guard immediately above.\n\n## Impact\n\nvLLM EngineCore crashes with a fatal error, forcing a full restart (service enters crash loop under load). All inflight requests fail with HTTP 500.\n\n## Environment\n\n- vLLM version: v0.21.1rc1.dev384 (nightly, also present in current main)\n- Model: GLM-4.7-Flash-AWQ-4bit (quantized with compressed-tensors)\n- GPU: NVIDIA RTX 3090 (CUDA 12.9)\n- Quantization: compressed-tensors (AWQ group_size=32, num_bits=4)\n- CUDA graphs: enabled\n- MLA: enabled (model uses Multi-head Latent Attention)\n\n## Stack Trace\n\n```\nFile \"vllm/model_executor/layers/attention/mla_attention.py\", line 2094, in _compute_prefill_context\n    kv_c_normed = kv_c_normed.to(self.kv_b_proj.weight.dtype)\n                                  ^^^^^^^^^^^^^^^^^^^^^\nAttributeError: 'ColumnParallelLinear' object has no attribute 'weight'\n```\n",
+    "author": "DatScreamer",
+    "state": "open",
+    "labels": [
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/43888",
+    "createdAt": "2026-05-28T16:06:10.000Z",
+    "updatedAt": "2026-09-25T01:45:42.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-25T05:12:48.941Z",
+    "contentHash": "sha256:44cbc190638e61f1025da6a02a9ffe86aff19da44d932d74e5424633c2611de7",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-43907",
     "nodeId": "PR_kwDOI7xefs7gXYsX",
     "repository": "vllm-project/vllm",
@@ -17,10 +64,10 @@
     ],
     "url": "https://github.com/vllm-project/vllm/pull/43907",
     "createdAt": "2026-05-28T19:02:23.000Z",
-    "updatedAt": "2026-09-23T10:24:49.000Z",
+    "updatedAt": "2026-09-24T08:59:32.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-09-16T05:04:24.144Z",
-    "contentHash": "sha256:4ba263011834c5b56d64f142e3f4a5ac96ee310563c9f85c2b7fb3a1685c73cd",
+    "contentHash": "sha256:1b64d804e438349c7ae2d3da3b21401a60c35ac8aa5e363342196e9e85d552dd",
     "category": "PERFORMANCE",
     "categorySource": "rules",
     "summary": null
@@ -465,55 +512,6 @@
     "category": "FIX",
     "categorySource": "rules",
     "summary": null
-  },
-  {
-    "id": "vllm-issue-43497",
-    "nodeId": "I_kwDOI7xefs8AAAABDMyDzA",
-    "repository": "vllm-project/vllm",
-    "number": 43497,
-    "type": "issue",
-    "title": "[Feature]: Porting `QKNormRoPEFusionPass` to manual fusion",
-    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\nSee https://github.com/vllm-project/vllm/issues/43224\n\nThis should be covering `q_norm + k_norm + rope` fusion (currently `QKNormRoPEFusionPass` in the compilation pass manager) used in the GLM4 / Qwen3 / Gemma path\n\n### Alternatives\n\n_No response_\n\n### Additional context\n\n_No response_\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
-    "author": "mgoin",
-    "state": "open",
-    "labels": [
-      "feature request",
-      "stale"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/43497",
-    "createdAt": "2026-05-23T21:48:28.000Z",
-    "updatedAt": "2026-08-24T02:01:58.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:c5492390edaf34b1a79a79d99858714279f963671289f0bcf34fe7b91d11c367",
-    "category": "NEW_SUPPORT",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "移植 QKNormRoPEFusionPass 到手动融合",
-      "summaryZh": "请求将编译流程中的 QKNormRoPEFusionPass 移植为手动融合实现，覆盖 q_norm + k_norm + RoPE 融合；影响 GLM4、Qwen3 和 Gemma 路径",
-      "models": [
-        "GLM4",
-        "Qwen3",
-        "Gemma"
-      ],
-      "hardware": [],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "NEW_SUPPORT",
-      "severity": "LOW",
-      "impactScopeZh": "涉及 GLM4、Qwen3 和 Gemma 模型路径的融合实现。",
-      "attention": "ROUTINE",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】Porting `QKNormRoPEFusionPass` to manual fusion",
-        "【正文】This should be covering `q_norm + k_norm + rope` fusion ... used in the GLM4 / Qwen3 / Gemma path"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
   },
   {
     "id": "vllm-pr-43375",

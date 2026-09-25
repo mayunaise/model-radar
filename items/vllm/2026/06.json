@@ -1,5 +1,104 @@
 [
   {
+    "id": "vllm-issue-46787",
+    "nodeId": "I_kwDOI7xefs8AAAABGxD8AA",
+    "repository": "vllm-project/vllm",
+    "number": 46787,
+    "type": "issue",
+    "title": "[Bug]: MLA indexer block_table shape mismatch when max_model_len is auto-reduced after InputBatch creation",
+    "bodyExcerpt": "### Your current environment\n\n## Your current environment\n\n- **vLLM version**: v0.23.0\n- **GPU**: NVIDIA H20 \n- **Python**: 3.12\n- **OS**: Linux\n- **Attention backend**: FlashMLA (block_size=64)\n- **Model**: GLM-5.1 (or any MLA-based model: GLM-5/5.2, DeepSeek-V2/V3)\n- **Configuration**: TP + DP + EP with MTP speculative decoding enabled\n\n### 🐛 Describe the bug\n\n## Describe the bug\n\nWhen running MLA models with MTP (Multi-Token Prediction) speculative decoding, and the engine auto-reduces `max_model_len` to fit available GPU memory, a `RuntimeError` occurs during the decode phase:\n\n```\nRuntimeError: The expanded size of the tensor (2464) must match the existing size (3168)\nat non-singleton dimension 1. Target sizes: [51, 2464]. Tensor sizes: [51, 3168]\n```\n\nThe MLA indexer's `expanded_block_table_buffer` is allocated with fewer columns than the `InputBatch.block_table` because `InputBatch` was created **before** `max_model_len` was reduced, and it is never rebuilt afterward.\n\n## Root Cause Analysis\n\nThe initialization sequence in `GPUModelRunner` has a timing issue between `InputBatch` creation and `max_model_len` auto-reduction:\n\n### Timeline\n\n1. **`GPUModelRunner.__init__()`** creates `InputBatch` with the **original** `max_model_len` (e.g., 202,752):\n   ```python\n   # block_table columns = cdiv(202752, 64) = 3168\n   self.input_batch = InputBatch(...)\n   ```\n\n2. **Engine detects insufficient GPU memory** and calls `update_max_model_len(157696)` to auto-reduce the value.\n\n3. **`initialize_kv_cache()` → `initialize_metadata_builders()`** creates the MLA indexer with the **new** `max_model_len`:\n   ```python\n   # expanded_block_table_buffer columns = cdiv(157696, 64) = 2464\n   ```\n\n4. **`may_reinitialize_input_batch()`** is called but only checks:\n   ```python\n   if (\n       block_sizes != self._init_block_sizes        # False (both [64])\n       or kernel_block_sizes != self._init_kernel_block_sizes  # False\n   ):\n   ```\n   It does **NOT** check whether `max_model_l",
+    "author": "alicesuki",
+    "state": "open",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/46787",
+    "createdAt": "2026-06-26T03:40:07.000Z",
+    "updatedAt": "2026-09-25T01:42:40.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-25T05:12:48.941Z",
+    "contentHash": "sha256:fe025f80a9d543ce2f0cf0d5fca1fe5668151c9de0fdebdefa317de124034e26",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-46830",
+    "nodeId": "I_kwDOI7xefs8AAAABGzyFvg",
+    "repository": "vllm-project/vllm",
+    "number": 46830,
+    "type": "issue",
+    "title": "MTP + MLA: slot_mapping assert fails with list[dict] from ubatch slicing",
+    "bodyExcerpt": "## Bug: `Expected slot_mapping to be a dict, got <class 'list'>`\n\n### Environment\n- vLLM nightly `0.23.1rc1.dev471+ge312c5cb2`\n- NVIDIA H200 GPUs, EP16 (2 nodes × 8 GPUs)\n- Model: GLM-5.2-FP8 (753B MoE) with MLA (DEEPSEEK_V32_INDEXER / FLASHMLA_SPARSE)\n- MTP speculative decoding: `--speculative-config '{\"method\":\"mtp\",\"num_speculative_tokens\":1}'`\n- All2all backend: `deepep_low_latency`\n\n### Description\n\nDuring KV cache initialization, MTP creates ubatch slices that cause `slot_mapping` to be returned as `list[dict[str, torch.Tensor]]` instead of `dict[str, torch.Tensor]`. Both `mla_attention.py` and `attention.py` assert that `slot_mapping` is a dict, causing a crash.\n\nThe `attn_metadata` handling 10 lines above already handles this exact pattern correctly (list vs dict), but the same handling was not applied to `slot_mapping`.\n\n### Traceback\n\n```\nFile \"vllm/v1/engine/core.py\", line 133, in __init__\n    kv_cache_config = self._initialize_kv_caches(vllm_config)\nFile \"vllm/v1/engine/core.py\", line 321, in _initialize_kv_caches\n    self.model_executor.initialize_from_config(kv_cache_configs)\nFile \"vllm/v1/executor/abstract.py\", line 124, in initialize_from_config\n    compilation_times: list[CompilationTimes] = self.collective_rpc(\nFile \"vllm/v1/executor/multiproc_executor.py\", line 391, in get_response\n    raise RuntimeError(\nRuntimeError: Worker failed with error 'Expected slot_mapping to be a dict, got <class 'list'>. '\n```\n\n### Root Cause\n\nIntroduced in commit b4a6f26c (`[ROCm][perf] Use workspace manager for sparse indexer allocations`, PR #41002) which created `mla_attention.py` as shared code with the strict assert, without accounting for the MTP ubatch `list[dict]` case.\n\n### Affected Files\n\n- `vllm/model_executor/layers/attention/mla_attention.py` (line 583)\n- `vllm/model_executor/layers/attention/attention.py` (line 706)\n\n### Suggested Fix\n\nApply the same pattern already used for `attn_metadata` (lines 572-577 in `mla_attention.py`, lines 695-700 in `attentio",
+    "author": "elvircrn",
+    "state": "open",
+    "labels": [
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/46830",
+    "createdAt": "2026-06-26T12:18:04.000Z",
+    "updatedAt": "2026-09-25T01:42:33.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-25T05:12:48.941Z",
+    "contentHash": "sha256:1e9781b6d6f47ccca685ca895c1690496686bd8f09825cda9fb744a7bd13debf",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-44508",
+    "nodeId": "PR_kwDOI7xefs7ikuSD",
+    "repository": "vllm-project/vllm",
+    "number": 44508,
+    "type": "pr",
+    "title": "[ROCm][Perf] Enable torch.compile / Inductor fusion passes on GLM-4 MTP draft",
+    "bodyExcerpt": "## Purpose\n\n`Glm4MoeMTP` is not decorated with `@support_torch_compile`. As a result, the MTP draft forward executes as eager Python and misses every Inductor fusion pass that the target forward enjoys - most notably the AITER allreduce + RMSNorm fusion, RMSNorm + quant fusion, and silu+mul+fp8-quant fusion.\n\nAdding the decorator brings MTP behaviour in line with the canonical `DeepSeekMTP` pattern (`vllm/model_executor/models/deepseek_mtp.py`, L185) and makes the draft eligible for the same compile-time fusions as the target.\n\n## Changes\n\nSingle-file, two-line wiring in `vllm/model_executor/models/glm4_moe_mtp.py`, mirroring `deepseek_mtp.py`:\n\n- Add `from vllm.compilation.decorators import support_torch_compile`.\n- Decorate the top-level `Glm4MoeMTP` class with `@support_torch_compile`.\n\nNo changes to the forward signature, the loader, or `Glm4MoeMultiTokenPredictor`. `dynamic_arg_dims` is inferred from the existing `forward` annotations (the four `Tensor | None` / `IntermediateTensors | None` args become dim-0 dynamic), exactly as for `DeepSeekMTP`.\n\n## Test Plan\n\n- Model: `zai-org/GLM-4.7-FP8`\n- Hardware: 1x MI355X node, TP=4 + EP\n- AITER: >= v0.1.13.post1 (#44265)\n- Accuracy: `lm_eval --tasks gsm8k --num_fewshot 5`\n- Throughput: `vllm bench serve --dataset-name random` sweep over `(ISL, OSL, MC)` in `{1000/100, 5000/500, 10000/1000} x {4, 16, 64}`\n- Two arms: (A) `Glm4MoeMTP` without `@support_torch_compile` (baseline / eager draft), (B) with the decorator (this PR). All other knobs identical.\n\n### Server invocation (MTP=2 spec tokens, `attention-backend ROCM_AITER_UNIFIED_ATTN`)\n\n```bash\nVLLM_ROCM_USE_AITER=1 \\\nVLLM_ROCM_USE_AITER_MOE=1 \\\nVLLM_ROCM_SHUFFLE_KV_CACHE_LAYOUT=1 \\\nVLLM_ROCM_USE_AITER_RMSNORM=0 \\\nVLLM_ROCM_QUICK_REDUCE_QUANTIZATION=INT4 \\\nvllm serve zai-org/GLM-4.7-FP8 \\\n  --tensor-parallel-size 4 --enable-expert-parallel --trust-remote-code \\\n  --no-enable-prefix-caching --async-scheduling \\\n  --max-num-batched-tokens 32768 --max-model-len 131072 \\",
+    "author": "omirosh",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "ready",
+      "torch.compile",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/44508",
+    "createdAt": "2026-06-04T07:23:38.000Z",
+    "updatedAt": "2026-09-24T05:42:06.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:a1666cfe1b34a853b3d0f7aa53b11855d7e69e8a84f407ee21008bb54fdffbcf",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "为 GLM-4 MTP 启用 Inductor 融合",
+      "summaryZh": "新增 @support_torch_compile 装饰器，使 Glm4MoeMTP 草稿前向符合 DeepSeekMTP 模式并参与 TorchInductor 编译融合；MTP 草稿可获得与目标前向相同的 Inductor 融合，包括 AITER allreduce+RMSNorm、RMSNorm+量化及 SiLU+乘法+FP8 量化融合；未修改 forward 签名、加载器或 Glm4MoeMultiTokenPredictor",
+      "models": [
+        "GLM-4.7-FP8",
+        "Glm4MoeMTP"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "ROCm 推理中的 GLM-4 MTP 草稿路径",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[ROCm][Perf] Enable torch.compile / Inductor fusion passes on GLM-4 MTP draft",
+        "【正文】Glm4MoeMTP is not decorated with @support_torch_compile... Adding the decorator brings MTP behaviour in line with the..."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-issue-45350",
     "nodeId": "I_kwDOI7xefs8AAAABFOq0xg",
     "repository": "vllm-project/vllm",
@@ -40,58 +139,6 @@
       "evidence": [
         "【标题】[Feature]: IndexCache support for DeepSeek V4",
         "【正文】Extend the existing IndexCache feature ... to DeepSeek V4's c4a attention layers ... reusing cached topk_indices."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-44508",
-    "nodeId": "PR_kwDOI7xefs7ikuSD",
-    "repository": "vllm-project/vllm",
-    "number": 44508,
-    "type": "pr",
-    "title": "[ROCm][Perf] Enable torch.compile / Inductor fusion passes on GLM-4 MTP draft",
-    "bodyExcerpt": "## Purpose\n\n`Glm4MoeMTP` is not decorated with `@support_torch_compile`. As a result, the MTP draft forward executes as eager Python and misses every Inductor fusion pass that the target forward enjoys - most notably the AITER allreduce + RMSNorm fusion, RMSNorm + quant fusion, and silu+mul+fp8-quant fusion.\n\nAdding the decorator brings MTP behaviour in line with the canonical `DeepSeekMTP` pattern (`vllm/model_executor/models/deepseek_mtp.py`, L185) and makes the draft eligible for the same compile-time fusions as the target.\n\n## Changes\n\nSingle-file, two-line wiring in `vllm/model_executor/models/glm4_moe_mtp.py`, mirroring `deepseek_mtp.py`:\n\n- Add `from vllm.compilation.decorators import support_torch_compile`.\n- Decorate the top-level `Glm4MoeMTP` class with `@support_torch_compile`.\n\nNo changes to the forward signature, the loader, or `Glm4MoeMultiTokenPredictor`. `dynamic_arg_dims` is inferred from the existing `forward` annotations (the four `Tensor | None` / `IntermediateTensors | None` args become dim-0 dynamic), exactly as for `DeepSeekMTP`.\n\n## Test Plan\n\n- Model: `zai-org/GLM-4.7-FP8`\n- Hardware: 1x MI355X node, TP=4 + EP\n- AITER: >= v0.1.13.post1 (#44265)\n- Accuracy: `lm_eval --tasks gsm8k --num_fewshot 5`\n- Throughput: `vllm bench serve --dataset-name random` sweep over `(ISL, OSL, MC)` in `{1000/100, 5000/500, 10000/1000} x {4, 16, 64}`\n- Two arms: (A) `Glm4MoeMTP` without `@support_torch_compile` (baseline / eager draft), (B) with the decorator (this PR). All other knobs identical.\n\n### Server invocation (MTP=2 spec tokens, `attention-backend ROCM_AITER_UNIFIED_ATTN`)\n\n```bash\nVLLM_ROCM_USE_AITER=1 \\\nVLLM_ROCM_USE_AITER_MOE=1 \\\nVLLM_ROCM_SHUFFLE_KV_CACHE_LAYOUT=1 \\\nVLLM_ROCM_USE_AITER_RMSNORM=0 \\\nVLLM_ROCM_QUICK_REDUCE_QUANTIZATION=INT4 \\\nvllm serve zai-org/GLM-4.7-FP8 \\\n  --tensor-parallel-size 4 --enable-expert-parallel --trust-remote-code \\\n  --no-enable-prefix-caching --async-scheduling \\\n  --max-num-batched-tokens 32768 --max-model-len 131072 \\",
-    "author": "omirosh",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "ready",
-      "torch.compile",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/44508",
-    "createdAt": "2026-06-04T07:23:38.000Z",
-    "updatedAt": "2026-09-22T12:05:43.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:f2fad8b5c48c772dae94bfbb001b8dd7dca1760ff15aea84a57bd0c9e9721dc0",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "为 GLM-4 MTP 启用 Inductor 融合",
-      "summaryZh": "新增 @support_torch_compile 装饰器，使 Glm4MoeMTP 草稿前向符合 DeepSeekMTP 模式并参与 TorchInductor 编译融合；MTP 草稿可获得与目标前向相同的 Inductor 融合，包括 AITER allreduce+RMSNorm、RMSNorm+量化及 SiLU+乘法+FP8 量化融合；未修改 forward 签名、加载器或 Glm4MoeMultiTokenPredictor",
-      "models": [
-        "GLM-4.7-FP8",
-        "Glm4MoeMTP"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "ROCm 推理中的 GLM-4 MTP 草稿路径",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[ROCm][Perf] Enable torch.compile / Inductor fusion passes on GLM-4 MTP draft",
-        "【正文】Glm4MoeMTP is not decorated with @support_torch_compile... Adding the decorator brings MTP behaviour in line with the..."
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
