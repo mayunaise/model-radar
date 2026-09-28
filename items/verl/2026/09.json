@@ -1,5 +1,26 @@
 [
   {
+    "id": "verl-pr-8035",
+    "nodeId": "PR_kwDONIZfbs8AAAABFbK6aQ",
+    "repository": "volcengine/verl",
+    "number": 8035,
+    "type": "pr",
+    "title": "[model] fix: unpack visual output in Qwen2-VL and GLM4V dummy forward paths",
+    "bodyExcerpt": "### What does this PR do?\r\n\r\n- Fix text-only (and mixed-modality) training failures for **Qwen2-VL / Qwen2.5-VL ** when using recent `transformers`, where `model.visual()` returns a structured output (e.g. `BaseModelOutputWithPooling`) instead of a raw tensor.\r\n- Route **dummy** and real visual forwards through `unpack_visual_output` in `qwen2_vl.py` and `glm4v.py`, matching the pattern already used in `qwen3_vl.py`.\r\n- **Keep** the text-only dummy visual forward from [#5881](https://github.com/verl-project/verl/pull/5881) (out-of-place `inputs_embeds + 0.0 * …`) so vision weights stay on the autograd graph and FSDP/DDP usage stays aligned across ranks.\r\n\r\n\r\n**Problem**\r\nI found the crash when training Qwen2.5-VL using text-only data (https://github.com/verl-project/verl-omni/pull/462).\r\nIn `_get_input_embeds`, when both `pixel_values` and `pixel_values_videos` are `None` (pure text batch), upstream verl still runs:\r\n\r\nReference: [qwen2_vl.py#L388–L394](https://github.com/verl-project/verl/blob/main/verl/models/transformers/qwen2_vl.py#L388-L394).\r\n```python\r\nimage_embeds = model.visual(pixel_values, grid_thw=image_grid_thw) # Error: it returns `BaseModelOutputWithPooling` instead\r\ninputs_embeds = inputs_embeds + 0.0 * image_embeds.mean() \r\n```\r\nWith recent Hugging Face transformers, Qwen2.5-VL or Qwen2-VL's visual tower returns a structured output (e.g. BaseModelOutputWithPooling with pooler_output / related fields) rather than a plain tensor—see [modeling_qwen2_5_vl.py](https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py#L491-L494). That path never uses unpack_visual_output, unlike the real image/video branches in the same function, so image_embeds.mean() is invalid (attribute error / wrong type) and text-only training or rollout fails.\r\n\r\n \r\n### Checklist Before Starting\r\n\r\n- [x] Search for similar PRs. Paste at least one query link here: \r\nhttps://github.com/verl-project/verl/pulls?q=is%3Apr+unpack_visu",
+    "author": "chenyingshu",
+    "state": "open",
+    "labels": [],
+    "url": "https://github.com/verl-project/verl/pull/8035",
+    "createdAt": "2026-09-28T03:47:52.000Z",
+    "updatedAt": "2026-09-28T03:47:54.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-28T05:42:54.507Z",
+    "contentHash": "sha256:23c01450bca9674127968f39aff52492b7083f8ba1b171363e48e35a3892666d",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "verl-pr-7949",
     "nodeId": "PR_kwDONIZfbs8AAAABESuWtw",
     "repository": "volcengine/verl",

@@ -1,62 +1,57 @@
 [
   {
-    "id": "vllm-pr-54527",
-    "nodeId": "PR_kwDOI7xefs8AAAABBkr9qw",
+    "id": "vllm-pr-53692",
+    "nodeId": "PR_kwDOI7xefs8AAAABA5jEiA",
     "repository": "vllm-project/vllm",
-    "number": 54527,
+    "number": 53692,
     "type": "pr",
-    "title": "[Bugfix][Multimodal] Honor modality-scoped mm_processor_kwargs in every model that reads them",
-    "bodyExcerpt": "Follow-up to #53808.\r\n\r\n## Background\r\n\r\n#53808 taught `get_merged_mm_kwargs` to overlay HF-style nested\r\n`images_kwargs` / `videos_kwargs` / `audio_kwargs` onto the flat namespace, and\r\nthreaded a `modality` argument through Qwen2-VL and Qwen3-VL. Its docstring\r\nstates the rule:\r\n\r\n> When `modality` is set, HF-style nested `images_kwargs` / `videos_kwargs` /\r\n> `audio_kwargs` are overlaid onto the flat namespace for vLLM-side reads\r\n> (token budgets, dummy inputs). Processor construction and HF `__call__`\r\n> should omit `modality` so the nested dicts still reach the HF processor.\r\n\r\nEvery model outside the Qwen family that predicts sizes or token counts from\r\nthose kwargs was left reading the flat namespace only. The HF processor honors\r\nthe nested dict in its `__call__`, so vLLM and the processor disagree about how\r\nmany tokens an item expands to.\r\n\r\n## Scope: every call site audited\r\n\r\nPer review this now covers every multi-modal model, not just the VL three.\r\nI enumerated every `get_merged_mm_kwargs` call site and classified each (40 when\r\nthis PR was opened, 44 on current `main`).\r\n\r\n### Fixed (vLLM-side reads)\r\n\r\n| model | site | modality |\r\n| --- | --- | --- |\r\n| `glm4_1v` | `_get_image_max_pixels`, `_get_video_max_pixels` | static |\r\n| `ernie45_vl`, `keye`, `mimo_v2_omni` | `_get_vision_info`, via `get_num_{image,video}_tokens` | threaded, as Qwen2-VL |\r\n| `cohere_compass` | `_get_vision_info`, via `get_num_image_tokens` | threaded, as Qwen2-VL |\r\n| `transformers/multimodal` | both `_get_num_multimodal_tokens` reads | `image` |\r\n| `cohere2_vision`, `idefics3`, `interns1` | merged dict passed as HF's `images_kwargs` positional arg | `image` |\r\n| `lfm2_vl`, `mistral3`, `paddleocr_vl` | flat reads of `size` / patch geometry | `image` |\r\n| `glm5next` | `_get_image_max_pixels`, `_get_video_max_pixels`, inherited from `glm4_1v` | static |\r\n\r\nTwo are worth calling out:\r\n\r\n- **`mimo_v2_omni`** is the only one needing a new parameter; it is a copy of\r\n  `qwen2_vl.py`",
-    "author": "Hotragn",
+    "title": "[CI][Docs] Fix decode/prefill consistency test prefix construction; add GLM-4-9B and Phi-4 to batch-invariant tested models",
+    "bodyExcerpt": "## Purpose\r\n\r\nTwo related changes, both following the review on this PR:\r\n\r\n1. **Fix a soundness bug in `tests/v1/determinism/test_batch_invariance.py::test_decode_logprobs_match_prefill_logprobs`.** The test rebuilt each prefill prefix from *text* and re-encoded it; `encode(decode(ids))` is not lossless for BPE tokenizers, so the \"prefill\" could evaluate a different token sequence than decode did and report false mismatches. The prefix is now built directly from token ids (`prompt_token_ids + decode_token_ids[:i]`), which also removes an O(N²) extra `llm.generate` per decoded token. This is the fix from #43317 (@Evangade), carried here at the maintainer's request after that PR went stale; the standalone tokenizer regression test from #43317 is dropped per the review there. Original report by @xRay2016 in #27433.\r\n2. **Add `zai-org/glm-4-9b-chat` and `microsoft/phi-4` to the tested-model list**, following the [invitation to submit model validations without a separate issue](https://github.com/vllm-project/vllm/pull/53247#issuecomment-5374419058).\r\n\r\nWhy the fix matters here: GLM was originally removed from this PR because the official suite reported a decode/prefill mismatch. Root cause (see the comments below): the model emits `'.'` + `'Here'` as `[13, 8419]`, which re-encodes to the single token `89329` (`'.Here'`), so the text-based prefix diverged from position 11 onward. With token-id prefixes GLM is fully green. Any model whose greedy output hits a BPE merge point can false-fail the unfixed test the same way.\r\n\r\nNot a duplicate: #43317 proposes the same test fix but has had no author activity since the May review and is marked stale; this PR carries that commit with its original authorship and sign-off instead of opening another PR.\r\n\r\n## Test Plan\r\n\r\nOfficial suite, `VLLM_BATCH_INVARIANT=1`, vLLM 0.28.0 (cu129 wheel), torch 2.13.0, Triton 3.7.1, RTX 4090 D (sm89) and H20 (sm90):\r\n\r\n```bash\r\nVLLM_TEST_MODEL=<model> pytest tests/v1/determinism/test_batch_invari",
+    "author": "LioEinaudi",
     "state": "open",
     "labels": [
-      "bug",
-      "intel-gpu",
+      "documentation",
       "ready",
-      "ci/build",
-      "multi-modality",
-      "qwen",
-      "mistral",
-      "glm",
-      "cohere"
+      "glm"
     ],
-    "url": "https://github.com/vllm-project/vllm/pull/54527",
-    "createdAt": "2026-08-31T08:21:53.000Z",
-    "updatedAt": "2026-09-26T20:20:19.000Z",
+    "url": "https://github.com/vllm-project/vllm/pull/53692",
+    "createdAt": "2026-08-25T07:02:31.000Z",
+    "updatedAt": "2026-09-28T05:23:54.000Z",
     "mergedAt": null,
-    "firstSeenAt": "2026-09-01T05:28:24.707Z",
-    "contentHash": "sha256:6c7fa65a111fc4da7aff66a2376e9b92b2c777c31896c4481adcd11d01ae6e38",
+    "firstSeenAt": "2026-08-26T02:09:14.386Z",
+    "contentHash": "sha256:7d5cdb6818fb4e2396b5a9dd8676ff9e3d2c71d8b653d52066d18d2667e747ca",
     "category": "FIX",
     "categorySource": "rules",
     "summary": null
   },
   {
-    "id": "vllm-pr-51315",
-    "nodeId": "PR_kwDOI7xefs77xddu",
+    "id": "vllm-pr-51309",
+    "nodeId": "PR_kwDOI7xefs77w-6a",
     "repository": "vllm-project/vllm",
-    "number": 51315,
+    "number": 51309,
     "type": "pr",
-    "title": "[ROCm][Perf] Fuse the DSA indexer prologue with AITER",
-    "bodyExcerpt": "## Summary\n\nThe DSA indexer prologue uses four kernels for K normalization, Q/K RoPE,\nFP8 quantization, and the K-cache write.\n\nThis PR uses AITER's fused `indexer_qk_rope_quant_and_cache` kernel instead.\nThe fused path is enabled only for its supported BF16/FP8 shape; other\nconfigurations keep the existing path.\n\n## Results\n\nMI355X, TP=4, rank 0:\n\n| indexer stage | before | after | change |\n|---|---:|---:|---:|\n| launches | 4 | 1 | **-75%** |\n| decode time | 17.4 µs | 5.9 µs | **-66%** |\n| prefill time | 163.9 µs | 270.6 µs | **+65%** |\n\nThe fused kernel is faster for decode but slower for prefill. Across the full\ntrace, prologue GPU time changes from 1,093.6 ms to 1,041.4 ms (**-4.8%**).\n\nOne decode indexer stage at the same zoom:\n\n![Before: four prologue kernels](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr3_before.png)\n\n![After: one fused prologue kernel](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr3_after.png)\n\nEnd-to-end geomean:\n\n| metric | before | after | change |\n|---|---:|---:|---:|\n| throughput | 811.75 | 817.58 | **+0.72%** |\n| TPOT | 24.12 ms | 23.96 ms | **-0.66%** |\n| ITL | 23.85 ms | 23.69 ms | **-0.67%** |\n\n## Model-level e2e results\n\n### Test conditions\n\n| | |\n|---|---|\n| Hardware | MI355X (gfx950), TP=4 |\n| Model | `amd/GLM-5.2-MXFP4`, fp8 KV cache |\n| Stack | vLLM `69715823`, AITER `4a1cc77`, flydsl `0.3.0` |\n| Server | `--async-scheduling --max-num-seqs 256 --max-num-batched-tokens 16384 --block-size 64 --no-enable-prefix-caching`, `index_topk_freq=4` |\n| Env | `VLLM_ROCM_USE_AITER=1`, `VLLM_ROCM_USE_AITER_SPARSE_INDEXER=1`, `AITER_USE_FLYDSL_MOE_SORTING=1`, `VLLM_ROCM_QUICK_REDUCE_QUANTIZATION=INT4` |\n| Perf | `vllm bench serve`, random dataset, `--ignore-eos --request-rate inf`, ISL 1024 and 8192, OSL 1024, concurrency 1-256 (16 points) |\n| Accuracy | `lm_eval` gsm8k 5-shot chat template with thinking enabled, `max_gen_tok",
+    "title": "[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
+    "bodyExcerpt": "## Summary\r\n\r\nWith cross-layer index sharing, only some attention layers update the shared top-k buffer.\r\nThe old path still remapped that buffer on every layer.\r\n\r\nThis PR runs the remap only when the layer owns an indexer. For GLM-5.2 with\r\n`index_topk_freq = 4`, this reduces remaps from 78 to 21 per forward pass.\r\n\r\n## Safety\r\n\r\n- Layer 0 always owns an indexer, so the shared output is initialized before reuse.\r\n- Non-indexer layers do not change the inputs to the remap.\r\n- The default `index_topk_freq = 1` path is unchanged.\r\n- Speculative decoding still remaps on every layer.\r\n\r\n## Update: indexer and non-indexer layers are two KV cache groups\r\n\r\nhttps://github.com/vllm-project/vllm/pull/53781  added the is_index_group_leader field to MLAAttentionSpec: `is_index_group_leader=self.indexer is not None,`. Layers can only share a KV cache group if they agree on is_index_group_leader, so once the flag is set per layer, indexer and non-indexer layers land in different groups and therefore get different metadata instances with separate paged_kv_indices\r\n\r\n```\r\nindex_group_leader_set = {spec.is_index_group_leader for spec in specs}\r\nassert (\r\n    ...\r\n    and len(index_group_leader_set) == 1\r\n    ...\r\n), (\r\n    \"All attention layers in the same KV cache group must use the same \"\r\n    \"... index-sharing role, ...\"\r\n)\r\n```\r\n\r\nSo, remap should run for all indexer layers and the first non-indexer layer. The two non-indexer layer following the first non-indexer layer doesn't need a remap.\r\n\r\nThe following table shows how the remap condition changed between the commits and how it is implemented by `index_epoch` and  `remapped_epoch`. index_epoch is fixed per layer at construction: it counts indexer writes up to and including that layer - which selection is this layer entitled to read. remapped_epoch lives on the metadata and moves during the pass: it records which selection is currently sitting in that group's paged_kv_indices. A mismatch means the group is holding an older ",
     "author": "amd-sriram",
     "state": "open",
     "labels": [
       "rocm",
-      "deepseek"
+      "ready",
+      "mrv1-only"
     ],
-    "url": "https://github.com/vllm-project/vllm/pull/51315",
-    "createdAt": "2026-08-06T21:41:29.000Z",
-    "updatedAt": "2026-09-26T11:24:47.000Z",
+    "url": "https://github.com/vllm-project/vllm/pull/51309",
+    "createdAt": "2026-08-06T21:10:14.000Z",
+    "updatedAt": "2026-09-28T04:37:53.000Z",
     "mergedAt": null,
-    "firstSeenAt": "2026-08-21T06:14:38.090Z",
-    "contentHash": "sha256:3c5c1f167d503c6a4ec81174201ba6e93e1ae97313adc6dd9d2913bc1aebbbad",
+    "firstSeenAt": "2026-08-21T07:14:16.853Z",
+    "contentHash": "sha256:87b1a18ee462fe50b46f98850a67505f00400a14778ec958b320cf1b827a8008",
     "category": "PERFORMANCE",
     "categorySource": "ai",
     "summary": {
-      "headlineZh": "ROCm用AITER融合DSA索引器前导阶段",
-      "summaryZh": "新增AITER融合的indexer_qk_rope_quant_and_cache内核，将DSA索引器前导阶段从四次内核启动合并为一次；仅对支持的BF16/FP8形状启用，其他配置保留原有路径；在MI355X、TP=4测试中，decode时间由17.4微秒降至5.9微秒，端到端吞吐提升0.72%；prefill时间增加65%，整体前导阶段GPU时间下降4.8%",
+      "headlineZh": "ROCm跳过非索引层冗余稀疏索引重映射",
+      "summaryZh": "优化仅由拥有 indexer 的层执行稀疏索引 remap；非索引层直接进入 MLA kernel，解决跨层索引共享时，旧路径在每一层都重映射共享 top-k 缓冲区，导致非索引层执行冗余 remap；在 MI355X、TP=4、GLM-5.2-MXFP4、index_topk_freq=4 条件下，每次前向 remap 从 78 次降至 21 次；remap kernel 启动次数减少 73.3%，GPU 时间减少 73.0%。默认 index_topk_freq=1 路径及推测解码路径保持不变",
       "models": [
-        "amd/GLM-5.2-MXFP4"
+        "GLM-5.2-MXFP4"
       ],
       "hardware": [
         "GPU"
@@ -66,47 +61,18 @@
       ],
       "category": "PERFORMANCE",
       "severity": "MEDIUM",
-      "impactScopeZh": "影响启用ROCm AITER稀疏索引器、使用支持形状的推理配置；decode受益，prefill变慢。",
+      "impactScopeZh": "面向 ROCm 稀疏索引器和跨层索引共享场景，实测硬件为 MI355X。",
       "attention": "WATCH",
       "capabilityCandidate": false,
       "evidence": [
-        "【标题】[ROCm][Perf] Fuse the DSA indexer prologue with AITER",
-        "【正文】The fused path is enabled only for its supported BF16/FP8 shape; other configurations keep the existing path."
+        "【标题】[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
+        "【正文】This PR runs the remap only when the layer owns an indexer. For GLM-5.2 with index_topk_freq = 4, this reduces remaps من"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:17:54.490Z"
     }
-  },
-  {
-    "id": "vllm-pr-52992",
-    "nodeId": "PR_kwDOI7xefs8AAAABAUp0fQ",
-    "repository": "vllm-project/vllm",
-    "number": 52992,
-    "type": "pr",
-    "title": "[WIP][Model Runner V2] Enable adaptive verification for more attention backends",
-    "bodyExcerpt": "# Benchmarks\r\n## Speed-Bench 1K/2K, # Prompts=512, Concurrency=64, Temp=1, Top-p=0.95\r\n### nvidia/GLM-5.2-NVFP4 + Inferact/GLM-5.2-DSpark 16, 4xGB200\r\n| Metric | Baseline | Adaptive Verification (DSpark) | Δ % |\r\n|---|---|---|---|\r\n| Request throughput (req/s) | 0.83 | 2.32 | +179.52% |\r\n| Output token throughput (tok/s) | 1588.78 | 4508.91 | +183.80% |\r\n| Benchmark duration (s) | 620.21 | 220.50 | -64.45% |\r\n| Median TPOT (ms) | 38.95 | 13.00 | -66.62% |\r\n| Median TTFT (ms) | 561.50 | 240.35 | -57.20% |\r\n| Acceptance length | 4.35 | 3.76 | -13.56% |\r\n| Acceptance rate (%) | 20.92 | 17.24 | -17.59% |\r\n| **Per-position acceptance (%)** | | | |\r\n| Position 0 | 71.23 | 69.67 | -2.19% |\r\n| Position 1 | 51.70 | 46.42 | -10.21% |\r\n| Position 2 | 39.04 | 31.79 | -18.57% |\r\n| Position 3 | 30.51 | 23.45 | -23.14% |\r\n| Position 4 | 24.37 | 18.18 | -25.40% |\r\n| Position 5 | 20.00 | 14.94 | -25.30% |\r\n| Position 6 | 16.85 | 12.56 | -25.46% |\r\n| Position 7 | 14.41 | 10.79 | -25.12% |\r\n| Position 8 | 12.46 | 9.38 | -24.72% |\r\n| Position 9 | 10.94 | 8.17 | -25.32% |\r\n| Position 10 | 9.64 | 7.14 | -25.93% |\r\n| Position 11 | 8.56 | 6.20 | -27.57% |\r\n| Position 12 | 7.58 | 5.37 | -29.16% |\r\n| Position 13 | 6.67 | 4.65 | -30.28% |\r\n| Position 14 | 5.82 | 3.95 | -32.13% |\r\n| Position 15 | 4.98 | 3.25 | -34.74% |\r\n\r\n### MiMo V2.5 Pro + DFlash 8 (using #52228), 4xGB200\r\n| Metric | Baseline | Acceptance Estimator | Δ % |\r\n|---|---|---|---|\r\n| Request throughput (req/s) | 2.96 | 3.49 | +17.91% |\r\n| Output token throughput (tok/s) | 4271.69 | 4978.08 | +16.54% |\r\n| Median TPOT (ms) | 13.22 | 11.47 | -13.24% |\r\n| Median TTFT (ms) | 165.39 | 141.57 | -14.40% |\r\n| Acceptance length | 3.46 | 3.15 | -8.96% |\r\n| **Per-position acceptance (%)** | | | |\r\n| Position 0 | 71.58 | 70.37 | -1.69% |\r\n| Position 1 | 50.17 | 44.95 | -10.40% |\r\n| Position 2 | 36.50 | 30.55 | -16.30% |\r\n| Position 3 | 27.65 | 22.29 | -19.39% |\r\n| Position 4 | 21.29 | 16.91 | -20.57% |\r\n| Position 5 | 16.51 | 12.96 | -21.50% ",
-    "author": "TheEpicDolphin",
-    "state": "closed",
-    "labels": [
-      "rocm",
-      "speculative-decoding",
-      "needs-rebase",
-      "nvidia",
-      "mrv2",
-      "dflash",
-      "inkling"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/52992",
-    "createdAt": "2026-08-19T18:46:04.000Z",
-    "updatedAt": "2026-09-26T06:02:56.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:1859896e2fa7a80d133350355d13c46bbb846bc1b410efc363ba5f7b18f24eb0",
-    "category": "NEW_SUPPORT",
-    "categorySource": "rules",
-    "summary": null
   },
   {
     "id": "vllm-pr-53492",
@@ -120,16 +86,17 @@
     "state": "open",
     "labels": [
       "rocm",
+      "needs-rebase",
       "deepseek",
       "DSv4",
       "DSv4.1"
     ],
     "url": "https://github.com/vllm-project/vllm/pull/53492",
     "createdAt": "2026-08-24T01:22:53.000Z",
-    "updatedAt": "2026-09-26T05:35:55.000Z",
+    "updatedAt": "2026-09-27T16:57:21.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:fa97cc5862dd83feec2883a79c1e4df8c107208e5e1e440709679c66453a231a",
+    "contentHash": "sha256:633f3474ccd2c8540255f3bbfed27b1d15314cb677310abd6119091673011f43",
     "category": "PERFORMANCE",
     "categorySource": "ai",
     "summary": {
@@ -161,107 +128,6 @@
     }
   },
   {
-    "id": "vllm-pr-53692",
-    "nodeId": "PR_kwDOI7xefs8AAAABA5jEiA",
-    "repository": "vllm-project/vllm",
-    "number": 53692,
-    "type": "pr",
-    "title": "[CI][Docs] Fix decode/prefill consistency test prefix construction; add GLM-4-9B and Phi-4 to batch-invariant tested models",
-    "bodyExcerpt": "## Purpose\r\n\r\nTwo related changes, both following the review on this PR:\r\n\r\n1. **Fix a soundness bug in `tests/v1/determinism/test_batch_invariance.py::test_decode_logprobs_match_prefill_logprobs`.** The test rebuilt each prefill prefix from *text* and re-encoded it; `encode(decode(ids))` is not lossless for BPE tokenizers, so the \"prefill\" could evaluate a different token sequence than decode did and report false mismatches. The prefix is now built directly from token ids (`prompt_token_ids + decode_token_ids[:i]`), which also removes an O(N²) extra `llm.generate` per decoded token. This is the fix from #43317 (@Evangade), carried here at the maintainer's request after that PR went stale; the standalone tokenizer regression test from #43317 is dropped per the review there. Original report by @xRay2016 in #27433.\r\n2. **Add `zai-org/glm-4-9b-chat` and `microsoft/phi-4` to the tested-model list**, following the [invitation to submit model validations without a separate issue](https://github.com/vllm-project/vllm/pull/53247#issuecomment-5374419058).\r\n\r\nWhy the fix matters here: GLM was originally removed from this PR because the official suite reported a decode/prefill mismatch. Root cause (see the comments below): the model emits `'.'` + `'Here'` as `[13, 8419]`, which re-encodes to the single token `89329` (`'.Here'`), so the text-based prefix diverged from position 11 onward. With token-id prefixes GLM is fully green. Any model whose greedy output hits a BPE merge point can false-fail the unfixed test the same way.\r\n\r\nNot a duplicate: #43317 proposes the same test fix but has had no author activity since the May review and is marked stale; this PR carries that commit with its original authorship and sign-off instead of opening another PR.\r\n\r\n## Test Plan\r\n\r\nOfficial suite, `VLLM_BATCH_INVARIANT=1`, vLLM 0.28.0 (cu129 wheel), torch 2.13.0, Triton 3.7.1, RTX 4090 D (sm89) and H20 (sm90):\r\n\r\n```bash\r\nVLLM_TEST_MODEL=<model> pytest tests/v1/determinism/test_batch_invari",
-    "author": "LioEinaudi",
-    "state": "open",
-    "labels": [
-      "documentation",
-      "ready",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/53692",
-    "createdAt": "2026-08-25T07:02:31.000Z",
-    "updatedAt": "2026-09-26T03:41:47.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-26T02:09:14.386Z",
-    "contentHash": "sha256:62423a77840325c0513352468c1df4643a9fee33976865484b9315d6166880da",
-    "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-51309",
-    "nodeId": "PR_kwDOI7xefs77w-6a",
-    "repository": "vllm-project/vllm",
-    "number": 51309,
-    "type": "pr",
-    "title": "[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
-    "bodyExcerpt": "## Summary\r\n\r\nWith cross-layer index sharing, only some attention layers update the shared top-k buffer.\r\nThe old path still remapped that buffer on every layer.\r\n\r\nThis PR runs the remap only when the layer owns an indexer. For GLM-5.2 with\r\n`index_topk_freq = 4`, this reduces remaps from 78 to 21 per forward pass.\r\n\r\n## Safety\r\n\r\n- Layer 0 always owns an indexer, so the shared output is initialized before reuse.\r\n- Non-indexer layers do not change the inputs to the remap.\r\n- The default `index_topk_freq = 1` path is unchanged.\r\n- Speculative decoding still remaps on every layer.\r\n\r\n## Update: indexer and non-indexer layers are two KV cache groups\r\n\r\nhttps://github.com/vllm-project/vllm/pull/53781  added the is_index_group_leader field to MLAAttentionSpec: `is_index_group_leader=self.indexer is not None,`. Layers can only share a KV cache group if they agree on is_index_group_leader, so once the flag is set per layer, indexer and non-indexer layers land in different groups and therefore get different metadata instances with separate paged_kv_indices\r\n\r\n```\r\nindex_group_leader_set = {spec.is_index_group_leader for spec in specs}\r\nassert (\r\n    ...\r\n    and len(index_group_leader_set) == 1\r\n    ...\r\n), (\r\n    \"All attention layers in the same KV cache group must use the same \"\r\n    \"... index-sharing role, ...\"\r\n)\r\n```\r\n\r\nSo, remap should run for all indexer layers and the first non-indexer layer. The two non-indexer layer following the first non-indexer layer doesn't need a remap.\r\n\r\nThe following table shows how the remap condition changed between the commits and how it is implemented by `index_epoch` and  `remapped_epoch`. index_epoch is fixed per layer at construction: it counts indexer writes up to and including that layer - which selection is this layer entitled to read. remapped_epoch lives on the metadata and moves during the pass: it records which selection is currently sitting in that group's paged_kv_indices. A mismatch means the group is holding an older ",
-    "author": "amd-sriram",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "ready",
-      "mrv1-only"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/51309",
-    "createdAt": "2026-08-06T21:10:14.000Z",
-    "updatedAt": "2026-09-26T03:28:37.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T07:14:16.853Z",
-    "contentHash": "sha256:97cb3228315c939952bbac023a897572590278074be529d0f7df0e3d86a4464f",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "ROCm跳过非索引层冗余稀疏索引重映射",
-      "summaryZh": "优化仅由拥有 indexer 的层执行稀疏索引 remap；非索引层直接进入 MLA kernel，解决跨层索引共享时，旧路径在每一层都重映射共享 top-k 缓冲区，导致非索引层执行冗余 remap；在 MI355X、TP=4、GLM-5.2-MXFP4、index_topk_freq=4 条件下，每次前向 remap 从 78 次降至 21 次；remap kernel 启动次数减少 73.3%，GPU 时间减少 73.0%。默认 index_topk_freq=1 路径及推测解码路径保持不变",
-      "models": [
-        "GLM-5.2-MXFP4"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "面向 ROCm 稀疏索引器和跨层索引共享场景，实测硬件为 MI355X。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
-        "【正文】This PR runs the remap only when the layer owns an indexer. For GLM-5.2 with index_topk_freq = 4, this reduces remaps من"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-53739",
-    "nodeId": "PR_kwDOI7xefs8AAAABA8tfqQ",
-    "repository": "vllm-project/vllm",
-    "number": 53739,
-    "type": "pr",
-    "title": "[Bugfix][Parser] Terminate streamed tool arguments the flush cannot extend",
-    "bodyExcerpt": "## Purpose\n\nA streaming tool call can end with `finish_reason` set while `arguments` is cut off mid-string. Any client that calls `json.loads` on the accumulated arguments fails on it. Reproduced live on Qwen3.8-27B in 7 of 25 requests sent straight at the worker, no proxy in the path.\n\n`_safe_arg_prefix` (`parser_engine.py:299` on main at `8a2364605c0b`) deliberately streams unterminated string values for prefix-stable keys. Its own docstring (`:306-308`) carries the contract: \"String values for keys in `string_keys` are prefix-stable, so stream their unterminated content instead of buffering long arguments until the closing tag arrives.\" Something has to close them, and that something is the flush.\n\n`_flush_arg_converter` (`parser_engine.py:1052` on main) re-derives the arguments with `partial=False`. Four of the seven in-tree converters build their result from completed parameters and fold the still-open one in only under `if partial:`. So when generation ends while a parameter is open, the non-partial re-derivation **drops that parameter**, and the result is neither longer than nor a prefix of what was already streamed. Both guards (`:1068-1070`) fail, the function returns `None`, and nothing ever terminates the prefix the client is holding.\n\nThis is not conditional on the model misbehaving. Anything that ends generation with a parameter open reaches it: a `max_tokens` stop, a stop string, or a malformed continuation.\n\n### Blast radius, measured\n\nOn main at `8a2364605c0b`, 13 engine parsers set an `arg_converter`, through 7 converters. Each converter called directly with one complete and one open string parameter:\n\n| converter | parsers | `partial=True` -> `partial=False` |\n|---|---|---|\n| `_qwen3_arg_converter` | qwen3, seed_oss, nemotron_v3, granite_thinking_parser | drops the open parameter, 75 chars -> 21 |\n| `_minimax_m2_arg_converter` | minimax_m2 | drops the open parameter, 75 -> 21 |\n| `_glm47_arg_converter` | glm47_moe, ling3 | drops the open parameter,",
-    "author": "amittell",
-    "state": "open",
-    "labels": [
-      "bug",
-      "tool-calling",
-      "qwen",
-      "inkling"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/53739",
-    "createdAt": "2026-08-25T14:20:59.000Z",
-    "updatedAt": "2026-09-26T03:20:01.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-26T02:09:14.386Z",
-    "contentHash": "sha256:5b22b6bbfd3afaf9403e6583500627bc982e2c1d0f7c69862da0324e69e9e762",
-    "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
     "id": "vllm-pr-51314",
     "nodeId": "PR_kwDOI7xefs77xdSz",
     "repository": "vllm-project/vllm",
@@ -277,10 +143,10 @@
     ],
     "url": "https://github.com/vllm-project/vllm/pull/51314",
     "createdAt": "2026-08-06T21:41:17.000Z",
-    "updatedAt": "2026-09-25T19:57:51.000Z",
+    "updatedAt": "2026-09-27T16:32:44.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-21T07:14:16.853Z",
-    "contentHash": "sha256:ad2370f3fa1aff51cfc21eddb6094bc742bb18773d0d4e16b9ad7a9656bcc94c",
+    "contentHash": "sha256:05f26d2f2c24c4f3ea1496cef434e54cccdd6dbea61e4018e8e09e98a4122458",
     "category": "PERFORMANCE",
     "categorySource": "ai",
     "summary": {
@@ -309,6 +175,141 @@
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:17:54.490Z"
     }
+  },
+  {
+    "id": "vllm-pr-51315",
+    "nodeId": "PR_kwDOI7xefs77xddu",
+    "repository": "vllm-project/vllm",
+    "number": 51315,
+    "type": "pr",
+    "title": "[ROCm][Perf] Fuse the DSA indexer prologue with AITER",
+    "bodyExcerpt": "## Summary\n\nThe DSA indexer prologue uses four kernels for K normalization, Q/K RoPE,\nFP8 quantization, and the K-cache write.\n\nThis PR uses AITER's fused `indexer_qk_rope_quant_and_cache` kernel instead.\nThe fused path is enabled only for its supported BF16/FP8 shape; other\nconfigurations keep the existing path.\n\n## Results\n\nMI355X, TP=4, rank 0:\n\n| indexer stage | before | after | change |\n|---|---:|---:|---:|\n| launches | 4 | 1 | **-75%** |\n| decode time | 17.4 µs | 5.9 µs | **-66%** |\n| prefill time | 163.9 µs | 270.6 µs | **+65%** |\n\nThe fused kernel is faster for decode but slower for prefill. Across the full\ntrace, prologue GPU time changes from 1,093.6 ms to 1,041.4 ms (**-4.8%**).\n\nOne decode indexer stage at the same zoom:\n\n![Before: four prologue kernels](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr3_before.png)\n\n![After: one fused prologue kernel](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr3_after.png)\n\nEnd-to-end geomean:\n\n| metric | before | after | change |\n|---|---:|---:|---:|\n| throughput | 811.75 | 817.58 | **+0.72%** |\n| TPOT | 24.12 ms | 23.96 ms | **-0.66%** |\n| ITL | 23.85 ms | 23.69 ms | **-0.67%** |\n\n## Model-level e2e results\n\n### Test conditions\n\n| | |\n|---|---|\n| Hardware | MI355X (gfx950), TP=4 |\n| Model | `amd/GLM-5.2-MXFP4`, fp8 KV cache |\n| Stack | vLLM `69715823`, AITER `4a1cc77`, flydsl `0.3.0` |\n| Server | `--async-scheduling --max-num-seqs 256 --max-num-batched-tokens 16384 --block-size 64 --no-enable-prefix-caching`, `index_topk_freq=4` |\n| Env | `VLLM_ROCM_USE_AITER=1`, `VLLM_ROCM_USE_AITER_SPARSE_INDEXER=1`, `AITER_USE_FLYDSL_MOE_SORTING=1`, `VLLM_ROCM_QUICK_REDUCE_QUANTIZATION=INT4` |\n| Perf | `vllm bench serve`, random dataset, `--ignore-eos --request-rate inf`, ISL 1024 and 8192, OSL 1024, concurrency 1-256 (16 points) |\n| Accuracy | `lm_eval` gsm8k 5-shot chat template with thinking enabled, `max_gen_tok",
+    "author": "amd-sriram",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "deepseek"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/51315",
+    "createdAt": "2026-08-06T21:41:29.000Z",
+    "updatedAt": "2026-09-27T12:02:11.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T06:14:38.090Z",
+    "contentHash": "sha256:1b00106c0090644ec399f3a596172b6a7fc6a61494f078fb6ac7b58fbf911013",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "ROCm用AITER融合DSA索引器前导阶段",
+      "summaryZh": "新增AITER融合的indexer_qk_rope_quant_and_cache内核，将DSA索引器前导阶段从四次内核启动合并为一次；仅对支持的BF16/FP8形状启用，其他配置保留原有路径；在MI355X、TP=4测试中，decode时间由17.4微秒降至5.9微秒，端到端吞吐提升0.72%；prefill时间增加65%，整体前导阶段GPU时间下降4.8%",
+      "models": [
+        "amd/GLM-5.2-MXFP4"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "影响启用ROCm AITER稀疏索引器、使用支持形状的推理配置；decode受益，prefill变慢。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[ROCm][Perf] Fuse the DSA indexer prologue with AITER",
+        "【正文】The fused path is enabled only for its supported BF16/FP8 shape; other configurations keep the existing path."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-54527",
+    "nodeId": "PR_kwDOI7xefs8AAAABBkr9qw",
+    "repository": "vllm-project/vllm",
+    "number": 54527,
+    "type": "pr",
+    "title": "[Bugfix][Multimodal] Honor modality-scoped mm_processor_kwargs in every model that reads them",
+    "bodyExcerpt": "Follow-up to #53808.\r\n\r\n## Background\r\n\r\n#53808 taught `get_merged_mm_kwargs` to overlay HF-style nested\r\n`images_kwargs` / `videos_kwargs` / `audio_kwargs` onto the flat namespace, and\r\nthreaded a `modality` argument through Qwen2-VL and Qwen3-VL. Its docstring\r\nstates the rule:\r\n\r\n> When `modality` is set, HF-style nested `images_kwargs` / `videos_kwargs` /\r\n> `audio_kwargs` are overlaid onto the flat namespace for vLLM-side reads\r\n> (token budgets, dummy inputs). Processor construction and HF `__call__`\r\n> should omit `modality` so the nested dicts still reach the HF processor.\r\n\r\nEvery model outside the Qwen family that predicts sizes or token counts from\r\nthose kwargs was left reading the flat namespace only. The HF processor honors\r\nthe nested dict in its `__call__`, so vLLM and the processor disagree about how\r\nmany tokens an item expands to.\r\n\r\n## Scope: every call site audited\r\n\r\nPer review this now covers every multi-modal model, not just the VL three.\r\nI enumerated every `get_merged_mm_kwargs` call site and classified each (40 when\r\nthis PR was opened, 44 on current `main`).\r\n\r\n### Fixed (vLLM-side reads)\r\n\r\n| model | site | modality |\r\n| --- | --- | --- |\r\n| `glm4_1v` | `_get_image_max_pixels`, `_get_video_max_pixels` | static |\r\n| `ernie45_vl`, `keye`, `mimo_v2_omni` | `_get_vision_info`, via `get_num_{image,video}_tokens` | threaded, as Qwen2-VL |\r\n| `cohere_compass` | `_get_vision_info`, via `get_num_image_tokens` | threaded, as Qwen2-VL |\r\n| `transformers/multimodal` | both `_get_num_multimodal_tokens` reads | `image` |\r\n| `cohere2_vision`, `idefics3`, `interns1` | merged dict passed as HF's `images_kwargs` positional arg | `image` |\r\n| `lfm2_vl`, `mistral3`, `paddleocr_vl` | flat reads of `size` / patch geometry | `image` |\r\n| `glm5next` | `_get_image_max_pixels`, `_get_video_max_pixels`, inherited from `glm4_1v` | static |\r\n\r\nTwo are worth calling out:\r\n\r\n- **`mimo_v2_omni`** is the only one needing a new parameter; it is a copy of\r\n  `qwen2_vl.py`",
+    "author": "Hotragn",
+    "state": "open",
+    "labels": [
+      "bug",
+      "intel-gpu",
+      "ready",
+      "ci/build",
+      "multi-modality",
+      "qwen",
+      "mistral",
+      "glm",
+      "cohere"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/54527",
+    "createdAt": "2026-08-31T08:21:53.000Z",
+    "updatedAt": "2026-09-26T20:20:19.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:6c7fa65a111fc4da7aff66a2376e9b92b2c777c31896c4481adcd11d01ae6e38",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-52992",
+    "nodeId": "PR_kwDOI7xefs8AAAABAUp0fQ",
+    "repository": "vllm-project/vllm",
+    "number": 52992,
+    "type": "pr",
+    "title": "[WIP][Model Runner V2] Enable adaptive verification for more attention backends",
+    "bodyExcerpt": "# Benchmarks\r\n## Speed-Bench 1K/2K, # Prompts=512, Concurrency=64, Temp=1, Top-p=0.95\r\n### nvidia/GLM-5.2-NVFP4 + Inferact/GLM-5.2-DSpark 16, 4xGB200\r\n| Metric | Baseline | Adaptive Verification (DSpark) | Δ % |\r\n|---|---|---|---|\r\n| Request throughput (req/s) | 0.83 | 2.32 | +179.52% |\r\n| Output token throughput (tok/s) | 1588.78 | 4508.91 | +183.80% |\r\n| Benchmark duration (s) | 620.21 | 220.50 | -64.45% |\r\n| Median TPOT (ms) | 38.95 | 13.00 | -66.62% |\r\n| Median TTFT (ms) | 561.50 | 240.35 | -57.20% |\r\n| Acceptance length | 4.35 | 3.76 | -13.56% |\r\n| Acceptance rate (%) | 20.92 | 17.24 | -17.59% |\r\n| **Per-position acceptance (%)** | | | |\r\n| Position 0 | 71.23 | 69.67 | -2.19% |\r\n| Position 1 | 51.70 | 46.42 | -10.21% |\r\n| Position 2 | 39.04 | 31.79 | -18.57% |\r\n| Position 3 | 30.51 | 23.45 | -23.14% |\r\n| Position 4 | 24.37 | 18.18 | -25.40% |\r\n| Position 5 | 20.00 | 14.94 | -25.30% |\r\n| Position 6 | 16.85 | 12.56 | -25.46% |\r\n| Position 7 | 14.41 | 10.79 | -25.12% |\r\n| Position 8 | 12.46 | 9.38 | -24.72% |\r\n| Position 9 | 10.94 | 8.17 | -25.32% |\r\n| Position 10 | 9.64 | 7.14 | -25.93% |\r\n| Position 11 | 8.56 | 6.20 | -27.57% |\r\n| Position 12 | 7.58 | 5.37 | -29.16% |\r\n| Position 13 | 6.67 | 4.65 | -30.28% |\r\n| Position 14 | 5.82 | 3.95 | -32.13% |\r\n| Position 15 | 4.98 | 3.25 | -34.74% |\r\n\r\n### MiMo V2.5 Pro + DFlash 8 (using #52228), 4xGB200\r\n| Metric | Baseline | Acceptance Estimator | Δ % |\r\n|---|---|---|---|\r\n| Request throughput (req/s) | 2.96 | 3.49 | +17.91% |\r\n| Output token throughput (tok/s) | 4271.69 | 4978.08 | +16.54% |\r\n| Median TPOT (ms) | 13.22 | 11.47 | -13.24% |\r\n| Median TTFT (ms) | 165.39 | 141.57 | -14.40% |\r\n| Acceptance length | 3.46 | 3.15 | -8.96% |\r\n| **Per-position acceptance (%)** | | | |\r\n| Position 0 | 71.58 | 70.37 | -1.69% |\r\n| Position 1 | 50.17 | 44.95 | -10.40% |\r\n| Position 2 | 36.50 | 30.55 | -16.30% |\r\n| Position 3 | 27.65 | 22.29 | -19.39% |\r\n| Position 4 | 21.29 | 16.91 | -20.57% |\r\n| Position 5 | 16.51 | 12.96 | -21.50% ",
+    "author": "TheEpicDolphin",
+    "state": "closed",
+    "labels": [
+      "rocm",
+      "speculative-decoding",
+      "needs-rebase",
+      "nvidia",
+      "mrv2",
+      "dflash",
+      "inkling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/52992",
+    "createdAt": "2026-08-19T18:46:04.000Z",
+    "updatedAt": "2026-09-26T06:02:56.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:1859896e2fa7a80d133350355d13c46bbb846bc1b410efc363ba5f7b18f24eb0",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-53739",
+    "nodeId": "PR_kwDOI7xefs8AAAABA8tfqQ",
+    "repository": "vllm-project/vllm",
+    "number": 53739,
+    "type": "pr",
+    "title": "[Bugfix][Parser] Terminate streamed tool arguments the flush cannot extend",
+    "bodyExcerpt": "## Purpose\n\nA streaming tool call can end with `finish_reason` set while `arguments` is cut off mid-string. Any client that calls `json.loads` on the accumulated arguments fails on it. Reproduced live on Qwen3.8-27B in 7 of 25 requests sent straight at the worker, no proxy in the path.\n\n`_safe_arg_prefix` (`parser_engine.py:299` on main at `8a2364605c0b`) deliberately streams unterminated string values for prefix-stable keys. Its own docstring (`:306-308`) carries the contract: \"String values for keys in `string_keys` are prefix-stable, so stream their unterminated content instead of buffering long arguments until the closing tag arrives.\" Something has to close them, and that something is the flush.\n\n`_flush_arg_converter` (`parser_engine.py:1052` on main) re-derives the arguments with `partial=False`. Four of the seven in-tree converters build their result from completed parameters and fold the still-open one in only under `if partial:`. So when generation ends while a parameter is open, the non-partial re-derivation **drops that parameter**, and the result is neither longer than nor a prefix of what was already streamed. Both guards (`:1068-1070`) fail, the function returns `None`, and nothing ever terminates the prefix the client is holding.\n\nThis is not conditional on the model misbehaving. Anything that ends generation with a parameter open reaches it: a `max_tokens` stop, a stop string, or a malformed continuation.\n\n### Blast radius, measured\n\nOn main at `8a2364605c0b`, 13 engine parsers set an `arg_converter`, through 7 converters. Each converter called directly with one complete and one open string parameter:\n\n| converter | parsers | `partial=True` -> `partial=False` |\n|---|---|---|\n| `_qwen3_arg_converter` | qwen3, seed_oss, nemotron_v3, granite_thinking_parser | drops the open parameter, 75 chars -> 21 |\n| `_minimax_m2_arg_converter` | minimax_m2 | drops the open parameter, 75 -> 21 |\n| `_glm47_arg_converter` | glm47_moe, ling3 | drops the open parameter,",
+    "author": "amittell",
+    "state": "open",
+    "labels": [
+      "bug",
+      "tool-calling",
+      "qwen",
+      "inkling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/53739",
+    "createdAt": "2026-08-25T14:20:59.000Z",
+    "updatedAt": "2026-09-26T03:20:01.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-26T02:09:14.386Z",
+    "contentHash": "sha256:5b22b6bbfd3afaf9403e6583500627bc982e2c1d0f7c69862da0324e69e9e762",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
   },
   {
     "id": "vllm-pr-53848",

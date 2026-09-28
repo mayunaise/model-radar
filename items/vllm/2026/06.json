@@ -1,5 +1,55 @@
 [
   {
+    "id": "vllm-pr-47175",
+    "nodeId": "PR_kwDOI7xefs7sR1m3",
+    "repository": "vllm-project/vllm",
+    "number": 47175,
+    "type": "pr",
+    "title": "[Bugfix][Frontend] GLM-4.7: guided-decode forced tool calls when strict tool-calling is disabled",
+    "bodyExcerpt": "## Purpose\n\nOn GLM-4.7 / GLM-5.2, forced tool calls (`tool_choice=\"required\"` or a named function) return unconstrained native tool syntax (or an empty `tool_calls` list) when `VLLM_ENFORCE_STRICT_TOOL_CALLING=0`, which then fails downstream argument-schema validation — most visibly for tool schemas that use nested `$defs`/`$ref`.\n\nThere are two halves to the bug, and fixing only one is not enough:\n\n1. **Parse side.** `Glm47MoeModelToolParser` hardcodes `supports_required_and_named = False`, overriding `ToolParser.__init_subclass__`. So even at `strict=0`, GLM never takes the JSON-based parse path for forced calls (every other structural-tag parser flips this to `True` at `strict=0`). This is the change in #47146.\n2. **Encode side.** At `strict=0` the structural-tag path is skipped (`get_structural_tag(...) is None`) and nothing else installs a grammar for forced tool calls. The request therefore goes to the engine with **no** structured-outputs grammar, the model free-generates native tool syntax, and the now-JSON-based parse path cannot validate it. Flipping the flag alone (#47146 on its own) helps flat schemas but still leaves nested-schema forced calls unconstrained.\n\nThis PR fixes both:\n\n- `glm47_moe_tool_parser`: drop the hardcoded flag and let `__init_subclass__` govern it via `VLLM_ENFORCE_STRICT_TOOL_CALLING`, like every other structural-tag parser.\n- `DelegatingParser`: when no structural tag applies (`strict=0`) but `tool_choice` is `required`/named, build `StructuredOutputsParams(json=...)` from the request's **own tool schema** (mirroring the `response_format` json path). For `required`, the parameters are nested under `{name, parameters}` to match the `list[FunctionDefinition]` shape the parse path validates, and any `$defs` are hoisted to the top level so `#/$defs/...` refs stay resolvable after nesting.\n\nThe grammar is built entirely from the caller's existing tool definitions (no transpilation/heuristics), so a forced call is constrained to exactly ",
+    "author": "ifaddict1",
+    "state": "open",
+    "labels": [
+      "bug",
+      "needs-rebase",
+      "tool-calling",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/47175",
+    "createdAt": "2026-06-30T14:53:03.000Z",
+    "updatedAt": "2026-09-27T18:05:52.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:0135e0e19d0e760ea1b20490d10932edc273ffd8735e7e27866a10ed8027739c",
+    "category": "FIX",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "修复 GLM-4.7 强制工具调用约束",
+      "summaryZh": "修复 GLM47MoeModelToolParser 的硬编码标志，使其按 VLLM_ENFORCE_STRICT_TOOL_CALLING 决定强制调用解析路径；调整 DelegatingParser，在无结构化标签但存在强制或指定工具调用时，根据请求自身的工具模式构建 StructuredOutputsParams，并提升 $defs 以保持引用可解析，解决当 VLLM_ENFORCE_STRICT_TOOL_CALLING=0 且 tool_choice 为 required 或指定函数时，GLM-4.7/GLM-5.2 可能生成不受约束的原生工具语法或空 tool_calls，导致下游参数模式校验失败，嵌套 $defs/$ref 模式尤为明显；强制工具调用将依据调用方提供的工具定义生成受约束的参数，覆盖嵌套 $defs/$ref 模式",
+      "models": [
+        "GLM-4.7",
+        "GLM-5.2"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "FIX",
+      "severity": "HIGH",
+      "impactScopeZh": "影响严格工具调用关闭时的强制或指定函数调用。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】GLM-4.7: guided-decode forced tool calls when strict tool-calling is disabled",
+        "【正文】This PR fixes both: drop the hardcoded flag and build StructuredOutputsParams(json=...) from the request's own tool's"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-issue-46787",
     "nodeId": "I_kwDOI7xefs8AAAABGxD8AA",
     "repository": "vllm-project/vllm",
@@ -951,55 +1001,6 @@
       "evidence": [
         "【标题】Support DCP for DeepSeek Sparse Attention",
         "【正文】Add Decode Context Parallelism (DCP) support for DeepSeek Sparse Attention through the FLASHMLA_SPARSE MLA backend."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-47175",
-    "nodeId": "PR_kwDOI7xefs7sR1m3",
-    "repository": "vllm-project/vllm",
-    "number": 47175,
-    "type": "pr",
-    "title": "[Bugfix][Frontend] GLM-4.7: guided-decode forced tool calls when strict tool-calling is disabled",
-    "bodyExcerpt": "## Purpose\n\nOn GLM-4.7 / GLM-5.2, forced tool calls (`tool_choice=\"required\"` or a named function) return unconstrained native tool syntax (or an empty `tool_calls` list) when `VLLM_ENFORCE_STRICT_TOOL_CALLING=0`, which then fails downstream argument-schema validation — most visibly for tool schemas that use nested `$defs`/`$ref`.\n\nThere are two halves to the bug, and fixing only one is not enough:\n\n1. **Parse side.** `Glm47MoeModelToolParser` hardcodes `supports_required_and_named = False`, overriding `ToolParser.__init_subclass__`. So even at `strict=0`, GLM never takes the JSON-based parse path for forced calls (every other structural-tag parser flips this to `True` at `strict=0`). This is the change in #47146.\n2. **Encode side.** At `strict=0` the structural-tag path is skipped (`get_structural_tag(...) is None`) and nothing else installs a grammar for forced tool calls. The request therefore goes to the engine with **no** structured-outputs grammar, the model free-generates native tool syntax, and the now-JSON-based parse path cannot validate it. Flipping the flag alone (#47146 on its own) helps flat schemas but still leaves nested-schema forced calls unconstrained.\n\nThis PR fixes both:\n\n- `glm47_moe_tool_parser`: drop the hardcoded flag and let `__init_subclass__` govern it via `VLLM_ENFORCE_STRICT_TOOL_CALLING`, like every other structural-tag parser.\n- `DelegatingParser`: when no structural tag applies (`strict=0`) but `tool_choice` is `required`/named, build `StructuredOutputsParams(json=...)` from the request's **own tool schema** (mirroring the `response_format` json path). For `required`, the parameters are nested under `{name, parameters}` to match the `list[FunctionDefinition]` shape the parse path validates, and any `$defs` are hoisted to the top level so `#/$defs/...` refs stay resolvable after nesting.\n\nThe grammar is built entirely from the caller's existing tool definitions (no transpilation/heuristics), so a forced call is constrained to exactly ",
-    "author": "ifaddict1",
-    "state": "open",
-    "labels": [
-      "bug",
-      "tool-calling",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/47175",
-    "createdAt": "2026-06-30T14:53:03.000Z",
-    "updatedAt": "2026-08-20T01:04:42.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:36c0aa88029da0631ed45c61e24125a915933e522fc0feca2eb7b856a19b74db",
-    "category": "FIX",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "修复 GLM-4.7 强制工具调用约束",
-      "summaryZh": "修复 GLM47MoeModelToolParser 的硬编码标志，使其按 VLLM_ENFORCE_STRICT_TOOL_CALLING 决定强制调用解析路径；调整 DelegatingParser，在无结构化标签但存在强制或指定工具调用时，根据请求自身的工具模式构建 StructuredOutputsParams，并提升 $defs 以保持引用可解析，解决当 VLLM_ENFORCE_STRICT_TOOL_CALLING=0 且 tool_choice 为 required 或指定函数时，GLM-4.7/GLM-5.2 可能生成不受约束的原生工具语法或空 tool_calls，导致下游参数模式校验失败，嵌套 $defs/$ref 模式尤为明显；强制工具调用将依据调用方提供的工具定义生成受约束的参数，覆盖嵌套 $defs/$ref 模式",
-      "models": [
-        "GLM-4.7",
-        "GLM-5.2"
-      ],
-      "hardware": [],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "FIX",
-      "severity": "HIGH",
-      "impactScopeZh": "影响严格工具调用关闭时的强制或指定函数调用。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】GLM-4.7: guided-decode forced tool calls when strict tool-calling is disabled",
-        "【正文】This PR fixes both: drop the hardcoded flag and build StructuredOutputsParams(json=...) from the request's own tool's"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",

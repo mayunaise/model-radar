@@ -1,5 +1,28 @@
 [
   {
+    "id": "vllm-issue-35577",
+    "nodeId": "I_kwDOI7xefs7upE_Y",
+    "repository": "vllm-project/vllm",
+    "number": 35577,
+    "type": "issue",
+    "title": "[Feature] TRITON_MLA: support FP8 KV cache (needed for SM12.0 / Blackwell)",
+    "bodyExcerpt": "## Problem\n\nThe TRITON_MLA backend raises `NotImplementedError` when FP8 KV cache is requested:\n\n```python\n# triton_mla.py, __init__\nif is_quantized_kv_cache(self.kv_cache_dtype):\n    raise NotImplementedError(\"TritonMLA V1 with FP8 KV cache not yet supported\")\n\n# triton_mla.py, forward_mqa\nif self.kv_cache_dtype.startswith(\"fp8\"):\n    raise NotImplementedError(\"FP8 Triton MLA not yet supported\")\n```\n\nOn SM12.0 (Blackwell — RTX 5080/5090, B100/B200), **TRITON_MLA is the only available MLA backend**:\n- `FLASHINFER_MLA` requires `qk_nope_head_dim=128`, but models like GLM-4.7-Flash-REAP have `qk_nope_head_dim=192`\n- `CUTLASS_MLA` requires SM10.x\n\nThis means FP8 KV cache is completely blocked on Blackwell for these models, even though the base class `MLACommonImpl` already handles FP8 cache writes via `concat_and_cache_mla` (with `_k_scale` quantization in the CUDA kernel) and FlashMLA supports FP8 on other architectures.\n\n## Impact\n\nFor VRAM-constrained GPUs (e.g. RTX 5080 with 16 GB), FP8 KV cache would **double the usable context length**. Tested with GLM-4.7-Flash-REAP-23B-A3B NVFP4:\n- BF16 KV cache: ~4,928 tokens max context\n- FP8 KV cache: ~11,728 tokens max context (2.38×)\n\n## Workaround (not suitable for upstream)\n\nI have a working patch that pre-dequantizes FP8 cache and FP8 query to BF16 before calling the existing Triton decode kernel:\n\n```python\n# In forward_mqa, before the Triton kernel:\nif self.kv_cache_dtype.startswith(\"fp8\"):\n    k_scale = layer._k_scale.float()\n    kv_c_and_k_pe_cache = (kv_c_and_k_pe_cache.float() * k_scale).to(torch.bfloat16)\n\n# Query may also be FP8 (from _decode_concat_quant_fp8_op):\nif q.dtype.is_floating_point and q.element_size() == 1:\n    q_scale = layer._q_scale.float()\n    q = (q.float() * q_scale).to(torch.bfloat16)\n```\n\nThis works but is suboptimal because:\n1. **Full cache dequantization on every decode step** — the entire KV cache page is cast FP8 → float32 → BF16, scaling linearly with sequence length\n2. **float32 interme",
+    "author": "lucaspirola",
+    "state": "open",
+    "labels": [
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/35577",
+    "createdAt": "2026-02-28T03:17:05.000Z",
+    "updatedAt": "2026-09-28T01:58:34.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-28T05:42:54.507Z",
+    "contentHash": "sha256:1f59eb92ef43a897011c98af1078d77b9a6b2476e8a3c12656cadab73a1576da",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-issue-35104",
     "nodeId": "I_kwDOI7xefs7tJAkR",
     "repository": "vllm-project/vllm",

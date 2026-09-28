@@ -1,5 +1,30 @@
 [
   {
+    "id": "vllm-pr-50240",
+    "nodeId": "PR_kwDOI7xefs736h44",
+    "repository": "vllm-project/vllm",
+    "number": 50240,
+    "type": "pr",
+    "title": "[Bugfix] Count prompt-opened Poolside reasoning tokens",
+    "bodyExcerpt": "Count prompt-injected thinking spans through the first closing marker, including generations truncated before the marker, while preserving disabled-thinking accounting.\r\n\r\n## Purpose\r\n\r\nPoolside Laguna's chat template can inject the opening `<think>` token into the generation prompt. Generated token IDs then begin inside the reasoning span and contain only `</think>`, or contain no marker at all when generation is truncated.\r\n\r\n`PoolsideV1ReasoningParser` currently inherits the default token counter through `DeepSeekV3ReasoningParser`, so the Responses API reports `reasoning_tokens=0` even when the parser emitted a reasoning item.\r\n\r\nThis change adds a Poolside-specific counter that:\r\n\r\n- preserves zero reasoning tokens for the `IdentityReasoningParser` path;\r\n- delegates generated `<think>...</think>` spans to the shared counter;\r\n- counts prompt-opened reasoning up to the first `</think>`; and\r\n- counts all generated tokens when generation truncates before `</think>`.\r\n\r\nFixes #49711.\r\n\r\nThis is not a duplicate of the related open PRs:\r\n\r\n- #49743 handles output containing `</think>` without `<think>`, but its current implementation still returns zero when generation truncates before the closing marker.\r\n- #41077 adds DeepSeek V3 forwarding and GLM-specific absent-start handling; it likewise returns zero when no closing marker is generated.\r\n- #49728 changes Poolside's reasoning-parser enablement semantics. This change does not force reasoning on and preserves the existing Identity path for no-thinking messages and native tool calls.\r\n\r\nThe follow-up also updates ParsableContext to buffer token IDs for the current generation and count reasoning at the RequestOutput.finished boundary. This preserves streaming deltas within a generation while counting built-in-tool follow-up generations independently.\r\n\r\nModel evaluation is not applicable because this patch only corrects token accounting in the Responses usage metadata. It does not change model generation, reasoning",
+    "author": "BIT-Orange",
+    "state": "open",
+    "labels": [
+      "bug",
+      "frontend",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/50240",
+    "createdAt": "2026-07-29T10:02:53.000Z",
+    "updatedAt": "2026-09-28T02:46:58.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-28T05:42:54.507Z",
+    "contentHash": "sha256:edcaa308d03a84aaf7abbed11f4cbe79a483325cd20beff7fa695ec532765689",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-48392",
     "nodeId": "PR_kwDOI7xefs7wtq0D",
     "repository": "vllm-project/vllm",
@@ -8,7 +33,7 @@
     "title": "[Spec Decode] DFlash/DSpark draft support under decode context parallelism",
     "bodyExcerpt": "### What\n\nMake dense (GQA/MHA) DFlash/DSpark drafts work under `decode_context_parallel_size > 1`\nby caching the whole DCP group's KV heads on every rank.\n\nRebased on `main` after #52188. That PR landed the DCP-aware draft slot mapping this\nbranch used to carry (`cp_local_slot` / `prepare_dcp_local_seq_lens` in\n`vllm/v1/worker/gpu/cp_utils.py`), and its version is strictly better: it also handles\nthe null block and the rejected context suffix. That commit is dropped here in favour\nof upstream's, leaving the part #52188 does not cover.\n\n#52188 enables the MLA draft path (Kimi-K3, one latent KV head, no head-gather). This\nPR enables the dense path, where the head-gather is exactly what breaks.\n\n### Why (root cause)\n\nReported by @Leoyzen in #46514: DFlash/DSpark acceptance collapses to ~0% under DCP.\n\nThe dense flash DCP path (`_forward_with_dcp`: all-gather query heads across the DCP\ngroup, attend against the rank-local KV shard, LSE-merge) is only correct when a rank's\nKV shard holds the KV heads for all gathered query heads, i.e. KV heads replicated\nacross the DCP group. `verify_with_parallel_config` enforces this for dense *targets*;\nnothing checked the *draft*. The GLM-5.2 DSpark draft is MHA (64q/64kv), so under TP4\neach rank has a 16-head shard and the gathered 64 query heads are GQA-remapped 4:1 onto\nthe wrong KV heads.\n\n### How\n\nCache the whole DCP group's KV heads on every rank (replicated) for that rank's\ninterleaved positions:\n\n- `cache_num_kv_heads` decouples the KV-cache spec from the impl's head count\n  (`Attention.__init__`, defaults to `num_kv_heads`, only larger for this case).\n- The draft precompute all-gathers K/V across the DCP group in the same rank order the\n  query gather uses, so MHA maps 1:1 and GQA stays contiguous.\n- The query block's K/V is not slotted into such a cache: the DCP path attends it\n  against the freshly computed K/V, and at input-prep time the rank holds only its\n  local heads, so writing them would corrupt the replicated layou",
     "author": "drakosha",
-    "state": "open",
+    "state": "closed",
     "labels": [
       "speculative-decoding",
       "needs-rebase",
@@ -19,40 +44,37 @@
     ],
     "url": "https://github.com/vllm-project/vllm/pull/48392",
     "createdAt": "2026-07-12T09:24:11.000Z",
-    "updatedAt": "2026-09-26T23:36:27.000Z",
+    "updatedAt": "2026-09-27T11:23:05.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:aa636502e6f5d8f50201050c72960a0331dad7da4e67260e19846a39340a6a3f",
+    "contentHash": "sha256:38f2366cade7f15dafa7d743e0f2ec262b735d432ef4de9b47c702fae6cd5ad8",
     "category": "NEW_SUPPORT",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "DFlash/DSpark支持DCP解码上下文并行",
-      "summaryZh": "新增密集型 GQA/MHA DFlash/DSpark 草稿在 DCP 下的支持：在每个 rank 缓存整个 DCP 组的 KV 头，并让草稿预计算按查询聚合顺序跨组聚合 K/V，解决DFlash/DSpark 在 DCP 下的接受率降至约 0%；密集型路径聚合查询头后使用本地 KV 分片，导致 MHA/GQA 的查询头映射到错误的 KV 头；覆盖 decode_context_parallel_size > 1 的密集型草稿路径；GLM-5.2 DSpark 的 MHA 场景可避免错误 KV 头映射",
-      "models": [
-        "DFlash",
-        "DSpark",
-        "GLM-5.2 DSpark"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "NEW_SUPPORT",
-      "severity": "HIGH",
-      "impactScopeZh": "影响采用 DCP 的密集型推测解码草稿路径。",
-      "attention": "WATCH",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】DFlash/DSpark draft support under decode context parallelism",
-        "【正文】DFlash/DSpark acceptance collapses to ~0% under DCP；Make dense (GQA/MHA) DFlash/DSpark drafts work under decode_context_"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-48297",
+    "nodeId": "I_kwDOI7xefs8AAAABIawJbA",
+    "repository": "vllm-project/vllm",
+    "number": 48297,
+    "type": "issue",
+    "title": "[RFC] LoRA Adapter Lifecycle for RL Training",
+    "bodyExcerpt": "# [RFC] LoRA Adapter Lifecycle for RL Training\n\n## Problem\n\nRL + LoRA workflows have three vLLM-side issues:\n\n1. **sleep/wake crash**: Level-2 sleep with `enable_lora=True` crashes with KeyError — LoRA adapter parameters are not in cumem's tag set ([#39934](https://github.com/vllm-project/vllm/issues/39934))\n2. **Adapter-only sync missing**: frameworks must merge LoRA → send full weights → unmerge. Adapter-only sync (send only LoRA delta, load via vLLM's LoRA serving) would eliminate the merge round-trip ([trl#5975](https://github.com/huggingface/trl/issues/5975))\n3. **LoRA + MoE mismatch**: logprob divergence between training and inference grows with LoRA rank on MoE models (Qwen3.6, GLM-4.7-Flash) ([SkyRL#1776](https://github.com/NovaSky-AI/SkyRL/issues/1776))\n\n## Downstream demand\n\n- [trl#5975](https://github.com/huggingface/trl/issues/5975): Adapter-only vLLM LoRA sync for GRPO/AsyncGRPO\n- [SkyRL#1776](https://github.com/NovaSky-AI/SkyRL/issues/1776): LoRA + MoE inference mismatch investigation\n- [verl#6782](https://github.com/verl-project/verl/issues/6782): Qwen3.5-27B LoRA GRPO — vLLM never emits EOS with rank=64\n\n## Exit criterion\n\n- sleep/wake + LoRA (#39934) no longer crashes\n- Adapter-only sync path available (no full-weight merge required)\n\n## Feedback Period\n\nTwo weeks from posting.",
+    "author": "aoshen02",
+    "state": "open",
+    "labels": [
+      "RFC",
+      "rl"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/48297",
+    "createdAt": "2026-07-11T01:28:02.000Z",
+    "updatedAt": "2026-09-27T07:05:56.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-17T05:07:31.095Z",
+    "contentHash": "sha256:dee361f7c8a00066165ce4c8e66ed12cd6b46f2d6e9f03f406139d83d4e582ea",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
   },
   {
     "id": "vllm-pr-48800",
@@ -167,30 +189,6 @@
     "mergedAt": null,
     "firstSeenAt": "2026-08-28T11:38:19.166Z",
     "contentHash": "sha256:e45ce0fac5a3a72a478417ed51149f6f110d1a1dbfbe048baea4e9b5885a436b",
-    "category": "BUG",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-issue-48297",
-    "nodeId": "I_kwDOI7xefs8AAAABIawJbA",
-    "repository": "vllm-project/vllm",
-    "number": 48297,
-    "type": "issue",
-    "title": "[RFC] LoRA Adapter Lifecycle for RL Training",
-    "bodyExcerpt": "# [RFC] LoRA Adapter Lifecycle for RL Training\n\n## Problem\n\nRL + LoRA workflows have three vLLM-side issues:\n\n1. **sleep/wake crash**: Level-2 sleep with `enable_lora=True` crashes with KeyError — LoRA adapter parameters are not in cumem's tag set ([#39934](https://github.com/vllm-project/vllm/issues/39934))\n2. **Adapter-only sync missing**: frameworks must merge LoRA → send full weights → unmerge. Adapter-only sync (send only LoRA delta, load via vLLM's LoRA serving) would eliminate the merge round-trip ([trl#5975](https://github.com/huggingface/trl/issues/5975))\n3. **LoRA + MoE mismatch**: logprob divergence between training and inference grows with LoRA rank on MoE models (Qwen3.6, GLM-4.7-Flash) ([SkyRL#1776](https://github.com/NovaSky-AI/SkyRL/issues/1776))\n\n## Downstream demand\n\n- [trl#5975](https://github.com/huggingface/trl/issues/5975): Adapter-only vLLM LoRA sync for GRPO/AsyncGRPO\n- [SkyRL#1776](https://github.com/NovaSky-AI/SkyRL/issues/1776): LoRA + MoE inference mismatch investigation\n- [verl#6782](https://github.com/verl-project/verl/issues/6782): Qwen3.5-27B LoRA GRPO — vLLM never emits EOS with rank=64\n\n## Exit criterion\n\n- sleep/wake + LoRA (#39934) no longer crashes\n- Adapter-only sync path available (no full-weight merge required)\n\n## Feedback Period\n\nTwo weeks from posting.",
-    "author": "aoshen02",
-    "state": "open",
-    "labels": [
-      "RFC",
-      "rl"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/48297",
-    "createdAt": "2026-07-11T01:28:02.000Z",
-    "updatedAt": "2026-09-23T06:51:28.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-17T05:07:31.095Z",
-    "contentHash": "sha256:7d9dd4169846f503421c6951800242eb2c3a9dc42df01dd3ee4a2d40a3dc8c1a",
     "category": "BUG",
     "categorySource": "rules",
     "summary": null
