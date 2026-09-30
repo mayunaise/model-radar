@@ -1,37 +1,5 @@
 [
   {
-    "id": "vllm-pr-54527",
-    "nodeId": "PR_kwDOI7xefs8AAAABBkr9qw",
-    "repository": "vllm-project/vllm",
-    "number": 54527,
-    "type": "pr",
-    "title": "[Bugfix][Multimodal] Honor modality-scoped mm_processor_kwargs in every model that reads them",
-    "bodyExcerpt": "Follow-up to #53808.\r\n\r\n## Background\r\n\r\n#53808 taught `get_merged_mm_kwargs` to overlay HF-style nested\r\n`images_kwargs` / `videos_kwargs` / `audio_kwargs` onto the flat namespace, and\r\nthreaded a `modality` argument through Qwen2-VL and Qwen3-VL. Its docstring\r\nstates the rule:\r\n\r\n> When `modality` is set, HF-style nested `images_kwargs` / `videos_kwargs` /\r\n> `audio_kwargs` are overlaid onto the flat namespace for vLLM-side reads\r\n> (token budgets, dummy inputs). Processor construction and HF `__call__`\r\n> should omit `modality` so the nested dicts still reach the HF processor.\r\n\r\nEvery model outside the Qwen family that predicts sizes or token counts from\r\nthose kwargs was left reading the flat namespace only. The HF processor honors\r\nthe nested dict in its `__call__`, so vLLM and the processor disagree about how\r\nmany tokens an item expands to.\r\n\r\n## Scope: every call site audited\r\n\r\nPer review this now covers every multi-modal model, not just the VL three.\r\nI enumerated every `get_merged_mm_kwargs` call site and classified each (40 when\r\nthis PR was opened, 44 on current `main`).\r\n\r\n### Fixed (vLLM-side reads)\r\n\r\n| model | site | modality |\r\n| --- | --- | --- |\r\n| `glm4_1v` | `_get_image_max_pixels`, `_get_video_max_pixels` | static |\r\n| `ernie45_vl`, `keye`, `mimo_v2_omni` | `_get_vision_info`, via `get_num_{image,video}_tokens` | threaded, as Qwen2-VL |\r\n| `cohere_compass` | `_get_vision_info`, via `get_num_image_tokens` | threaded, as Qwen2-VL |\r\n| `transformers/multimodal` | both `_get_num_multimodal_tokens` reads | `image` |\r\n| `cohere2_vision`, `idefics3`, `interns1` | merged dict passed as HF's `images_kwargs` positional arg | `image` |\r\n| `lfm2_vl`, `mistral3`, `paddleocr_vl` | flat reads of `size` / patch geometry | `image` |\r\n| `glm5next` | `_get_image_max_pixels`, `_get_video_max_pixels`, inherited from `glm4_1v` | static |\r\n\r\nTwo are worth calling out:\r\n\r\n- **`mimo_v2_omni`** is the only one needing a new parameter; it is a copy of\r\n  `qwen2_vl.py`",
-    "author": "Hotragn",
-    "state": "open",
-    "labels": [
-      "bug",
-      "intel-gpu",
-      "ready",
-      "needs-rebase",
-      "ci/build",
-      "multi-modality",
-      "qwen",
-      "mistral",
-      "glm",
-      "cohere"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/54527",
-    "createdAt": "2026-08-31T08:21:53.000Z",
-    "updatedAt": "2026-09-29T04:13:30.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-01T05:28:24.707Z",
-    "contentHash": "sha256:ebde4c1859c565a82daab944f96aae6c8f953f4394a3eddc9a6dee8caa569cec",
-    "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
     "id": "vllm-pr-53692",
     "nodeId": "PR_kwDOI7xefs8AAAABA5jEiA",
     "repository": "vllm-project/vllm",
@@ -48,88 +16,11 @@
     ],
     "url": "https://github.com/vllm-project/vllm/pull/53692",
     "createdAt": "2026-08-25T07:02:31.000Z",
-    "updatedAt": "2026-09-29T03:33:02.000Z",
+    "updatedAt": "2026-09-30T05:12:35.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-26T02:09:14.386Z",
-    "contentHash": "sha256:e6772d20338bdaeb46bfcf33bd3b92243f58347455875a4259a3af245f6f947d",
+    "contentHash": "sha256:c365e1a7e382cc5d46a4fff7c157d78e5a4b63b388bbaa2524eb13d13f3234e7",
     "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-51309",
-    "nodeId": "PR_kwDOI7xefs77w-6a",
-    "repository": "vllm-project/vllm",
-    "number": 51309,
-    "type": "pr",
-    "title": "[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
-    "bodyExcerpt": "## Summary\r\n\r\nWith cross-layer index sharing, only some attention layers update the shared top-k buffer.\r\nThe old path still remapped that buffer on every layer.\r\n\r\nThis PR runs the remap only when the layer owns an indexer. For GLM-5.2 with\r\n`index_topk_freq = 4`, this reduces remaps from 78 to 21 per forward pass.\r\n\r\n## Safety\r\n\r\n- Layer 0 always owns an indexer, so the shared output is initialized before reuse.\r\n- Non-indexer layers do not change the inputs to the remap.\r\n- The default `index_topk_freq = 1` path is unchanged.\r\n- Speculative decoding still remaps on every layer.\r\n\r\n## Update: indexer and non-indexer layers are two KV cache groups\r\n\r\nhttps://github.com/vllm-project/vllm/pull/53781  added the is_index_group_leader field to MLAAttentionSpec: `is_index_group_leader=self.indexer is not None,`. Layers can only share a KV cache group if they agree on is_index_group_leader, so once the flag is set per layer, indexer and non-indexer layers land in different groups and therefore get different metadata instances with separate paged_kv_indices\r\n\r\n```\r\nindex_group_leader_set = {spec.is_index_group_leader for spec in specs}\r\nassert (\r\n    ...\r\n    and len(index_group_leader_set) == 1\r\n    ...\r\n), (\r\n    \"All attention layers in the same KV cache group must use the same \"\r\n    \"... index-sharing role, ...\"\r\n)\r\n```\r\n\r\nSo, remap should run for all indexer layers and the first non-indexer layer. The two non-indexer layer following the first non-indexer layer doesn't need a remap.\r\n\r\nThe following table shows how the remap condition changed between the commits and how it is implemented by `index_epoch` and  `remapped_epoch`. index_epoch is fixed per layer at construction: it counts indexer writes up to and including that layer - which selection is this layer entitled to read. remapped_epoch lives on the metadata and moves during the pass: it records which selection is currently sitting in that group's paged_kv_indices. A mismatch means the group is holding an older ",
-    "author": "amd-sriram",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "ready",
-      "mrv1-only"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/51309",
-    "createdAt": "2026-08-06T21:10:14.000Z",
-    "updatedAt": "2026-09-29T03:25:54.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T07:14:16.853Z",
-    "contentHash": "sha256:9314c9bbe5c019d1f782852dffc34d7cc63794d49f61f2998a15e89d8a824b85",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "ROCm跳过非索引层冗余稀疏索引重映射",
-      "summaryZh": "优化仅由拥有 indexer 的层执行稀疏索引 remap；非索引层直接进入 MLA kernel，解决跨层索引共享时，旧路径在每一层都重映射共享 top-k 缓冲区，导致非索引层执行冗余 remap；在 MI355X、TP=4、GLM-5.2-MXFP4、index_topk_freq=4 条件下，每次前向 remap 从 78 次降至 21 次；remap kernel 启动次数减少 73.3%，GPU 时间减少 73.0%。默认 index_topk_freq=1 路径及推测解码路径保持不变",
-      "models": [
-        "GLM-5.2-MXFP4"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "面向 ROCm 稀疏索引器和跨层索引共享场景，实测硬件为 MI355X。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
-        "【正文】This PR runs the remap only when the layer owns an indexer. For GLM-5.2 with index_topk_freq = 4, this reduces remaps من"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-53492",
-    "nodeId": "PR_kwDOI7xefs8AAAABAvWRjQ",
-    "repository": "vllm-project/vllm",
-    "number": 53492,
-    "type": "pr",
-    "title": "[ROCm][MLA] Enable sparse MLA Gluon kernel from Aiter",
-    "bodyExcerpt": "`ROCMAiterMLASparseBackend` extended to enable Aiter's gluon backend, hidden behind a flag, off by default.\r\n\r\n## Purpose\r\nThe main goal is to improve performance for GLM 5.2 on MI355 by accelerating the sparse MLA attention using the new gluon backend, both for decode and prefill.\r\n\r\nModel used for testing: GLM-5.2-MXFP4 from https://huggingface.co/amd/GLM-5.2-MXFP4\r\nTP8, MI355\r\n\r\nDSV41 flash: TP4 / MI355.\r\n\r\n## Test Plan\r\nA/B test using GSM8K accuracy check.\r\n\r\n## Test Result\r\n\r\n`gsm8k`, 5-shot, `--apply_chat_template`, all 1319 test items, `num_concurrent=256`\r\n\r\n| filter | baseline | gluon | delta |\r\n|---|---|---|---|\r\n| flexible-extract | 0.9477 ± 0.0061 | 0.9484 ± 0.0061 | +0.08 pp |\r\n| strict-match | 0.9386 ± 0.0066 | 0.9409 ± 0.0065 | +0.23 pp |\r\n\r\n## Performance\r\n\r\n`vllm bench serve`, NP = 10×C, OSL 1024, no speculative decoding, TP8 MI355X. Baseline is `VLLM_ROCM_USE_AITER_TRITON_SPARSE_MLA=0`; gluon is `=1`. TTFT and TPOT in ms.\r\n\r\n**ISL 8192 / OSL 1024 — prefill-heavy**\r\n\r\n| C | out tok/s baseline | gluon | Δ | mean TTFT baseline | gluon | Δ | mean TPOT baseline | gluon | Δ |\r\n|--:|--:|--:|:--|--:|--:|:--|--:|--:|:--|\r\n| 4 | 282.6 | 304.3 | **+7.7%** | 438.5 | 403.3 | **-8.0%** | 13.7 | 12.8 | **-7.1%** |\r\n| 8 | 499.8 | 542.8 | **+8.6%** | 1005.0 | 894.8 | **-11.0%** | 15.0 | 13.9 | **-7.7%** |\r\n| 16 | 843.1 | 920.3 | **+9.2%** | 1315.9 | 1173.4 | **-10.8%** | 17.7 | 16.2 | **-8.2%** |\r\n| 32 | 1300.8 | 1435.4 | **+10.4%** | 1757.8 | 1593.9 | **-9.3%** | 22.9 | 20.7 | **-9.4%** |\r\n| 64 | 1794.9 | 2083.7 | **+16.1%** | 2449.8 | 2016.1 | **-17.7%** | 33.3 | 28.7 | **-13.6%** |\r\n| 128 | 1869.4 | 2085.1 | **+11.5%** | 4714.5 | 4030.6 | **-14.5%** | 63.9 | 57.4 | **-10.0%** |\r\n\r\n**ISL 1024 / OSL 1024 — decode-heavy**\r\n\r\n| C | out tok/s baseline | gluon | Δ | mean TTFT baseline | gluon | Δ | mean TPOT baseline | gluon | Δ |\r\n|--:|--:|--:|:--|--:|--:|:--|--:|--:|:--|\r\n| 4 | 260.2 | 282.9 | **+8.7%** | 274.5 | 320.6 | **+16.8%** | 15.1 | 13.8 | **-8.5%** |\r\n| 8 |",
-    "author": "cagrikymk",
-    "state": "merged",
-    "labels": [
-      "rocm",
-      "ready",
-      "deepseek",
-      "DSv4",
-      "DSv4.1"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/53492",
-    "createdAt": "2026-08-24T01:22:53.000Z",
-    "updatedAt": "2026-09-29T01:08:19.000Z",
-    "mergedAt": "2026-09-29T01:08:18.000Z",
-    "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:0cfbfe66f5989049e3cee04172dc65ba2870ccdc0492ba2fdf0bcf97002e2471",
-    "category": "NEW_SUPPORT",
     "categorySource": "rules",
     "summary": null
   },
@@ -149,10 +40,10 @@
     ],
     "url": "https://github.com/vllm-project/vllm/pull/51314",
     "createdAt": "2026-08-06T21:41:17.000Z",
-    "updatedAt": "2026-09-28T18:22:55.000Z",
+    "updatedAt": "2026-09-30T04:09:14.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-21T07:14:16.853Z",
-    "contentHash": "sha256:b11e9b323f66b7d9bbc818c46c58fad8931e99927f0fcd3b985231c418214c9b",
+    "contentHash": "sha256:7c995f70e86793ff69c22ec0d51ec3dc638af0f9409455c807d4226f61d6f275",
     "category": "PERFORMANCE",
     "categorySource": "ai",
     "summary": {
@@ -183,6 +74,178 @@
     }
   },
   {
+    "id": "vllm-pr-53509",
+    "nodeId": "PR_kwDOI7xefs8AAAABAv1caA",
+    "repository": "vllm-project/vllm",
+    "number": 53509,
+    "type": "pr",
+    "title": "[Weight Reload] Add module-owned runtime buffers and staged reload lifecycle",
+    "bodyExcerpt": "## Purpose\n\nImplements the ownership and reload lifecycle in #57895. Part of #53343; split from #53344.\n\nPWAL can produce a correct temporary tensor and then restore a graph-captured allocation containing the previous value. Helpers may also keep aliases to discarded temporary storage. Source-dropping model transforms additionally need the current checkpoint weights to remain available until packing completes.\n\n## Changes\n\n- Declare semantic derived buffers, preserve None/late schemas, and distinguish derived state from static and protocol buffers.\n- Materialize once; validate shape/dtype/device and update existing storage in place.\n- Preserve first derived allocations produced during reload; commit PWAL-produced values before stable placement.\n- Run quant/module preparation hooks before any meta placement, so unsupported reload can fail before changing weight storage.\n- Stage opted-in source modules until their owner/parent process_weights_for_reload() consumes checkpoint values and releases sources; then restore stable runtime storage.\n- Add common publishing and helper binding/rebinding without a hard-coded MoE namespace.\n- Dispatch post_weights_reload() only after all primary storage and deferred attention are final, children before parents and quant methods before module hooks.\n- Retain existing CUTLASS W4A8, FlashInfer CUTLASS/B12x and TRT-LLM FP8/MXFP4 consumers as integration examples.\n\nSource-dropping representations use staged transform/copy-back. Recomputable secondary state uses completion from final weights. A materialized cache does not prove freshness.\n\n## Independent follow-ups and merge order\n\nMerge this core PR first. All follow-up branches start from main and contain only their own changes; no PR is stacked on an unmerged PR.\n\nSuggested order: #58991 (GLM), #58992 (Kimi MLA), #59003 (MegaMoE), #58995 (broadcast), #58999 (ROCm), #58996 (CPU), #59002 (FlashInfer alphas), #59001 (vision), #59000 (Gemma MTP), #53510 (Humming), then #53511 (Lamport). U",
+    "author": "Ronald1995",
+    "state": "open",
+    "labels": [
+      "bug",
+      "nvidia"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/53509",
+    "createdAt": "2026-08-24T03:28:33.000Z",
+    "updatedAt": "2026-09-30T02:56:01.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-29T05:59:28.204Z",
+    "contentHash": "sha256:f7434318350a09d995bde58477501e259a7d1686e4f827629960852b050196e0",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-52150",
+    "nodeId": "I_kwDOI7xefs8AAAABMmUV4w",
+    "repository": "vllm-project/vllm",
+    "number": 52150,
+    "type": "issue",
+    "title": "[Bug][ROCm/gfx942]: GLM-5.2-FP8 — first request after GPU idle emits garbage; piecewise CUDA graph cold replay corrupts the request's own prefill (workaround: cudagraph_mode=FULL_DECODE_ONLY)",
+    "bodyExcerpt": "## Environment\n\n- 8× AMD Instinct MI325X (gfx942), ROCm 7.14.0, amdgpu 6.19.14\n- Images: `vllm/vllm-openai-rocm:nightly` 2026-08-12 (v0.26.1rc1.dev668+g3ee2df303) **and** 2026-08-13 (`8f515d1d`) — both reproduce\n- Model: `zai-org/GLM-5.2-FP8`, TP=8, `--kv-cache-dtype auto`, `--max-num-batched-tokens 4096`, MoE backend AITER blockscale-FP8 (`fmoe_bf16_a16_blockscaleFp8...`)\n- Reproduces identically at `--max-model-len` 131072 and 1048576\n\n## 🐛 Describe the bug\n\nAfter the engine sits idle for ≥ ~20–50 s, the **next** request returns garbage from its very first sampled token, e.g. `'!0.1.5,0.1 and1.1.1.0 21.1.'` (token-0/digit noise). Requests sent immediately afterwards are correct. Reproduction probability rises with idle time (~50–100 % at ≥ 50 s idle; back-to-back requests never fail, dozens of samples).\n\nKey observations:\n\n1. **The corrupt request never self-heals**: with `max_tokens=300` the output is noise from token 1 through token 300, while a request issued ~0.5 s later is clean — i.e. the corrupt request's *own prefill* wrote garbage into its KV/indexer cache, and every decode step then consumes that poisoned context.\n2. `temperature=0`; prompts are ~6–10 tokens (below the 16-token block size, so prefix caching is not involved).\n3. No errors in the server log, container healthy, RAS/ECC counters unchanged.\n4. Not JIT/autotune related: Triton JIT warnings (`_cp_gather_indexer_quant_cache_kernel`, `_fp8_mqa_logits_kernel`) appear only on the very first request after startup; later corrupt events have no JIT activity.\n5. A 25 s-interval keepalive (unique prompts forcing real prefills, all HTTP 200) does **not** reliably prevent it.\n\n## Bisection\n\n| config | result |\n|---|---|\n| defaults (FULL_AND_PIECEWISE graphs), 131k & 1M, nightly 08-12 & 08-13 | ❌ corrupt |\n| `--enforce-eager` | ✅ clean 8/8 (startup burst + 60 s idle ×3 + 25 s idle ×2) |\n| `--compilation-config='{\"cudagraph_mode\":\"FULL_DECODE_ONLY\"}'` | ✅ clean 8/8 at 1M |\n\n→ The corruption tracks **piecew",
+    "author": "zzw09773",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "kimi"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/52150",
+    "createdAt": "2026-08-13T10:37:11.000Z",
+    "updatedAt": "2026-09-30T02:02:13.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:1534c7580a20460a27aef97f2f231ec073e306fc5ab12885bb4b4908dea6f035",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "ROCm gfx942 GLM-5.2-FP8 空闲后首请求乱码",
+      "summaryZh": "AMD MI325X（gfx942）上 GLM-5.2-FP8 的 piecewise CUDA graph 冷回放：GPU 空闲约20–50秒后，下一请求从首个采样 token 起返回乱码，并持续至后续解码；该请求的 prefill 疑似将错误数据写入 KV/indexer cache。连续请求不会复现，服务日志无错误；影响 ROCm 7.14.0、8×MI325X、TP=8 配置；使用 enforce-eager 或 cudagraph_mode=FULL_DECODE_ONLY 可复现为干净结果",
+      "models": [
+        "GLM-5.2-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "涉及 gfx942/MI325X 上采用默认 FULL_AND_PIECEWISE graphs 的推理请求，空闲后首个请求可能受影响。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】first request after GPU idle emits garbage; piecewise CUDA graph cold replay corrupts the request's own prefill",
+        "【正文】After the engine sits idle for ≥ ~20–50 s, the next request returns garbage from its very first sampled token"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-51804",
+    "nodeId": "I_kwDOI7xefs8AAAABMR-1jg",
+    "repository": "vllm-project/vllm",
+    "number": 51804,
+    "type": "issue",
+    "title": "[Bug]: step3p5 parser bypasses XML parsing for named/required tool_choice",
+    "bodyExcerpt": "## Summary\n\nThe built-in `Step3p5ToolParser` emits valid OpenAI tool calls for `tool_choice: \"auto\"`, but named/required tool choices bypass its XML parser because the class inherits `ToolParser.supports_required_and_named = True`. The Step 3.5/3.7 format is XML, so the serving layer incorrectly wraps the raw XML as `function.arguments` instead of invoking `extract_tool_calls`.\n\nCurrent `main` still lacks the override. XML-based parsers such as `Glm47MoeModelToolParser` correctly set `supports_required_and_named = False`.\n\n## Environment\n\n- Official StepFun image: `vllm/vllm-openai:stepfun37@sha256:17fae7886712d62b4c19f98481fd86dcde78fae89162200fd4e462c215de8db3`\n- vLLM: `0.1.dev16944+ge9c8946e7`\n- Model: `stepfun-ai/Step-3.7-Flash-FP8@b3d7916fccac844cca050d7520f2aaa513f9a84f`\n- Server flags include the publisher-recommended `--enable-auto-tool-choice --tool-call-parser step3p5 --reasoning-parser step3p5`\n\n## Reproducer\n\nSend a chat completion with one function and:\n\n```json\n\"tool_choice\": {\"type\": \"function\", \"function\": {\"name\": \"report_sum\"}}\n```\n\nThe model generates:\n\n```xml\n<tool_call>\n<function=report_sum>\n<parameter=a>3</parameter>\n<parameter=b>4</parameter>\n</function>\n</tool_call>\n```\n\nObserved OpenAI response excerpt:\n\n```json\n{\"function\":{\"name\":\"report_sum\",\"arguments\":\"<tool_call>\\n<function=report_sum>...\"},\"type\":\"function\"}\n```\n\nWith `tool_choice: \"auto\"`, the same request is parsed correctly as `arguments: \"{\\\"a\\\": 3, \\\"b\\\": 4}\"`. Streaming auto tool calls also parse correctly.\n\n## Root cause\n\n`OpenAIServing._parse_tool_calls_from_content` uses the standard JSON branch for named/required choices when `tool_parser_cls.supports_required_and_named` is true. `Step3p5ToolParser` parses XML but does not override the inherited true value, so `extract_tool_calls` is skipped.\n\n## Expected fix\n\nAdd this class property and generic parser coverage for named and required choices:\n\n```python\nclass Step3p5ToolParser(ToolParser):\n    supports_required_and_named = F",
+    "author": "frecar",
+    "state": "closed",
+    "labels": [
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/51804",
+    "createdAt": "2026-08-11T10:25:18.000Z",
+    "updatedAt": "2026-09-29T21:58:48.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:91e4fc11bc09422786fecb3213a4a25f7dd5430b977700e3c610f682e947c5d4",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-51309",
+    "nodeId": "PR_kwDOI7xefs77w-6a",
+    "repository": "vllm-project/vllm",
+    "number": 51309,
+    "type": "pr",
+    "title": "[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
+    "bodyExcerpt": "## Summary\r\n\r\nWith cross-layer index sharing, only some attention layers update the shared top-k buffer.\r\nThe old path still remapped that buffer on every layer.\r\n\r\nThis PR runs the remap only when the layer owns an indexer. For GLM-5.2 with\r\n`index_topk_freq = 4`, this reduces remaps from 78 to 21 per forward pass.\r\n\r\n## Safety\r\n\r\n- Layer 0 always owns an indexer, so the shared output is initialized before reuse.\r\n- Non-indexer layers do not change the inputs to the remap.\r\n- The default `index_topk_freq = 1` path is unchanged.\r\n- Speculative decoding still remaps on every layer.\r\n\r\n## Update: indexer and non-indexer layers are two KV cache groups\r\n\r\nhttps://github.com/vllm-project/vllm/pull/53781  added the is_index_group_leader field to MLAAttentionSpec: `is_index_group_leader=self.indexer is not None,`. Layers can only share a KV cache group if they agree on is_index_group_leader, so once the flag is set per layer, indexer and non-indexer layers land in different groups and therefore get different metadata instances with separate paged_kv_indices\r\n\r\n```\r\nindex_group_leader_set = {spec.is_index_group_leader for spec in specs}\r\nassert (\r\n    ...\r\n    and len(index_group_leader_set) == 1\r\n    ...\r\n), (\r\n    \"All attention layers in the same KV cache group must use the same \"\r\n    \"... index-sharing role, ...\"\r\n)\r\n```\r\n\r\nSo, remap should run for all indexer layers and the first non-indexer layer. The two non-indexer layer following the first non-indexer layer doesn't need a remap.\r\n\r\nThe following table shows how the remap condition changed between the commits and how it is implemented by `index_epoch` and  `remapped_epoch`. index_epoch is fixed per layer at construction: it counts indexer writes up to and including that layer - which selection is this layer entitled to read. remapped_epoch lives on the metadata and moves during the pass: it records which selection is currently sitting in that group's paged_kv_indices. A mismatch means the group is holding an older ",
+    "author": "amd-sriram",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "ready",
+      "mrv1-only"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/51309",
+    "createdAt": "2026-08-06T21:10:14.000Z",
+    "updatedAt": "2026-09-29T17:49:12.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T07:14:16.853Z",
+    "contentHash": "sha256:377e055c9343e638fbc7a268fbba7d3da6d7f370c4ca521d72606dcb75ed6e30",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "ROCm跳过非索引层冗余稀疏索引重映射",
+      "summaryZh": "优化仅由拥有 indexer 的层执行稀疏索引 remap；非索引层直接进入 MLA kernel，解决跨层索引共享时，旧路径在每一层都重映射共享 top-k 缓冲区，导致非索引层执行冗余 remap；在 MI355X、TP=4、GLM-5.2-MXFP4、index_topk_freq=4 条件下，每次前向 remap 从 78 次降至 21 次；remap kernel 启动次数减少 73.3%，GPU 时间减少 73.0%。默认 index_topk_freq=1 路径及推测解码路径保持不变",
+      "models": [
+        "GLM-5.2-MXFP4"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "面向 ROCm 稀疏索引器和跨层索引共享场景，实测硬件为 MI355X。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
+        "【正文】This PR runs the remap only when the layer owns an indexer. For GLM-5.2 with index_topk_freq = 4, this reduces remaps من"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-54276",
+    "nodeId": "PR_kwDOI7xefs8AAAABBZD2sA",
+    "repository": "vllm-project/vllm",
+    "number": 54276,
+    "type": "pr",
+    "title": "[Bugfix] GLM 5.3 compat w/ parser: ignore enable_thinking ",
+    "bodyExcerpt": "## Purpose\r\n\r\nGLM-5.3 chat template no longer declares `enable_thinking`, but `Glm47MoeParser` still honored `enable_thinking=False` from `chat_template_kwargs`\r\n\r\nUsers who leave `enable_thinking=False` in kwargs with a 5.3 template may expect the usual no-op. However, the parser will still treat it as a request to disable reasoning separation which results in CoT leaks\r\n\r\n\r\n## Test Plan\r\n\r\nServed `zai-org/GLM-5.3` and sent `extra_body={\"chat_template_kwargs\": {\"enable_thinking\": false}}`\r\n\r\n## Test Result\r\n\r\nBefore: reasoning text leaks in `delta.content`.\r\nAfter: reasoning correctly arrives in `delta.reasoning`",
+    "author": "jfncs",
+    "state": "open",
+    "labels": [
+      "bug",
+      "needs-rebase",
+      "tool-calling",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/54276",
+    "createdAt": "2026-08-28T21:57:03.000Z",
+    "updatedAt": "2026-09-29T14:33:36.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-29T07:16:20.199Z",
+    "contentHash": "sha256:eb0e865e2422a2c2b085d1ad7fafdf7e30c02c8569cdb5d882babd80aa0949d6",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-51315",
     "nodeId": "PR_kwDOI7xefs77xddu",
     "repository": "vllm-project/vllm",
@@ -198,10 +261,10 @@
     ],
     "url": "https://github.com/vllm-project/vllm/pull/51315",
     "createdAt": "2026-08-06T21:41:29.000Z",
-    "updatedAt": "2026-09-28T13:54:28.000Z",
+    "updatedAt": "2026-09-29T09:45:47.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-21T06:14:38.090Z",
-    "contentHash": "sha256:c91763af55c6a50c7d824655fcec58b5fe304cd5cea3c9ad3f0d929d79dbf4ca",
+    "contentHash": "sha256:09ec2294388d5476e37644e369c8ab9f6f7d868f8802a053ca31b896f057a040",
     "category": "PERFORMANCE",
     "categorySource": "ai",
     "summary": {
@@ -232,25 +295,83 @@
     }
   },
   {
-    "id": "vllm-pr-53509",
-    "nodeId": "PR_kwDOI7xefs8AAAABAv1caA",
+    "id": "vllm-issue-54059",
+    "nodeId": "I_kwDOI7xefs8AAAABOgZT9Q",
     "repository": "vllm-project/vllm",
-    "number": 53509,
+    "number": 54059,
+    "type": "issue",
+    "title": "[Model]: GLM-5.3-Flash (glm5_next): no sparse-MLA attention path on Ada (sm_89, RTX 4090)",
+    "bodyExcerpt": "### Environment\n\n- Hardware: 8x NVIDIA GeForce RTX 4090 (Ada, compute capability 8.9, 48 GiB each)\n- Image: `vllm/vllm-openai:glm53-flash-cu129` (vLLM `0.1.dev20051+g487ecf187`, built from PR #53906)\n- Model: `zai-org/GLM-5.3-Flash` (FP8 checkpoint, `model_type=glm5_next`, `Glm5NextForConditionalGeneration`)\n- Launch: TP=8, local weights, `--reasoning-parser glm45 --tool-call-parser glm47`\n\n### What happens\n\nWorkers fail during `load_model` at attention backend selection. No backend accepts this model's sparse MLA configuration on sm_89:\n\n```\nValueError: No valid attention backend found for cuda with\nAttentionSelectorConfig(head_size=512, dtype=torch.bfloat16,\nkv_cache_dtype=auto, block_size=None, use_mla=True, has_sink=False,\nuse_sparse=True, use_mm_prefix=False, use_per_head_quant_scales=False,\nattn_type=AttentionType.DECODER, has_sliding_window=False,\nuse_non_causal=False, use_batch_invariant=False, use_kv_connector=True,\nuse_adaptive_verification=False, use_pcp=False).\nReasons: {\n  FLASH_ATTN_MLA: [sparse not supported, compute capability not supported, FlashAttention MLA not supported on this device],\n  FLASHMLA: [sparse not supported, compute capability not supported, FlashMLA Sparse is only supported on Hopper and Blackwell DC devices.],\n  FLASHINFER_MLA: [sparse not supported, compute capability not supported, FlashInfer MLA kernel requires qk_nope_head_dim in [64, 128, 192], but got 256],\n  TRITON_MLA: [sparse not supported],\n  FLASHINFER_MLA_SPARSE_SM90: [compute capability not supported, requires SM90 + FlashInfer >= 0.6.18],\n  FLASH_ATTN_MLA_SPARSE: [compute capability not supported, FlashAttention MLA not supported on this device],\n  FLASHMLA_SPARSE: [compute capability not supported]\n}\n```\n\n### What works on the same GPUs\n\n- Weight loading is clean (native FP8 checkpoint, 62 shards, ~306 GiB).\n- torch (`2.13.0+cu129`) CUDA compute works on sm_89; Triton compiles and detects `arch=89`.\n- Full engine config validation passes (TP=8, KV offload, prefix cac",
+    "author": "Xandert6",
+    "state": "open",
+    "labels": [
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/54059",
+    "createdAt": "2026-08-27T14:06:53.000Z",
+    "updatedAt": "2026-09-29T08:32:26.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-28T11:38:19.166Z",
+    "contentHash": "sha256:6b8ce0ef8b2afe669ca29192512df0b87223c9b14d69779eb76b01267c4724fa",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-53492",
+    "nodeId": "PR_kwDOI7xefs8AAAABAvWRjQ",
+    "repository": "vllm-project/vllm",
+    "number": 53492,
     "type": "pr",
-    "title": "[Weight Reload] Add module-owned runtime buffers and staged reload lifecycle",
-    "bodyExcerpt": "## Purpose\n\nImplements the ownership and reload lifecycle in #57895. Part of #53343; split from #53344.\n\nPWAL can produce a correct temporary tensor and then restore a graph-captured allocation containing the previous value. Helpers may also keep aliases to discarded temporary storage. Source-dropping model transforms additionally need the current checkpoint weights to remain available until packing completes.\n\n## Changes\n\n- Declare semantic derived buffers, preserve None/late schemas, and distinguish derived state from static and protocol buffers.\n- Materialize once; validate shape/dtype/device and update existing storage in place.\n- Preserve first derived allocations produced during reload; commit PWAL-produced values before stable placement.\n- Run quant/module preparation hooks before any meta placement, so unsupported reload can fail before changing weight storage.\n- Stage opted-in source modules until their owner/parent process_weights_for_reload() consumes checkpoint values and releases sources; then restore stable runtime storage.\n- Add common publishing and helper binding/rebinding without a hard-coded MoE namespace.\n- Dispatch post_weights_reload() only after all primary storage and deferred attention are final, children before parents and quant methods before module hooks.\n- Retain existing CUTLASS W4A8, FlashInfer CUTLASS/B12x and TRT-LLM FP8/MXFP4 consumers as integration examples.\n\nSource-dropping representations use staged transform/copy-back. Recomputable secondary state uses completion from final weights. A materialized cache does not prove freshness.\n\n## Independent follow-ups and merge order\n\nMerge this core PR first. All follow-up branches start from main and contain only their own changes; no PR is stacked on an unmerged PR.\n\nSuggested order: #58991 (GLM), #58992 (Kimi MLA), #59003 (MegaMoE), #58995 (broadcast), #58999 (ROCm), #58996 (CPU), #59002 (FlashInfer alphas), #59001 (vision), #59000 (Gemma MTP), #53510 (Humming), then #53511 (Lamport). U",
-    "author": "Ronald1995",
+    "title": "[ROCm][MLA] Enable sparse MLA Gluon kernel from Aiter",
+    "bodyExcerpt": "`ROCMAiterMLASparseBackend` extended to enable Aiter's gluon backend, hidden behind a flag, off by default.\r\n\r\n## Purpose\r\nThe main goal is to improve performance for GLM 5.2 on MI355 by accelerating the sparse MLA attention using the new gluon backend, both for decode and prefill.\r\n\r\nModel used for testing: GLM-5.2-MXFP4 from https://huggingface.co/amd/GLM-5.2-MXFP4\r\nTP8, MI355\r\n\r\nDSV41 flash: TP4 / MI355.\r\n\r\n## Test Plan\r\nA/B test using GSM8K accuracy check.\r\n\r\n## Test Result\r\n\r\n`gsm8k`, 5-shot, `--apply_chat_template`, all 1319 test items, `num_concurrent=256`\r\n\r\n| filter | baseline | gluon | delta |\r\n|---|---|---|---|\r\n| flexible-extract | 0.9477 ± 0.0061 | 0.9484 ± 0.0061 | +0.08 pp |\r\n| strict-match | 0.9386 ± 0.0066 | 0.9409 ± 0.0065 | +0.23 pp |\r\n\r\n## Performance\r\n\r\n`vllm bench serve`, NP = 10×C, OSL 1024, no speculative decoding, TP8 MI355X. Baseline is `VLLM_ROCM_USE_AITER_TRITON_SPARSE_MLA=0`; gluon is `=1`. TTFT and TPOT in ms.\r\n\r\n**ISL 8192 / OSL 1024 — prefill-heavy**\r\n\r\n| C | out tok/s baseline | gluon | Δ | mean TTFT baseline | gluon | Δ | mean TPOT baseline | gluon | Δ |\r\n|--:|--:|--:|:--|--:|--:|:--|--:|--:|:--|\r\n| 4 | 282.6 | 304.3 | **+7.7%** | 438.5 | 403.3 | **-8.0%** | 13.7 | 12.8 | **-7.1%** |\r\n| 8 | 499.8 | 542.8 | **+8.6%** | 1005.0 | 894.8 | **-11.0%** | 15.0 | 13.9 | **-7.7%** |\r\n| 16 | 843.1 | 920.3 | **+9.2%** | 1315.9 | 1173.4 | **-10.8%** | 17.7 | 16.2 | **-8.2%** |\r\n| 32 | 1300.8 | 1435.4 | **+10.4%** | 1757.8 | 1593.9 | **-9.3%** | 22.9 | 20.7 | **-9.4%** |\r\n| 64 | 1794.9 | 2083.7 | **+16.1%** | 2449.8 | 2016.1 | **-17.7%** | 33.3 | 28.7 | **-13.6%** |\r\n| 128 | 1869.4 | 2085.1 | **+11.5%** | 4714.5 | 4030.6 | **-14.5%** | 63.9 | 57.4 | **-10.0%** |\r\n\r\n**ISL 1024 / OSL 1024 — decode-heavy**\r\n\r\n| C | out tok/s baseline | gluon | Δ | mean TTFT baseline | gluon | Δ | mean TPOT baseline | gluon | Δ |\r\n|--:|--:|--:|:--|--:|--:|:--|--:|--:|:--|\r\n| 4 | 260.2 | 282.9 | **+8.7%** | 274.5 | 320.6 | **+16.8%** | 15.1 | 13.8 | **-8.5%** |\r\n| 8 |",
+    "author": "cagrikymk",
+    "state": "merged",
+    "labels": [
+      "rocm",
+      "ready",
+      "deepseek",
+      "DSv4",
+      "DSv4.1"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/53492",
+    "createdAt": "2026-08-24T01:22:53.000Z",
+    "updatedAt": "2026-09-29T07:07:10.000Z",
+    "mergedAt": "2026-09-29T01:08:18.000Z",
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:7e1bcfb9ef8cff6a585822084c603ae84c244d2e32350a8e689a9f3191f2c69e",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-54527",
+    "nodeId": "PR_kwDOI7xefs8AAAABBkr9qw",
+    "repository": "vllm-project/vllm",
+    "number": 54527,
+    "type": "pr",
+    "title": "[Bugfix][Multimodal] Honor modality-scoped mm_processor_kwargs in every model that reads them",
+    "bodyExcerpt": "Follow-up to #53808.\r\n\r\n## Background\r\n\r\n#53808 taught `get_merged_mm_kwargs` to overlay HF-style nested\r\n`images_kwargs` / `videos_kwargs` / `audio_kwargs` onto the flat namespace, and\r\nthreaded a `modality` argument through Qwen2-VL and Qwen3-VL. Its docstring\r\nstates the rule:\r\n\r\n> When `modality` is set, HF-style nested `images_kwargs` / `videos_kwargs` /\r\n> `audio_kwargs` are overlaid onto the flat namespace for vLLM-side reads\r\n> (token budgets, dummy inputs). Processor construction and HF `__call__`\r\n> should omit `modality` so the nested dicts still reach the HF processor.\r\n\r\nEvery model outside the Qwen family that predicts sizes or token counts from\r\nthose kwargs was left reading the flat namespace only. The HF processor honors\r\nthe nested dict in its `__call__`, so vLLM and the processor disagree about how\r\nmany tokens an item expands to.\r\n\r\n## Scope: every call site audited\r\n\r\nPer review this now covers every multi-modal model, not just the VL three.\r\nI enumerated every `get_merged_mm_kwargs` call site and classified each (40 when\r\nthis PR was opened, 44 on current `main`).\r\n\r\n### Fixed (vLLM-side reads)\r\n\r\n| model | site | modality |\r\n| --- | --- | --- |\r\n| `glm4_1v` | `_get_image_max_pixels`, `_get_video_max_pixels` | static |\r\n| `ernie45_vl`, `keye`, `mimo_v2_omni` | `_get_vision_info`, via `get_num_{image,video}_tokens` | threaded, as Qwen2-VL |\r\n| `cohere_compass` | `_get_vision_info`, via `get_num_image_tokens` | threaded, as Qwen2-VL |\r\n| `transformers/multimodal` | both `_get_num_multimodal_tokens` reads | `image` |\r\n| `cohere2_vision`, `idefics3`, `interns1` | merged dict passed as HF's `images_kwargs` positional arg | `image` |\r\n| `lfm2_vl`, `mistral3`, `paddleocr_vl` | flat reads of `size` / patch geometry | `image` |\r\n| `glm5next` | `_get_image_max_pixels`, `_get_video_max_pixels`, inherited from `glm4_1v` | static |\r\n\r\nTwo are worth calling out:\r\n\r\n- **`mimo_v2_omni`** is the only one needing a new parameter; it is a copy of\r\n  `qwen2_vl.py`",
+    "author": "Hotragn",
     "state": "open",
     "labels": [
       "bug",
-      "nvidia"
+      "intel-gpu",
+      "ready",
+      "needs-rebase",
+      "ci/build",
+      "multi-modality",
+      "qwen",
+      "mistral",
+      "glm",
+      "cohere"
     ],
-    "url": "https://github.com/vllm-project/vllm/pull/53509",
-    "createdAt": "2026-08-24T03:28:33.000Z",
-    "updatedAt": "2026-09-28T09:03:19.000Z",
+    "url": "https://github.com/vllm-project/vllm/pull/54527",
+    "createdAt": "2026-08-31T08:21:53.000Z",
+    "updatedAt": "2026-09-29T04:13:30.000Z",
     "mergedAt": null,
-    "firstSeenAt": "2026-09-29T05:59:28.204Z",
-    "contentHash": "sha256:d90b85db24469e99138dd1995731ab5aa8403352125decfe46c05a4da3e7dd3f",
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:ebde4c1859c565a82daab944f96aae6c8f953f4394a3eddc9a6dee8caa569cec",
     "category": "FIX",
     "categorySource": "rules",
     "summary": null
@@ -1288,31 +1409,6 @@
     "summary": null
   },
   {
-    "id": "vllm-pr-54276",
-    "nodeId": "PR_kwDOI7xefs8AAAABBZD2sA",
-    "repository": "vllm-project/vllm",
-    "number": 54276,
-    "type": "pr",
-    "title": "[Bugfix] GLM 5.3 compat w/ parser: ignore enable_thinking ",
-    "bodyExcerpt": "## Purpose\r\n\r\nGLM-5.3 chat template no longer declares `enable_thinking`, but `Glm47MoeParser` still honored `enable_thinking=False` from `chat_template_kwargs`\r\n\r\nUsers who leave `enable_thinking=False` in kwargs with a 5.3 template may expect the usual no-op. However, the parser will still treat it as a request to disable reasoning separation which results in CoT leaks\r\n\r\n\r\n## Test Plan\r\n\r\nServed `zai-org/GLM-5.3` and sent `extra_body={\"chat_template_kwargs\": {\"enable_thinking\": false}}`\r\n\r\n## Test Result\r\n\r\nBefore: reasoning text leaks in `delta.content`.\r\nAfter: reasoning correctly arrives in `delta.reasoning`",
-    "author": "jfncs",
-    "state": "open",
-    "labels": [
-      "bug",
-      "tool-calling",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/54276",
-    "createdAt": "2026-08-28T21:57:03.000Z",
-    "updatedAt": "2026-09-13T11:48:42.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-29T07:16:20.199Z",
-    "contentHash": "sha256:e134b14253dab59c26c5e8abbaa92b87d0dead18d50d150deb02e77d89172627",
-    "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
     "id": "vllm-issue-53573",
     "nodeId": "I_kwDOI7xefs8AAAABOAH48g",
     "repository": "vllm-project/vllm",
@@ -2108,29 +2204,6 @@
     "summary": null
   },
   {
-    "id": "vllm-issue-54059",
-    "nodeId": "I_kwDOI7xefs8AAAABOgZT9Q",
-    "repository": "vllm-project/vllm",
-    "number": 54059,
-    "type": "issue",
-    "title": "[Model]: GLM-5.3-Flash (glm5_next): no sparse-MLA attention path on Ada (sm_89, RTX 4090)",
-    "bodyExcerpt": "### Environment\n\n- Hardware: 8x NVIDIA GeForce RTX 4090 (Ada, compute capability 8.9, 48 GiB each)\n- Image: `vllm/vllm-openai:glm53-flash-cu129` (vLLM `0.1.dev20051+g487ecf187`, built from PR #53906)\n- Model: `zai-org/GLM-5.3-Flash` (FP8 checkpoint, `model_type=glm5_next`, `Glm5NextForConditionalGeneration`)\n- Launch: TP=8, local weights, `--reasoning-parser glm45 --tool-call-parser glm47`\n\n### What happens\n\nWorkers fail during `load_model` at attention backend selection. No backend accepts this model's sparse MLA configuration on sm_89:\n\n```\nValueError: No valid attention backend found for cuda with\nAttentionSelectorConfig(head_size=512, dtype=torch.bfloat16,\nkv_cache_dtype=auto, block_size=None, use_mla=True, has_sink=False,\nuse_sparse=True, use_mm_prefix=False, use_per_head_quant_scales=False,\nattn_type=AttentionType.DECODER, has_sliding_window=False,\nuse_non_causal=False, use_batch_invariant=False, use_kv_connector=True,\nuse_adaptive_verification=False, use_pcp=False).\nReasons: {\n  FLASH_ATTN_MLA: [sparse not supported, compute capability not supported, FlashAttention MLA not supported on this device],\n  FLASHMLA: [sparse not supported, compute capability not supported, FlashMLA Sparse is only supported on Hopper and Blackwell DC devices.],\n  FLASHINFER_MLA: [sparse not supported, compute capability not supported, FlashInfer MLA kernel requires qk_nope_head_dim in [64, 128, 192], but got 256],\n  TRITON_MLA: [sparse not supported],\n  FLASHINFER_MLA_SPARSE_SM90: [compute capability not supported, requires SM90 + FlashInfer >= 0.6.18],\n  FLASH_ATTN_MLA_SPARSE: [compute capability not supported, FlashAttention MLA not supported on this device],\n  FLASHMLA_SPARSE: [compute capability not supported]\n}\n```\n\n### What works on the same GPUs\n\n- Weight loading is clean (native FP8 checkpoint, 62 shards, ~306 GiB).\n- torch (`2.13.0+cu129`) CUDA compute works on sm_89; Triton compiles and detects `arch=89`.\n- Full engine config validation passes (TP=8, KV offload, prefix cac",
-    "author": "Xandert6",
-    "state": "open",
-    "labels": [
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/54059",
-    "createdAt": "2026-08-27T14:06:53.000Z",
-    "updatedAt": "2026-09-02T18:16:45.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-28T11:38:19.166Z",
-    "contentHash": "sha256:b734ed6e39f65e378d137ac5d4e84c488d6a086361856b86aa0eb630fd84fc71",
-    "category": "BUG",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
     "id": "vllm-pr-50883",
     "nodeId": "PR_kwDOI7xefs76Fy43",
     "repository": "vllm-project/vllm",
@@ -2420,29 +2493,6 @@
     "firstSeenAt": "2026-08-21T03:17:31.073Z",
     "contentHash": "sha256:eb8156b3313b64a3c31de708ec3b889970bd311297979de186093423e577f9e6",
     "category": "OTHER",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-issue-51804",
-    "nodeId": "I_kwDOI7xefs8AAAABMR-1jg",
-    "repository": "vllm-project/vllm",
-    "number": 51804,
-    "type": "issue",
-    "title": "[Bug]: step3p5 parser bypasses XML parsing for named/required tool_choice",
-    "bodyExcerpt": "## Summary\n\nThe built-in `Step3p5ToolParser` emits valid OpenAI tool calls for `tool_choice: \"auto\"`, but named/required tool choices bypass its XML parser because the class inherits `ToolParser.supports_required_and_named = True`. The Step 3.5/3.7 format is XML, so the serving layer incorrectly wraps the raw XML as `function.arguments` instead of invoking `extract_tool_calls`.\n\nCurrent `main` still lacks the override. XML-based parsers such as `Glm47MoeModelToolParser` correctly set `supports_required_and_named = False`.\n\n## Environment\n\n- Official StepFun image: `vllm/vllm-openai:stepfun37@sha256:17fae7886712d62b4c19f98481fd86dcde78fae89162200fd4e462c215de8db3`\n- vLLM: `0.1.dev16944+ge9c8946e7`\n- Model: `stepfun-ai/Step-3.7-Flash-FP8@b3d7916fccac844cca050d7520f2aaa513f9a84f`\n- Server flags include the publisher-recommended `--enable-auto-tool-choice --tool-call-parser step3p5 --reasoning-parser step3p5`\n\n## Reproducer\n\nSend a chat completion with one function and:\n\n```json\n\"tool_choice\": {\"type\": \"function\", \"function\": {\"name\": \"report_sum\"}}\n```\n\nThe model generates:\n\n```xml\n<tool_call>\n<function=report_sum>\n<parameter=a>3</parameter>\n<parameter=b>4</parameter>\n</function>\n</tool_call>\n```\n\nObserved OpenAI response excerpt:\n\n```json\n{\"function\":{\"name\":\"report_sum\",\"arguments\":\"<tool_call>\\n<function=report_sum>...\"},\"type\":\"function\"}\n```\n\nWith `tool_choice: \"auto\"`, the same request is parsed correctly as `arguments: \"{\\\"a\\\": 3, \\\"b\\\": 4}\"`. Streaming auto tool calls also parse correctly.\n\n## Root cause\n\n`OpenAIServing._parse_tool_calls_from_content` uses the standard JSON branch for named/required choices when `tool_parser_cls.supports_required_and_named` is true. `Step3p5ToolParser` parses XML but does not override the inherited true value, so `extract_tool_calls` is skipped.\n\n## Expected fix\n\nAdd this class property and generic parser coverage for named and required choices:\n\n```python\nclass Step3p5ToolParser(ToolParser):\n    supports_required_and_named = F",
-    "author": "frecar",
-    "state": "open",
-    "labels": [
-      "tool-calling"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/51804",
-    "createdAt": "2026-08-11T10:25:18.000Z",
-    "updatedAt": "2026-08-31T23:36:49.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-01T05:28:24.707Z",
-    "contentHash": "sha256:4183ab44b6d6a1c520044e298cb0e4ab5595b3505d98f71de30a509fb7753940",
-    "category": "BUG",
     "categorySource": "rules",
     "summary": null
   },
@@ -4335,55 +4385,6 @@
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:43:55.979Z"
-    }
-  },
-  {
-    "id": "vllm-issue-52150",
-    "nodeId": "I_kwDOI7xefs8AAAABMmUV4w",
-    "repository": "vllm-project/vllm",
-    "number": 52150,
-    "type": "issue",
-    "title": "[Bug][ROCm/gfx942]: GLM-5.2-FP8 — first request after GPU idle emits garbage; piecewise CUDA graph cold replay corrupts the request's own prefill (workaround: cudagraph_mode=FULL_DECODE_ONLY)",
-    "bodyExcerpt": "## Environment\n\n- 8× AMD Instinct MI325X (gfx942), ROCm 7.14.0, amdgpu 6.19.14\n- Images: `vllm/vllm-openai-rocm:nightly` 2026-08-12 (v0.26.1rc1.dev668+g3ee2df303) **and** 2026-08-13 (`8f515d1d`) — both reproduce\n- Model: `zai-org/GLM-5.2-FP8`, TP=8, `--kv-cache-dtype auto`, `--max-num-batched-tokens 4096`, MoE backend AITER blockscale-FP8 (`fmoe_bf16_a16_blockscaleFp8...`)\n- Reproduces identically at `--max-model-len` 131072 and 1048576\n\n## 🐛 Describe the bug\n\nAfter the engine sits idle for ≥ ~20–50 s, the **next** request returns garbage from its very first sampled token, e.g. `'!0.1.5,0.1 and1.1.1.0 21.1.'` (token-0/digit noise). Requests sent immediately afterwards are correct. Reproduction probability rises with idle time (~50–100 % at ≥ 50 s idle; back-to-back requests never fail, dozens of samples).\n\nKey observations:\n\n1. **The corrupt request never self-heals**: with `max_tokens=300` the output is noise from token 1 through token 300, while a request issued ~0.5 s later is clean — i.e. the corrupt request's *own prefill* wrote garbage into its KV/indexer cache, and every decode step then consumes that poisoned context.\n2. `temperature=0`; prompts are ~6–10 tokens (below the 16-token block size, so prefix caching is not involved).\n3. No errors in the server log, container healthy, RAS/ECC counters unchanged.\n4. Not JIT/autotune related: Triton JIT warnings (`_cp_gather_indexer_quant_cache_kernel`, `_fp8_mqa_logits_kernel`) appear only on the very first request after startup; later corrupt events have no JIT activity.\n5. A 25 s-interval keepalive (unique prompts forcing real prefills, all HTTP 200) does **not** reliably prevent it.\n\n## Bisection\n\n| config | result |\n|---|---|\n| defaults (FULL_AND_PIECEWISE graphs), 131k & 1M, nightly 08-12 & 08-13 | ❌ corrupt |\n| `--enforce-eager` | ✅ clean 8/8 (startup burst + 60 s idle ×3 + 25 s idle ×2) |\n| `--compilation-config='{\"cudagraph_mode\":\"FULL_DECODE_ONLY\"}'` | ✅ clean 8/8 at 1M |\n\n→ The corruption tracks **piecew",
-    "author": "zzw09773",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "kimi"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/52150",
-    "createdAt": "2026-08-13T10:37:11.000Z",
-    "updatedAt": "2026-08-20T19:22:16.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:841a5eae71d29dce1e784c079bc9ad6a16203e15d60404b034538af1c8462eba",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "ROCm gfx942 GLM-5.2-FP8 空闲后首请求乱码",
-      "summaryZh": "AMD MI325X（gfx942）上 GLM-5.2-FP8 的 piecewise CUDA graph 冷回放：GPU 空闲约20–50秒后，下一请求从首个采样 token 起返回乱码，并持续至后续解码；该请求的 prefill 疑似将错误数据写入 KV/indexer cache。连续请求不会复现，服务日志无错误；影响 ROCm 7.14.0、8×MI325X、TP=8 配置；使用 enforce-eager 或 cudagraph_mode=FULL_DECODE_ONLY 可复现为干净结果",
-      "models": [
-        "GLM-5.2-FP8"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "涉及 gfx942/MI325X 上采用默认 FULL_AND_PIECEWISE graphs 的推理请求，空闲后首个请求可能受影响。",
-      "attention": "IMMEDIATE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】first request after GPU idle emits garbage; piecewise CUDA graph cold replay corrupts the request's own prefill",
-        "【正文】After the engine sits idle for ≥ ~20–50 s, the next request returns garbage from its very first sampled token"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
     }
   },
   {

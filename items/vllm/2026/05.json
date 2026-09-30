@@ -1,5 +1,55 @@
 [
   {
+    "id": "vllm-pr-43739",
+    "nodeId": "PR_kwDOI7xefs7fqNgK",
+    "repository": "vllm-project/vllm",
+    "number": 43739,
+    "type": "pr",
+    "title": "multi-turn support reasoning mode",
+    "bodyExcerpt": "\r\n\r\n\r\n## Purpose\r\nFix a issue where the multi-turn benchmark tool does not support reasoning mode. \r\n\r\n## Test Plan\r\nStart a model with argument \"--reasoning-parser\", then use the multi-turn tool to test. \r\n\r\n## Test Result\r\nwithout my modification, the output number of tokens / TPOT cannot be correctly counted\r\n```\r\n----------------------------------------------------------------------------------------------------\r\nParameters:\r\nmodel=/data/GLM-4.7-w8a8/\r\nnum_clients=1\r\nnum_conversations=1\r\nactive_conversations=1\r\nseed=0\r\nConversations Generation Parameters:\r\ntext_files=pg1184.txt\r\ninput_num_turns=Constant[4]\r\ninput_common_prefix_num_tokens=Constant[0]\r\ninput_prefix_num_tokens=Constant[1024]\r\ninput_num_tokens=Constant[1024]\r\noutput_num_tokens=Constant[1024]\r\n----------------------------------------------------------------------------------------------------\r\nStatistics summary:\r\nruntime_sec = 44.406\r\nrequests_per_sec = 0.045\r\n----------------------------------------------------------------------------------------------------\r\n                   count      mean      std      min       25%       50%       75%      90%       max\r\nttft_ms              2.0  22195.78  1065.29  21442.5  21819.14  22195.78  22572.41  22798.4  22949.05\r\ntpot_ms              2.0      0.00     0.00      0.0      0.00      0.00      0.00      0.0      0.00\r\nlatency_ms           2.0  22195.78  1065.29  21442.5  21819.14  22195.78  22572.41  22798.4  22949.05\r\ninput_num_turns      2.0      2.00     1.41      1.0      1.50      2.00      2.50      2.8      3.00\r\ninput_num_tokens     2.0   2560.00   722.66   2049.0   2304.50   2560.00   2815.50   2968.8   3071.00\r\noutput_num_tokens    2.0      0.00     0.00      0.0      0.00      0.00      0.00      0.0      0.00\r\noutput_num_chunks    2.0      0.00     0.00      0.0      0.00      0.00      0.00      0.0      0.00\r\n----------------------------------------------------------------------------------------------------\r\n```\r\n\r\nwith my modification, th",
+    "author": "SanyueHan",
+    "state": "closed",
+    "labels": [
+      "performance",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/43739",
+    "createdAt": "2026-05-27T03:14:16.000Z",
+    "updatedAt": "2026-09-30T02:17:58.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-27T10:07:19.897Z",
+    "contentHash": "sha256:d52a8408c8ea17ec37899028adfca4bd21295e22fade0c20122f7eab51f179a0",
+    "category": "PERFORMANCE",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-43907",
+    "nodeId": "PR_kwDOI7xefs7gXYsX",
+    "repository": "vllm-project/vllm",
+    "number": 43907,
+    "type": "pr",
+    "title": "[ROCm][Perf] DSv3.2: fuse indexer Q-RoPE+quant + K-norm/RoPE/quant/cache",
+    "bodyExcerpt": "Port [ROCm/ATOM#788](https://github.com/ROCm/ATOM/pull/788)'s indexer fused-kernel shape into vLLM. Replaces the `k_norm → rotary_emb → per_token_group_quant_fp8 → cache` chain (and the Q-side `per_token_group_quant_fp8`) inside `Indexer.forward` with a single AITER kernel `aiter.indexer_qk_rope_quant_and_cache` (ROCm/aiter#3185, correctness fixes in ROCm/aiter#3451).\r\n\r\n> **Companion:** ROCm/aiter#3451 — required. Without it GSM8K strict-match drops 0.95 → 0.49.\r\n\r\n## Gating\r\n\r\n`VLLM_ROCM_USE_AITER_DSV32_INDEXER_FUSION` (default off) + main AITER toggle; auto-disabled when the running AITER build does not expose `indexer_qk_rope_quant_and_cache`. The kernel hard-asserts `index_head_dim == 128`, `qk_rope_head_dim == 64`, `head_dim == quant_block_size`; `Indexer.__init__` only enables the path if all three hold and `model_type != \"glm_moe_dsa\"`.\r\n\r\n## Design notes\r\n\r\n- **Stays inside the existing custom op.** Calling the fused kernel from inside `rocm_aiter_sparse_attn_indexer` keeps `q_fp8` and `weights_out` from escaping — an earlier version that registered them as a separate op leaked pointers across piecewise-cudagraph segments and tanked GSM8K to ~1%.\r\n- **Persistent workspace** for `q_fp8` / `weights_out`, grown monotonically. Otherwise 61 indexer layers × 2 allocations per decode step churn the eager allocator.\r\n- **K stride fixup.** The kernel asserts `k.stride(0) == head_dim`, but the upstream `.contiguous()` is a no-op on `size(0) == 1` views. We rewrite the metadata via `as_strided` when it's safe, else `empty + copy_`.\r\n- **`preshuffle=True`.** Downstream consumers read MFMA 16×16 SHUFFLE; the original call site passed `False` and silently produced garbage. Bytewise-equal to the unfused triton write after the fix.\r\n- **fp32 LN params** passed through as-is (required by ROCm/aiter#3451).\r\n\r\n## Correctness (GSM8K 20-shot strict-match, 1319 questions, `num_concurrent=256`)\r\n\r\n| Configuration | strict-match |\r\n|---|---|\r\n| Fusion off, fp8 KV cache (baseline) ",
+    "author": "frida-andersson",
+    "state": "closed",
+    "labels": [
+      "rocm",
+      "v1",
+      "deepseek",
+      "quantization"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/43907",
+    "createdAt": "2026-05-28T19:02:23.000Z",
+    "updatedAt": "2026-09-29T11:30:11.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-16T05:04:24.144Z",
+    "contentHash": "sha256:adbf9697c00ae5b942326f055ce6ace6c78295c452f4bfec0af215e67e752769",
+    "category": "PERFORMANCE",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-issue-43967",
     "nodeId": "I_kwDOI7xefs8AAAABDwvfWg",
     "repository": "vllm-project/vllm",
@@ -20,32 +70,6 @@
     "firstSeenAt": "2026-08-21T03:17:31.073Z",
     "contentHash": "sha256:802faf569c6f5cbb6099fd63729b2ecb3c1a10ba867d5a6822f14804ddff77e5",
     "category": "BUG",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-43907",
-    "nodeId": "PR_kwDOI7xefs7gXYsX",
-    "repository": "vllm-project/vllm",
-    "number": 43907,
-    "type": "pr",
-    "title": "[ROCm][Perf] DSv3.2: fuse indexer Q-RoPE+quant + K-norm/RoPE/quant/cache",
-    "bodyExcerpt": "Port [ROCm/ATOM#788](https://github.com/ROCm/ATOM/pull/788)'s indexer fused-kernel shape into vLLM. Replaces the `k_norm → rotary_emb → per_token_group_quant_fp8 → cache` chain (and the Q-side `per_token_group_quant_fp8`) inside `Indexer.forward` with a single AITER kernel `aiter.indexer_qk_rope_quant_and_cache` (ROCm/aiter#3185, correctness fixes in ROCm/aiter#3451).\r\n\r\n> **Companion:** ROCm/aiter#3451 — required. Without it GSM8K strict-match drops 0.95 → 0.49.\r\n\r\n## Gating\r\n\r\n`VLLM_ROCM_USE_AITER_DSV32_INDEXER_FUSION` (default off) + main AITER toggle; auto-disabled when the running AITER build does not expose `indexer_qk_rope_quant_and_cache`. The kernel hard-asserts `index_head_dim == 128`, `qk_rope_head_dim == 64`, `head_dim == quant_block_size`; `Indexer.__init__` only enables the path if all three hold and `model_type != \"glm_moe_dsa\"`.\r\n\r\n## Design notes\r\n\r\n- **Stays inside the existing custom op.** Calling the fused kernel from inside `rocm_aiter_sparse_attn_indexer` keeps `q_fp8` and `weights_out` from escaping — an earlier version that registered them as a separate op leaked pointers across piecewise-cudagraph segments and tanked GSM8K to ~1%.\r\n- **Persistent workspace** for `q_fp8` / `weights_out`, grown monotonically. Otherwise 61 indexer layers × 2 allocations per decode step churn the eager allocator.\r\n- **K stride fixup.** The kernel asserts `k.stride(0) == head_dim`, but the upstream `.contiguous()` is a no-op on `size(0) == 1` views. We rewrite the metadata via `as_strided` when it's safe, else `empty + copy_`.\r\n- **`preshuffle=True`.** Downstream consumers read MFMA 16×16 SHUFFLE; the original call site passed `False` and silently produced garbage. Bytewise-equal to the unfused triton write after the fix.\r\n- **fp32 LN params** passed through as-is (required by ROCm/aiter#3451).\r\n\r\n## Correctness (GSM8K 20-shot strict-match, 1319 questions, `num_concurrent=256`)\r\n\r\n| Configuration | strict-match |\r\n|---|---|\r\n| Fusion off, fp8 KV cache (baseline) ",
-    "author": "frida-andersson",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "v1",
-      "deepseek",
-      "quantization"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/43907",
-    "createdAt": "2026-05-28T19:02:23.000Z",
-    "updatedAt": "2026-09-28T06:43:20.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-16T05:04:24.144Z",
-    "contentHash": "sha256:b152daf3da3eb76e459bad2b1bfed54a31376c151a90393f8a772f5a9cc7f0b8",
-    "category": "PERFORMANCE",
     "categorySource": "rules",
     "summary": null
   },
@@ -438,30 +462,6 @@
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:17:54.490Z"
     }
-  },
-  {
-    "id": "vllm-pr-43739",
-    "nodeId": "PR_kwDOI7xefs7fqNgK",
-    "repository": "vllm-project/vllm",
-    "number": 43739,
-    "type": "pr",
-    "title": "multi-turn support reasoning mode",
-    "bodyExcerpt": "\r\n\r\n\r\n## Purpose\r\nFix a issue where the multi-turn benchmark tool does not support reasoning mode. \r\n\r\n## Test Plan\r\nStart a model with argument \"--reasoning-parser\", then use the multi-turn tool to test. \r\n\r\n## Test Result\r\nwithout my modification, the output number of tokens / TPOT cannot be correctly counted\r\n```\r\n----------------------------------------------------------------------------------------------------\r\nParameters:\r\nmodel=/data/GLM-4.7-w8a8/\r\nnum_clients=1\r\nnum_conversations=1\r\nactive_conversations=1\r\nseed=0\r\nConversations Generation Parameters:\r\ntext_files=pg1184.txt\r\ninput_num_turns=Constant[4]\r\ninput_common_prefix_num_tokens=Constant[0]\r\ninput_prefix_num_tokens=Constant[1024]\r\ninput_num_tokens=Constant[1024]\r\noutput_num_tokens=Constant[1024]\r\n----------------------------------------------------------------------------------------------------\r\nStatistics summary:\r\nruntime_sec = 44.406\r\nrequests_per_sec = 0.045\r\n----------------------------------------------------------------------------------------------------\r\n                   count      mean      std      min       25%       50%       75%      90%       max\r\nttft_ms              2.0  22195.78  1065.29  21442.5  21819.14  22195.78  22572.41  22798.4  22949.05\r\ntpot_ms              2.0      0.00     0.00      0.0      0.00      0.00      0.00      0.0      0.00\r\nlatency_ms           2.0  22195.78  1065.29  21442.5  21819.14  22195.78  22572.41  22798.4  22949.05\r\ninput_num_turns      2.0      2.00     1.41      1.0      1.50      2.00      2.50      2.8      3.00\r\ninput_num_tokens     2.0   2560.00   722.66   2049.0   2304.50   2560.00   2815.50   2968.8   3071.00\r\noutput_num_tokens    2.0      0.00     0.00      0.0      0.00      0.00      0.00      0.0      0.00\r\noutput_num_chunks    2.0      0.00     0.00      0.0      0.00      0.00      0.00      0.0      0.00\r\n----------------------------------------------------------------------------------------------------\r\n```\r\n\r\nwith my modification, th",
-    "author": "SanyueHan",
-    "state": "open",
-    "labels": [
-      "performance",
-      "stale"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/43739",
-    "createdAt": "2026-05-27T03:14:16.000Z",
-    "updatedAt": "2026-08-27T03:09:54.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-27T10:07:19.897Z",
-    "contentHash": "sha256:b394001e2899b25d726e0fa9b87d64f57a99d3ac9cb5efe8657a1881ff541a57",
-    "category": "PERFORMANCE",
-    "categorySource": "rules",
-    "summary": null
   },
   {
     "id": "vllm-pr-42644",

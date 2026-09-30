@@ -1,5 +1,157 @@
 [
   {
+    "id": "vllm-issue-47236",
+    "nodeId": "I_kwDOI7xefs8AAAABHQUigw",
+    "repository": "vllm-project/vllm",
+    "number": 47236,
+    "type": "issue",
+    "title": "[Bug]: 较高版本 Transformers 与已知 Mindformers YAML 配置冲突，导致 AISBench 测试报错 TypeError: Can't instantiate abstract class MindformersTokenizer",
+    "bodyExcerpt": "### Your current environment\n\nIssue 标签: bug, MindIE, vLLM-Ascend, AISBench, compatibility, Tokenizer\n\n环境信息:\n\n硬件平台: Atlas 800I A2\n推理框架：vllm-ascend 0.18.rc1\n组件版本 (关键):\ntransformers: 较高版本 (>=4.40.0)\n测试工具: AIS Bench\n模型: Qwen3.5 (以及 GLM 系列，案例已于其他局点问题复用)\n\n### 🐛 Describe the bug\n\n问题描述:\n在 Atlas 800I A2 单机上，使用 vLLM-Ascend 拉起 Qwen3.5 模型服务后，执行 AIS Bench 测试报错。错误日志如下：\n`TypeError: Can't instantiate abstract class MindformersTokenizer with abstract method batch_encode_plus`\n值得注意的是，其他测试方式（如 vllm bench）可以正常工作。\n\n原因分析:\n\n- 抽象类实例化冲突: 在较高版本的 transformers 库中，MindformersTokenizer 被定义为一个抽象类，强制要求其子类必须实现 batch_encode_plus 方法。这是 transformers 库为了规范化接口所做的更新。官方参考：[transformers/tokenization_utils_base.py](https://github.com/huggingface/transformers/blob/bb0ee88a4a815302baab4cd41d1534b3fa318fab/src/transformers/tokenization_utils_base.py#L2544-L2567)\n- 版本兼容性问题: 模型权重目录下（例如 ./model_path/）存在来自旧版 Mindformers 的 YAML 配置文件（如 predict_*.yaml）。这些旧版配置文件中定义的 Tokenizer 配置，在加载时尝试调用已被弃用或改为抽象方法的接口 batch_encode_plus，导致与新版 transformers 的抽象类定义冲突，初始化失败。\n\n复现步骤:\n\n1. 在 Atlas 800I A2 环境上，安装指定版本的 transformers (>=4.40.0) 和 vLLM-Ascend v0.18.0rc1。\n2. 下载 Qwen3.5 模型权重，并确保权重目录下存在 Mindformers 风格的 YAML 配置文件（例如 predict_qwen3_5_8b.yaml）。\n3. 使用 vLLM-Ascend 拉起模型推理服务。\n4. 执行 AIS Bench 测试命令，观察错误日志。\n\nissue复现情况：其他局点类似环境部署GLM测试时同样遇到此问题，并通过手动删除权重路径下的词表YAML文件临时规避。\n\n临时解决方案/规避措施: 删除模型权重目录下的 Mindformers YAML 配置文件。\n```\n# 示例路径（Qwen3），具体路径取决于模型和部署方式\nrm -f /model_path/predict*.yaml\n```\n原理: 删除后，vLLM-Ascend 将无法加载该冲突的配置文件，从而强制使用其默认或兼容的 Tokenizer 实现，绕过抽象类实例化错误，恢复 AIS Bench 测试流程。\n\n根因定位:\n根本原因是 旧版 Mindformers 的 YAML 配置文件与新版 transformers 库的 Tokenizer 接口定义不兼容。AIS Bench 测试的代码路径可能与其他测试路径（如 vllm bench）不同，触发了这个配置文件的加载，而其他测试路径则没有。\n\n建议修复方向:\n\n- MindIE/vLLM-Ascend 侧: 增强对模型目录下遗留配置文件的兼容性处理，例如，在加载 Tokenizer 时，优先使用 transformers 的标准 AutoTokenizer 逻辑，忽略或优雅降级处理不兼容的旧版配置文件。\n- Mindformers 侧: 更新旧版 YAML 配置文件，使其 Tokenizer 定义与新版 transformers 库的抽象类接口保持一致。\n- 文档/指南: 在昇腾模型部署文档中明确说明，对于使用 transformers 库的推理场景，需要清理模型目录下的旧版 Mindformers 配置文件。\n\n### Before submitting a new issue...\n\n- [x] ",
+    "author": "Chrozwel",
+    "state": "open",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/47236",
+    "createdAt": "2026-07-01T02:23:22.000Z",
+    "updatedAt": "2026-09-30T02:48:38.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-30T05:49:20.266Z",
+    "contentHash": "sha256:278d7646e3e59fe8ea344e4fa0d2b49f5cef9ee3481e197b6d12b4b684b769c0",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-47280",
+    "nodeId": "I_kwDOI7xefs8AAAABHSsg8Q",
+    "repository": "vllm-project/vllm",
+    "number": 47280,
+    "type": "issue",
+    "title": "[RFC]: Implement return indexer topk for sparse attention.",
+    "bodyExcerpt": "### Motivation.\n\nDeepSeek Sparse Attention (DSA) models (DeepSeek-V3.2, V4, GLM-5.1-MoE,\nMiniMax-M3) compute a top-k token selection at each indexer layer: for every\nquery token, the indexer picks the k most-relevant KV slots that the\nsubsequent sparse-attention layer will attend to. These indices are a\nfirst-class output of the model's internal computation. The primary\nmotivation for surfacing them to the client is **training-inference\nconsistency**:\n\n1. **Top-k selection is part of the model's forward semantics, not just an\n   inference optimization.** During training, the indexer's top-k decides\n   which KV slots receive gradients via the sparse-attention path. If\n   training uses one set of selected slots (e.g., computed in a custom\n   training kernel or on full attention masks) while inference uses a\n   different set (computed by vLLM's `sparse_attn_indexer` under\n   KV-cache/prefix-cache/block-layout constraints), the deployed model's\n   behavior silently diverges from the trained one. Returning the\n   inference-time topk lets trainers diff `topk_train` vs `topk_vllm` and\n   quantify / close the gap.\n\n2. **KV-cache layout differences leak into top-k selection.** Training\n   typically runs on contiguous `[seq_len, ...]` layouts; vLLM runs on\n   paged/block-table layouts with prefix caching, chunked prefill, and\n   async preemption. Even when the indexer math is identical, the set of\n   candidate slots visible to the indexer can differ (e.g., cache-hit\n   tokens reusing previously computed topk vs recomputing). Surfacing\n   vLLM's actual topk makes these layout-induced divergences observable\n   and auditable.\n\nToday, vLLM computes these indices internally and discards them after each\nforward pass. There is no API to retrieve them, so the only way to audit\ntraining-inference topk consistency is to re-implement vLLM's indexer\nexternally — fragile and guaranteed to drift. SGLang has shipped\n`enable_return_indexer_topk` for the same reason; this RFC brings parity\nto",
+    "author": "Ronald1995",
+    "state": "open",
+    "labels": [
+      "RFC",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/47280",
+    "createdAt": "2026-07-01T09:39:18.000Z",
+    "updatedAt": "2026-09-30T02:13:42.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-30T05:49:20.266Z",
+    "contentHash": "sha256:4ea8cbd9319b4947ed8ead2ddc22b331b242b68dea01faaaf02ec53dcd41a030",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-47504",
+    "nodeId": "I_kwDOI7xefs8AAAABHhnIvQ",
+    "repository": "vllm-project/vllm",
+    "number": 47504,
+    "type": "issue",
+    "title": "[Bug]: GLM tool_call required + streaming causes JSON repetition",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCUDA_VERSION=13.0.2\nLD_LIBRARY_PATH=/usr/local/nvidia/lib64:/usr/local/nvidia/cuda/lib64:/ur/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64\nNVIDIA_DRIVER_CAPABILITIES=compute,utility\nNVIDIA_REQUIRE_CUDA=cud>=13.0 brand=unknown,driver>=535,driver<536 brand=grid,driver>=535,driver<536 brand=tesla,driver>=535,driver<536 brand=nvidia...\nNVIDIA_VISIBLE_DEVICES=GPU-cfc...,GPU-542...,GPU-19e...,GPU-442...\nTORCH_CUDA_ARCH_LIST=7.5 8.0 8.6 8.9 9.0 10.0 12.0\nVLLM_CACHE_ROOT=/.cache\nVLLM_CONFIG_ROOT=/.cache\nVLLM_ENABLE_CUDA_COMPATIBILITY=0\nVLLM_USAGE_SOURCE=production-docker-image\nPYTORCH_NVML_BASED_CUDA_CHECK=1\nTORCHINDUCTOR_COMPILE_THREADS=1\nTORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor_vllm-user\n```\n\n</details>\n\n\n### 🐛 Describe the bug\n\nOn vllm version `v0.24.0`, calling GLM-5.2 or GLM-4.5 with `tool_choice==required`, and `stream==True` causes the output to repeat the JSON over and over until the context length is reached. I've tested this with and without reasoning. `v0.23.0` behaves correctly for GLM-4.5, non-streaming behaves correctly, and `tool_choice==auto` behaves correctly.\n\nExample code:\n```python\nimport requests\nimport json\n\nmessages = [\n    {\"role\": \"user\", \"content\": \"Cn you tell me what the temperature will be in new york city? Use NY as the abbreviation.\"}\n]\n\ntools = [\n    {\n        \"type\": \"function\",\n        \"function\": {\n            \"name\": \"get_current_weather\",\n            \"description\": \"Get the urrent weather in a given location\",\n            \"parameters\": {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"city\": {\"type\": \"string\", \"description\": \"The city to find teh weather for\"},\n                    \"state\": {\"type\": \"string\", \"description\": \"The two-letter abbreviation for the state the city is in\"},\n                    \"unit\": {\"type\": \"string\", \"description\": \"The unit to fetch th",
+    "author": "clovisNyu",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/47504",
+    "createdAt": "2026-07-03T03:11:40.000Z",
+    "updatedAt": "2026-09-29T19:37:14.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:22892021f8f4df9f6fc1014c06ef9990f9ccf98c732720342957f8c3c177fd68",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-47512",
+    "nodeId": "PR_kwDOI7xefs7tbMhN",
+    "repository": "vllm-project/vllm",
+    "number": 47512,
+    "type": "pr",
+    "title": "[Bugfix] Avoid JSON constraints for native tool parsers",
+    "bodyExcerpt": "Fixes #47504.\r\n\r\n  ## Purpose\r\n  Fix GLM tool calling with `tool_choice=\"required\"` so native XML/structural-tag tool parsers are not forced into the generic JSON structured-output path.\r\n\r\n  ## What changed\r\n  - Skip generic required/named tool-choice JSON schema injection when a tool parser declares `supports_required_and_named=False`.\r\n  - Add GLM regression coverage for both Chat Completions and Responses required tool-choice requests.\r\n\r\n  ## Why this is not duplicating an existing PR\r\n  I checked the issue page and searched open PRs for `47504`, `GLM required structured_outputs ToolParser`, `supports_required_and_named required GLM`, and `tool_choice=required\r\n  glm47`. I did not find an open PR covering this fix.\r\n\r\n  ## Tests run and results\r\n  - `python -m py_compile vllm/tool_parsers/abstract_tool_parser.py tests/tool_parsers/test_glm4_moe_tool_parser.py`\r\n  - `git diff --check`\r\n  - `python -m pytest tests/tool_parsers/test_glm4_moe_tool_parser.py tests/tool_use/test_gemma4_responses_adjust_request.py -q`\r\n\r\n  Result: `16 passed`.\r\n\r\n  ## AI assistance disclosure\r\n  This PR was prepared with OpenAI Codex assistance. I reviewed the changed lines and test results.",
+    "author": "hubunt",
+    "state": "merged",
+    "labels": [
+      "bug",
+      "ready",
+      "tool-calling",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/47512",
+    "createdAt": "2026-07-03T04:24:32.000Z",
+    "updatedAt": "2026-09-29T19:37:13.000Z",
+    "mergedAt": "2026-09-29T19:37:13.000Z",
+    "firstSeenAt": "2026-09-30T05:49:20.266Z",
+    "contentHash": "sha256:91361c478d3461eac3357da75c3defb97031888491f8078dc172653e52d24bc1",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-49885",
+    "nodeId": "PR_kwDOI7xefs72kT-_",
+    "repository": "vllm-project/vllm",
+    "number": 49885,
+    "type": "pr",
+    "title": "[Feature][Frontend] Make strict tool calling an explicit override",
+    "bodyExcerpt": "## Purpose\n\nCloses #49661.\n\nReuse VLLM_ENFORCE_STRICT_TOOL_CALLING as the reviewer-suggested tri-state server override for structural-tag based tool calling:\n\n| Value | Behavior |\n| --- | --- |\n| Unset (default) | Preserve the current request-controlled behavior. Automatic tool choice uses structural tags only when at least one tool sets strict: true. |\n| true | Force structural tags on and treat every function as strict, including clients that omit strict or send strict: false. |\n| false | Force structural tags off regardless of the per-tool strict field. |\n\nThis is more compatible than adding VLLM_TOOL_STRICT_LEVEL: existing deployments that leave the variable unset retain current behavior, while operators can opt in without another configuration knob.\n\nProperties preserved:\n\n- Automatic tool choice never becomes required; a plain text response remains legal.\n- Named and required tool choices retain their existing schema-derived fallback when structural tags are disabled.\n- Parallel tool calls remain supported.\n- Strictness is applied only to the dumped copy sent to xgrammar; request objects are not mutated.\n- Chat Completions and Responses API function tools are both covered.\n\nThe branch is rebased onto current main and the Kimi K3 structural-tag test conflict was resolved by retaining the upstream tests.\n\n## Not a duplicate\n\nThe required issue and PR searches were rerun. The only open PR addressing #49661 or this strict override is this PR. #47175 concerns a separate GLM-4.7 forced-tool-call bug.\n\n## Test plan and results\n\nCPU-only:\n\n    .venv/bin/python -m pytest tests/tool_parsers/test_structural_tag_registry.py -q\n    89 passed in 7.93s\n\n    .venv/bin/python -m pytest tests/parser/test_parse.py tests/parser/test_streaming.py tests/parser/test_include_reasoning.py -q\n    55 passed in 13.95s\n\nFinal combined rerun after formatting and Responses API coverage:\n\n    .venv/bin/python -m pytest tests/tool_parsers/test_structural_tag_registry.py tests/parser/test_pars",
+    "author": "xiaolin2004",
+    "state": "closed",
+    "labels": [
+      "documentation",
+      "needs-rebase",
+      "tool-calling",
+      "kimi",
+      "k3"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49885",
+    "createdAt": "2026-07-26T15:12:03.000Z",
+    "updatedAt": "2026-09-29T19:20:51.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-29T07:16:20.199Z",
+    "contentHash": "sha256:ed5e0c9fe203601efa6e472039c2cc78d383192fa18b92e8115160c5ff632d36",
+    "category": "DOCS",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-47629",
+    "nodeId": "PR_kwDOI7xefs7t_LWZ",
+    "repository": "vllm-project/vllm",
+    "number": 47629,
+    "type": "pr",
+    "title": "[Attention] TRITON_MLA_SPARSE backend for SM80/SM121 sparse MLA (rebase & takeover of #38476)",
+    "bodyExcerpt": "# [Attention] TRITON_MLA_SPARSE backend for SM80/SM121 sparse MLA (rebase & takeover of #38476)\n\n## Purpose\n\nRebase and continuation of #38476 by @haosdent, which adds a Triton-based sparse MLA\nattention backend (`TRITON_MLA_SPARSE`) so DSA sparse-MLA models (DeepSeek-V3.2,\nGLM-5.x) can run on GPUs where DeepGEMM and FlashMLA-Sparse are unavailable —\nSM80 (A100/A800) and SM121 (GB10/DGX Spark).\n\nPer the discussion in #38476 (see comments from 2026-06-29 onward): #43477 has merged,\nmaintainers indicated openness to merging this backend after a rebase, and the original\nauthor has been inactive since mid-May. This PR takes over that work as invited in the\nthread, crediting the original author (the main commit retains @haosdent's authorship).\n\n## Changes vs the original #38476\n\n- **Rebased onto current main.** The indexer dispatch in `sparse_attn_indexer.py` is now a\n  three-way `is_xpu() → DeepGEMM → Triton fallback` chain, preserving main's XPU path,\n  `skip_topk_buffer_clear` optimization, and DCP handling.\n- **Backend priority (maintainer request):** `TRITON_MLA_SPARSE` is appended *after*\n  `FLASH_ATTN_MLA_SPARSE` and `FLASHMLA_SPARSE` in the SM8x/9x candidate list, so SM90+\n  keeps native sparse backends and only SM80/SM121 fall through to Triton.\n- **New fix:** gate `use_fused_indexer_q` (from #46862) on SM89+ — its Triton kernel\n  stores fp8e4nv, which does not compile on SM80; older archs use the pre-existing\n  unfused rope + `per_token_group_quant_fp8` path.\n\n## Relationship to other PRs\n\n- #39594 forces *dense* attention on unsupported targets via an env var (a correctness\n  workaround that gives up sparse attention); this PR keeps sparse attention with Triton\n  kernels. The two are complementary.\n- #40929 / #41834 target DeepSeek-V4 on SM120 specifically; this PR is about the\n  DSA sparse-MLA indexer/attention path for V3.2/GLM-5.x on SM80/SM121.\n\n## Test Plan / Test Result\n\nAll on 8× NVIDIA A800-80GB PCIe (SM80), driver 580.95.05, this branch installed with",
+    "author": "thomaslwang",
+    "state": "open",
+    "labels": [
+      "documentation",
+      "needs-rebase",
+      "v1",
+      "deepseek",
+      "nvidia"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/47629",
+    "createdAt": "2026-07-05T05:41:29.000Z",
+    "updatedAt": "2026-09-29T13:58:34.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-28T11:38:19.166Z",
+    "contentHash": "sha256:29a2de1fead0856c936e58bd8625bccfbc2f3aa6c884a9af762ab6f4de902aff",
+    "category": "DOCS",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-49602",
     "nodeId": "PR_kwDOI7xefs71bnT9",
     "repository": "vllm-project/vllm",
@@ -8,7 +160,7 @@
     "title": "[Bugfix] Hoist $defs/definitions in Cohere parser tool schema composition",
     "bodyExcerpt": "\r\n\r\n## Purpose\r\n\r\nFix a bug where any `/v1/chat/completions` request with tools whose JSON Schema\r\ncontains `$defs`/`definitions` fails with HTTP 500 on Cohere models served with\r\n`--reasoning-parser cohere_command3|cohere_command4`.\r\n\r\nResolves the bug class reported in #16467 (closed as stale, never fixed) for the\r\nCohere reasoning parser path specifically. Other parsers that compose their own\r\ngrammars are out of scope (see the GLM case in #47175); the generic tool path in\r\n`vllm/tool_parsers/utils.py` already hoists `$defs` and is unaffected.\r\n\r\n**Root cause.** `collect_tool_schema` in\r\n`vllm/reasoning/cohere_command_reasoning_parser.py` builds the constrained-decoding\r\ngrammar for tool calls by nesting each tool's `parameters` schema inside a\r\n`{tool_call_id, tool_name, parameters}` envelope. The tool schema was spliced in\r\nverbatim, so a definitions block originally at the schema root ends up under\r\n`properties.parameters`, while its `$ref` pointers (`#/$defs/X`) remain\r\nroot-anchored. xgrammar then correctly rejects the dangling JSON pointer:\r\n\r\n```text\r\nRuntimeError: Cannot find field $defs in #/$defs/X\r\n```\r\n\r\nThe request fails during preprocessing, before generation. Agentic frameworks such as pydantic-ai emit `$defs`\r\nfor any nested model, so this breaks effectively all tools defined via such\r\nframeworks (see user reports in #16467).\r\n\r\n**Minimal repro** against a Cohere model served with\r\n`--reasoning-parser cohere_command4 --tool-call-parser cohere_command4 --enable-auto-tool-choice`\r\n(any tool schema whose parameters carry `$defs` + `$ref`; a flat schema without\r\n`$defs` does not reproduce):\r\n\r\n```bash\r\ncurl -s http://localhost:8000/v1/chat/completions \\\r\n  -H \"Content-Type: application/json\" \\\r\n  -d '{\r\n    \"model\": \"CohereLabs/North-Mini-Code-1.0\",\r\n    \"messages\": [{\"role\": \"user\", \"content\": \"Weather in Prague?\"}],\r\n    \"tool_choice\": \"auto\",\r\n    \"tools\": [{\r\n      \"type\": \"function\",\r\n      \"function\": {\r\n        \"name\": \"get_weather\",\r\n        \"",
     "author": "vaclavcadek",
-    "state": "open",
+    "state": "merged",
     "labels": [
       "bug",
       "ready",
@@ -17,36 +169,13 @@
     ],
     "url": "https://github.com/vllm-project/vllm/pull/49602",
     "createdAt": "2026-07-23T15:04:30.000Z",
-    "updatedAt": "2026-09-29T05:52:38.000Z",
-    "mergedAt": null,
+    "updatedAt": "2026-09-29T07:11:57.000Z",
+    "mergedAt": "2026-09-29T07:11:57.000Z",
     "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:3ec329c8360a6bf6b64e7c124268993cee80991f841e8ad8cc750fe4e60a46af",
+    "contentHash": "sha256:0cacf4fa73cf0899465b4fae7d53b2b4b0913c58f166aa3e42bb98dfe6164d61",
     "category": "FIX",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "修复 Cohere 工具 schema 的 $defs 引用错误",
-      "summaryZh": "修复 Cohere parser 工具 schema 组合逻辑，将根级 $defs/definitions 提升到组合后的 schema 根部，保持 $ref 的根路径有效，解决使用 cohere_command3 或 cohere_command4 reasoning parser 时，工具参数 schema 包含 $defs/definitions 与 $ref 会在 /v1/chat/completions 预处理阶段触发 HTTP 500，xgrammar 报错“Cannot find field $defs in #/$defs/X”；修复 Cohere 模型工具调用对嵌套模型 schema 的支持；不影响通用工具路径，其他自定义 grammar 的 parser 不在范围内",
-      "models": [
-        "CohereLabs/North-Mini-Code-1.0"
-      ],
-      "hardware": [],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "FIX",
-      "severity": "HIGH",
-      "impactScopeZh": "Cohere reasoning parser 的工具调用请求。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[Bugfix] Hoist $defs/definitions in Cohere parser tool schema composition",
-        "【正文】any /v1/chat/completions request with tools whose JSON Schema contains $defs/definitions fails with HTTP 500 on Cohere"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
+    "categorySource": "rules",
+    "summary": null
   },
   {
     "id": "vllm-issue-49349",
@@ -810,56 +939,6 @@
     "summary": null
   },
   {
-    "id": "vllm-issue-47504",
-    "nodeId": "I_kwDOI7xefs8AAAABHhnIvQ",
-    "repository": "vllm-project/vllm",
-    "number": 47504,
-    "type": "issue",
-    "title": "[Bug]: GLM tool_call required + streaming causes JSON repetition",
-    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\nCUDA_VERSION=13.0.2\nLD_LIBRARY_PATH=/usr/local/nvidia/lib64:/usr/local/nvidia/cuda/lib64:/ur/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64\nNVIDIA_DRIVER_CAPABILITIES=compute,utility\nNVIDIA_REQUIRE_CUDA=cud>=13.0 brand=unknown,driver>=535,driver<536 brand=grid,driver>=535,driver<536 brand=tesla,driver>=535,driver<536 brand=nvidia...\nNVIDIA_VISIBLE_DEVICES=GPU-cfc...,GPU-542...,GPU-19e...,GPU-442...\nTORCH_CUDA_ARCH_LIST=7.5 8.0 8.6 8.9 9.0 10.0 12.0\nVLLM_CACHE_ROOT=/.cache\nVLLM_CONFIG_ROOT=/.cache\nVLLM_ENABLE_CUDA_COMPATIBILITY=0\nVLLM_USAGE_SOURCE=production-docker-image\nPYTORCH_NVML_BASED_CUDA_CHECK=1\nTORCHINDUCTOR_COMPILE_THREADS=1\nTORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor_vllm-user\n```\n\n</details>\n\n\n### 🐛 Describe the bug\n\nOn vllm version `v0.24.0`, calling GLM-5.2 or GLM-4.5 with `tool_choice==required`, and `stream==True` causes the output to repeat the JSON over and over until the context length is reached. I've tested this with and without reasoning. `v0.23.0` behaves correctly for GLM-4.5, non-streaming behaves correctly, and `tool_choice==auto` behaves correctly.\n\nExample code:\n```python\nimport requests\nimport json\n\nmessages = [\n    {\"role\": \"user\", \"content\": \"Cn you tell me what the temperature will be in new york city? Use NY as the abbreviation.\"}\n]\n\ntools = [\n    {\n        \"type\": \"function\",\n        \"function\": {\n            \"name\": \"get_current_weather\",\n            \"description\": \"Get the urrent weather in a given location\",\n            \"parameters\": {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"city\": {\"type\": \"string\", \"description\": \"The city to find teh weather for\"},\n                    \"state\": {\"type\": \"string\", \"description\": \"The two-letter abbreviation for the state the city is in\"},\n                    \"unit\": {\"type\": \"string\", \"description\": \"The unit to fetch th",
-    "author": "clovisNyu",
-    "state": "open",
-    "labels": [
-      "bug",
-      "tool-calling"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/47504",
-    "createdAt": "2026-07-03T03:11:40.000Z",
-    "updatedAt": "2026-08-31T23:40:13.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:273b22640258dd73398cc8fcf32afa912e4fbef97b5a1cae0402a094439e4ac3",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM tool_call 流式输出重复 JSON",
-      "summaryZh": "vLLM v0.24.0 中 GLM-5.2/GLM-4.5 的必选工具调用与流式输出：在 vLLM v0.24.0 中调用 GLM-5.2 或 GLM-4.5 时，同时设置 tool_choice==required 和 stream==True，会导致 JSON 输出反复重复，直至达到上下文长度。该问题在启用或不启用 reasoning 时均可复现；非流式调用和 tool_choice==auto 行为正常；v0.23.0 中 GLM-4.5 行为正常",
-      "models": [
-        "GLM-5.2",
-        "GLM-4.5"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 vLLM v0.24.0 中 GLM-5.2/GLM-4.5 的必选工具调用流式推理。",
-      "attention": "IMMEDIATE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[Bug]: GLM tool_call required + streaming causes JSON repetition",
-        "【正文】On vllm version v0.24.0, calling GLM-5.2 or GLM-4.5 with tool_choice==required, and stream==True causes the output to 反复"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
     "id": "vllm-issue-48201",
     "nodeId": "I_kwDOI7xefs8AAAABIS0ExA",
     "repository": "vllm-project/vllm",
@@ -1238,33 +1317,6 @@
     "summary": null
   },
   {
-    "id": "vllm-pr-49885",
-    "nodeId": "PR_kwDOI7xefs72kT-_",
-    "repository": "vllm-project/vllm",
-    "number": 49885,
-    "type": "pr",
-    "title": "[Feature][Frontend] Make strict tool calling an explicit override",
-    "bodyExcerpt": "## Purpose\n\nCloses #49661.\n\nReuse VLLM_ENFORCE_STRICT_TOOL_CALLING as the reviewer-suggested tri-state server override for structural-tag based tool calling:\n\n| Value | Behavior |\n| --- | --- |\n| Unset (default) | Preserve the current request-controlled behavior. Automatic tool choice uses structural tags only when at least one tool sets strict: true. |\n| true | Force structural tags on and treat every function as strict, including clients that omit strict or send strict: false. |\n| false | Force structural tags off regardless of the per-tool strict field. |\n\nThis is more compatible than adding VLLM_TOOL_STRICT_LEVEL: existing deployments that leave the variable unset retain current behavior, while operators can opt in without another configuration knob.\n\nProperties preserved:\n\n- Automatic tool choice never becomes required; a plain text response remains legal.\n- Named and required tool choices retain their existing schema-derived fallback when structural tags are disabled.\n- Parallel tool calls remain supported.\n- Strictness is applied only to the dumped copy sent to xgrammar; request objects are not mutated.\n- Chat Completions and Responses API function tools are both covered.\n\nThe branch is rebased onto current main and the Kimi K3 structural-tag test conflict was resolved by retaining the upstream tests.\n\n## Not a duplicate\n\nThe required issue and PR searches were rerun. The only open PR addressing #49661 or this strict override is this PR. #47175 concerns a separate GLM-4.7 forced-tool-call bug.\n\n## Test plan and results\n\nCPU-only:\n\n    .venv/bin/python -m pytest tests/tool_parsers/test_structural_tag_registry.py -q\n    89 passed in 7.93s\n\n    .venv/bin/python -m pytest tests/parser/test_parse.py tests/parser/test_streaming.py tests/parser/test_include_reasoning.py -q\n    55 passed in 13.95s\n\nFinal combined rerun after formatting and Responses API coverage:\n\n    .venv/bin/python -m pytest tests/tool_parsers/test_structural_tag_registry.py tests/parser/test_pars",
-    "author": "xiaolin2004",
-    "state": "open",
-    "labels": [
-      "documentation",
-      "needs-rebase",
-      "tool-calling",
-      "kimi",
-      "k3"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/49885",
-    "createdAt": "2026-07-26T15:12:03.000Z",
-    "updatedAt": "2026-08-29T04:56:53.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-29T07:16:20.199Z",
-    "contentHash": "sha256:2f4fc017cc82b07f3ca9ea78eea584f6c3bf814a8178c0a2246d02c0ce955bec",
-    "category": "DOCS",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
     "id": "vllm-pr-48572",
     "nodeId": "PR_kwDOI7xefs7xaO5h",
     "repository": "vllm-project/vllm",
@@ -1367,33 +1419,6 @@
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T10:27:08.865Z"
     }
-  },
-  {
-    "id": "vllm-pr-47629",
-    "nodeId": "PR_kwDOI7xefs7t_LWZ",
-    "repository": "vllm-project/vllm",
-    "number": 47629,
-    "type": "pr",
-    "title": "[Attention] TRITON_MLA_SPARSE backend for SM80/SM121 sparse MLA (rebase & takeover of #38476)",
-    "bodyExcerpt": "# [Attention] TRITON_MLA_SPARSE backend for SM80/SM121 sparse MLA (rebase & takeover of #38476)\n\n## Purpose\n\nRebase and continuation of #38476 by @haosdent, which adds a Triton-based sparse MLA\nattention backend (`TRITON_MLA_SPARSE`) so DSA sparse-MLA models (DeepSeek-V3.2,\nGLM-5.x) can run on GPUs where DeepGEMM and FlashMLA-Sparse are unavailable —\nSM80 (A100/A800) and SM121 (GB10/DGX Spark).\n\nPer the discussion in #38476 (see comments from 2026-06-29 onward): #43477 has merged,\nmaintainers indicated openness to merging this backend after a rebase, and the original\nauthor has been inactive since mid-May. This PR takes over that work as invited in the\nthread, crediting the original author (the main commit retains @haosdent's authorship).\n\n## Changes vs the original #38476\n\n- **Rebased onto current main.** The indexer dispatch in `sparse_attn_indexer.py` is now a\n  three-way `is_xpu() → DeepGEMM → Triton fallback` chain, preserving main's XPU path,\n  `skip_topk_buffer_clear` optimization, and DCP handling.\n- **Backend priority (maintainer request):** `TRITON_MLA_SPARSE` is appended *after*\n  `FLASH_ATTN_MLA_SPARSE` and `FLASHMLA_SPARSE` in the SM8x/9x candidate list, so SM90+\n  keeps native sparse backends and only SM80/SM121 fall through to Triton.\n- **New fix:** gate `use_fused_indexer_q` (from #46862) on SM89+ — its Triton kernel\n  stores fp8e4nv, which does not compile on SM80; older archs use the pre-existing\n  unfused rope + `per_token_group_quant_fp8` path.\n\n## Relationship to other PRs\n\n- #39594 forces *dense* attention on unsupported targets via an env var (a correctness\n  workaround that gives up sparse attention); this PR keeps sparse attention with Triton\n  kernels. The two are complementary.\n- #40929 / #41834 target DeepSeek-V4 on SM120 specifically; this PR is about the\n  DSA sparse-MLA indexer/attention path for V3.2/GLM-5.x on SM80/SM121.\n\n## Test Plan / Test Result\n\nAll on 8× NVIDIA A800-80GB PCIe (SM80), driver 580.95.05, this branch installed with",
-    "author": "thomaslwang",
-    "state": "open",
-    "labels": [
-      "documentation",
-      "needs-rebase",
-      "v1",
-      "deepseek",
-      "nvidia"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/47629",
-    "createdAt": "2026-07-05T05:41:29.000Z",
-    "updatedAt": "2026-08-28T02:07:39.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-28T11:38:19.166Z",
-    "contentHash": "sha256:8343527bc2aa8242503bc75fe439b6ed3544e9e1622a7d4c477a68a2f75a5849",
-    "category": "DOCS",
-    "categorySource": "rules",
-    "summary": null
   },
   {
     "id": "vllm-pr-50459",

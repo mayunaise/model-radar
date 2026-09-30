@@ -1,5 +1,100 @@
 [
   {
+    "id": "vllm-pr-46326",
+    "nodeId": "PR_kwDOI7xefs7o-GVd",
+    "repository": "vllm-project/vllm",
+    "number": 46326,
+    "type": "pr",
+    "title": "HiSparse: host-resident sparse-MLA decode hot-buffering + GLM-5.2 indexCache opts (vLLM v0.24.0)",
+    "bodyExcerpt": "A port of SGLang's [HiSparse](https://www.lmsys.org/blog/2026-04-10-sglang-hisparse/): full sparse-MLA KV lives in pinned host memory, decode is served from per-request GPU hot buffers holding the indexer top-k working set. Plus GLM-5.2 indexCache plan-once sharing and overlapped prefetch, which do not exist in the SGLang implementation.\n\n**Motivation.** GLM-5 decode instances run wide-EP (DP×EP, one single-GPU engine per rank): each rank replicates attention/dense weights and carries its expert shard, DeepEP buffers, and sparse-stack workspaces — leaving O(10 GiB) of GPU KV per rank, a single-digit ceiling of long-context requests per engine (MLA's single latent head means KV cannot be TP-sharded away). In a P/D deployment that ceiling back-pressures prefill and stalls the pipeline. Sparse MLA only attends to the indexer's top-k (2048) tokens per step, so the full KV does not need to be GPU-resident.\n\n## Results\n\n**16-node production stack** (GLM-5.2-FP8, 8 prefill + 8 decode nodes, DP64 wide-EP decode, llm-d router, NIXL P/D, Mooncake prefill store, 160 GiB pool/rank):\n\n- **26,056 decode tok/s sustained** at 5,173 avg / 6,092 peak of 6,144 seats (99% peak occupancy), ITL p50/p95 201/294 ms, **zero preemptions**, host pool 62% peak — 3.3× the same stack's throughput at c=1000. The binding constraint was the configured seat cap (`max_num_seqs=96` × 64 ranks), not compute, pool, or prefill (which sat nearly idle under shortcut routing).\n- **A/B vs plain GPU-KV decode** — identical topology, traffic, and 50-min saturated measurement window; per-engine cumulative deltas over all 128 engines:\n\n| decode side | GPU-KV | HiSparse |\n|---|---|---|\n| generation throughput | 10,653 tok/s | **12,951 tok/s** (+22%) |\n| requests completed | 84,026 | **101,653** (+21%) |\n| preemptions | 5,174 | **0** |\n| TTFT p99 | 99.9 s | **2.5 s** |\n| queue time p99 | 101 s | **0.8 s** |\n| local prefix-cache hit | 40.4% | **92.2%** |\n| NIXL transfer volume | 26.5 TiB (326 MiB avg) | **7.0 TiB**",
+    "author": "faresobeid",
+    "state": "closed",
+    "labels": [
+      "documentation",
+      "performance",
+      "new-model",
+      "rocm",
+      "structured-output",
+      "frontend",
+      "intel-gpu",
+      "speculative-decoding",
+      "ci/build",
+      "v1",
+      "multi-modality",
+      "llama",
+      "qwen",
+      "deepseek",
+      "cpu",
+      "gpt-oss",
+      "kv-connector",
+      "nvidia",
+      "quantization",
+      "mistral",
+      "rust",
+      "kv-cache-manager",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/46326",
+    "createdAt": "2026-06-22T02:05:51.000Z",
+    "updatedAt": "2026-09-30T03:16:06.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:70b63607b3135cad7f656728b21034e1560dd2abb691b3f4c8edc536a4f8a50d",
+    "category": "DOCS",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-47175",
+    "nodeId": "PR_kwDOI7xefs7sR1m3",
+    "repository": "vllm-project/vllm",
+    "number": 47175,
+    "type": "pr",
+    "title": "[Bugfix][Frontend] GLM-4.7: guided-decode forced tool calls when strict tool-calling is disabled",
+    "bodyExcerpt": "## Purpose\n\nOn GLM-4.7 / GLM-5.2, forced tool calls (`tool_choice=\"required\"` or a named function) return unconstrained native tool syntax (or an empty `tool_calls` list) when `VLLM_ENFORCE_STRICT_TOOL_CALLING=0`, which then fails downstream argument-schema validation — most visibly for tool schemas that use nested `$defs`/`$ref`.\n\nThere are two halves to the bug, and fixing only one is not enough:\n\n1. **Parse side.** `Glm47MoeModelToolParser` hardcodes `supports_required_and_named = False`, overriding `ToolParser.__init_subclass__`. So even at `strict=0`, GLM never takes the JSON-based parse path for forced calls (every other structural-tag parser flips this to `True` at `strict=0`). This is the change in #47146.\n2. **Encode side.** At `strict=0` the structural-tag path is skipped (`get_structural_tag(...) is None`) and nothing else installs a grammar for forced tool calls. The request therefore goes to the engine with **no** structured-outputs grammar, the model free-generates native tool syntax, and the now-JSON-based parse path cannot validate it. Flipping the flag alone (#47146 on its own) helps flat schemas but still leaves nested-schema forced calls unconstrained.\n\nThis PR fixes both:\n\n- `glm47_moe_tool_parser`: drop the hardcoded flag and let `__init_subclass__` govern it via `VLLM_ENFORCE_STRICT_TOOL_CALLING`, like every other structural-tag parser.\n- `DelegatingParser`: when no structural tag applies (`strict=0`) but `tool_choice` is `required`/named, build `StructuredOutputsParams(json=...)` from the request's **own tool schema** (mirroring the `response_format` json path). For `required`, the parameters are nested under `{name, parameters}` to match the `list[FunctionDefinition]` shape the parse path validates, and any `$defs` are hoisted to the top level so `#/$defs/...` refs stay resolvable after nesting.\n\nThe grammar is built entirely from the caller's existing tool definitions (no transpilation/heuristics), so a forced call is constrained to exactly ",
+    "author": "ifaddict1",
+    "state": "closed",
+    "labels": [
+      "bug",
+      "needs-rebase",
+      "tool-calling",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/47175",
+    "createdAt": "2026-06-30T14:53:03.000Z",
+    "updatedAt": "2026-09-29T19:39:30.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:7226e04a6ee845110d69cdf3944d7b9ce4e7bd07e8aa4d6b4d53d8e41424a8d2",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-47146",
+    "nodeId": "PR_kwDOI7xefs7sMMnI",
+    "repository": "vllm-project/vllm",
+    "number": 47146,
+    "type": "pr",
+    "title": "Allow GLM-4.7 required tool parsing when strict mode is disabled",
+    "bodyExcerpt": "This is a draft for discussion based on observed GLM-4.7 behavior with `VLLM_ENFORCE_STRICT_TOOL_CALLING=0`.\n\n## Summary\n- Let `Glm47MoeModelToolParser` inherit the default `supports_required_and_named=True` when strict structural-tag enforcement is disabled.\n- Keep the existing strict-mode behavior: `ToolParser.__init_subclass__` still forces structural-tag parsers to `supports_required_and_named=False` when `VLLM_ENFORCE_STRICT_TOOL_CALLING` is enabled.\n- Add a subprocess regression test for importing GLM-4.7 with `VLLM_ENFORCE_STRICT_TOOL_CALLING=0`.\n\n## Context\nIn local GLM-4.7 deployments using `--enable-auto-tool-choice --tool-call-parser glm47` with `VLLM_ENFORCE_STRICT_TOOL_CALLING=0`, forcing the parser to always set `supports_required_and_named=False` sends required/named tool-choice paths through the XML auto-parser fallback even when strict structural-tag enforcement is intentionally disabled. This increases exposure to malformed XML tool-call generations such as concatenating the tool name and first argument name.\n\n## Testing\n- `git diff --check`\n- Attempted: `uv run --with pytest python -m pytest tests/tool_parsers/test_glm47_moe_tool_parser.py::test_supports_required_and_named_when_strict_tool_calling_disabled -q`\n  - Could not run locally on macOS because the checkout resolves unsatisfiable project torch constraints (`torch==2.11.0+cpu`) for this platform.",
+    "author": "Tib-Gridello",
+    "state": "closed",
+    "labels": [
+      "tool-calling",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/47146",
+    "createdAt": "2026-06-30T11:06:39.000Z",
+    "updatedAt": "2026-09-29T17:56:05.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:e04da7dcefab701ca194b711ccb2f7dabeb2e03fbb92e09045c53ae314d3096d",
+    "category": "OTHER",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-issue-45260",
     "nodeId": "I_kwDOI7xefs8AAAABFIEY1A",
     "repository": "vllm-project/vllm",
@@ -10,14 +105,14 @@
     "author": "Harry-Chen",
     "state": "open",
     "labels": [
-      "stale"
+      "keep-open"
     ],
     "url": "https://github.com/vllm-project/vllm/issues/45260",
     "createdAt": "2026-06-11T09:07:57.000Z",
-    "updatedAt": "2026-09-29T01:57:16.000Z",
+    "updatedAt": "2026-09-29T15:40:58.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-09-29T05:59:28.204Z",
-    "contentHash": "sha256:7c0db6311bd350deb43f58aed242cf6b4167a2791d6dfc8c92a6a4a5b04c8c02",
+    "contentHash": "sha256:ebecf56bd2a7f0607403181692135be08061c8273a70ae5d40913937dd4f6da7",
     "category": "BUG",
     "categorySource": "rules",
     "summary": null
@@ -161,56 +256,6 @@
       "evidence": [
         "【标题】OOM during profile_run with GLM-5.2 PD disaggregation + FlashInfer CUTLASS MoE on H100",
         "【正文】the worker process OOMs during profile_run → _dummy_run when FlashInfer CUTLASS MoE kernel attempts to allocate 26.21 Gi"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-47175",
-    "nodeId": "PR_kwDOI7xefs7sR1m3",
-    "repository": "vllm-project/vllm",
-    "number": 47175,
-    "type": "pr",
-    "title": "[Bugfix][Frontend] GLM-4.7: guided-decode forced tool calls when strict tool-calling is disabled",
-    "bodyExcerpt": "## Purpose\n\nOn GLM-4.7 / GLM-5.2, forced tool calls (`tool_choice=\"required\"` or a named function) return unconstrained native tool syntax (or an empty `tool_calls` list) when `VLLM_ENFORCE_STRICT_TOOL_CALLING=0`, which then fails downstream argument-schema validation — most visibly for tool schemas that use nested `$defs`/`$ref`.\n\nThere are two halves to the bug, and fixing only one is not enough:\n\n1. **Parse side.** `Glm47MoeModelToolParser` hardcodes `supports_required_and_named = False`, overriding `ToolParser.__init_subclass__`. So even at `strict=0`, GLM never takes the JSON-based parse path for forced calls (every other structural-tag parser flips this to `True` at `strict=0`). This is the change in #47146.\n2. **Encode side.** At `strict=0` the structural-tag path is skipped (`get_structural_tag(...) is None`) and nothing else installs a grammar for forced tool calls. The request therefore goes to the engine with **no** structured-outputs grammar, the model free-generates native tool syntax, and the now-JSON-based parse path cannot validate it. Flipping the flag alone (#47146 on its own) helps flat schemas but still leaves nested-schema forced calls unconstrained.\n\nThis PR fixes both:\n\n- `glm47_moe_tool_parser`: drop the hardcoded flag and let `__init_subclass__` govern it via `VLLM_ENFORCE_STRICT_TOOL_CALLING`, like every other structural-tag parser.\n- `DelegatingParser`: when no structural tag applies (`strict=0`) but `tool_choice` is `required`/named, build `StructuredOutputsParams(json=...)` from the request's **own tool schema** (mirroring the `response_format` json path). For `required`, the parameters are nested under `{name, parameters}` to match the `list[FunctionDefinition]` shape the parse path validates, and any `$defs` are hoisted to the top level so `#/$defs/...` refs stay resolvable after nesting.\n\nThe grammar is built entirely from the caller's existing tool definitions (no transpilation/heuristics), so a forced call is constrained to exactly ",
-    "author": "ifaddict1",
-    "state": "open",
-    "labels": [
-      "bug",
-      "needs-rebase",
-      "tool-calling",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/47175",
-    "createdAt": "2026-06-30T14:53:03.000Z",
-    "updatedAt": "2026-09-27T18:05:52.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:0135e0e19d0e760ea1b20490d10932edc273ffd8735e7e27866a10ed8027739c",
-    "category": "FIX",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "修复 GLM-4.7 强制工具调用约束",
-      "summaryZh": "修复 GLM47MoeModelToolParser 的硬编码标志，使其按 VLLM_ENFORCE_STRICT_TOOL_CALLING 决定强制调用解析路径；调整 DelegatingParser，在无结构化标签但存在强制或指定工具调用时，根据请求自身的工具模式构建 StructuredOutputsParams，并提升 $defs 以保持引用可解析，解决当 VLLM_ENFORCE_STRICT_TOOL_CALLING=0 且 tool_choice 为 required 或指定函数时，GLM-4.7/GLM-5.2 可能生成不受约束的原生工具语法或空 tool_calls，导致下游参数模式校验失败，嵌套 $defs/$ref 模式尤为明显；强制工具调用将依据调用方提供的工具定义生成受约束的参数，覆盖嵌套 $defs/$ref 模式",
-      "models": [
-        "GLM-4.7",
-        "GLM-5.2"
-      ],
-      "hardware": [],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "FIX",
-      "severity": "HIGH",
-      "impactScopeZh": "影响严格工具调用关闭时的强制或指定函数调用。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】GLM-4.7: guided-decode forced tool calls when strict tool-calling is disabled",
-        "【正文】This PR fixes both: drop the hardcoded flag and build StructuredOutputsParams(json=...) from the request's own tool's"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
@@ -605,77 +650,6 @@
     "category": "FIX",
     "categorySource": "rules",
     "summary": null
-  },
-  {
-    "id": "vllm-pr-46326",
-    "nodeId": "PR_kwDOI7xefs7o-GVd",
-    "repository": "vllm-project/vllm",
-    "number": 46326,
-    "type": "pr",
-    "title": "HiSparse: host-resident sparse-MLA decode hot-buffering + GLM-5.2 indexCache opts (vLLM v0.24.0)",
-    "bodyExcerpt": "A port of SGLang's [HiSparse](https://www.lmsys.org/blog/2026-04-10-sglang-hisparse/): full sparse-MLA KV lives in pinned host memory, decode is served from per-request GPU hot buffers holding the indexer top-k working set. Plus GLM-5.2 indexCache plan-once sharing and overlapped prefetch, which do not exist in the SGLang implementation.\n\n**Motivation.** GLM-5 decode instances run wide-EP (DP×EP, one single-GPU engine per rank): each rank replicates attention/dense weights and carries its expert shard, DeepEP buffers, and sparse-stack workspaces — leaving O(10 GiB) of GPU KV per rank, a single-digit ceiling of long-context requests per engine (MLA's single latent head means KV cannot be TP-sharded away). In a P/D deployment that ceiling back-pressures prefill and stalls the pipeline. Sparse MLA only attends to the indexer's top-k (2048) tokens per step, so the full KV does not need to be GPU-resident.\n\n## Results\n\n**16-node production stack** (GLM-5.2-FP8, 8 prefill + 8 decode nodes, DP64 wide-EP decode, llm-d router, NIXL P/D, Mooncake prefill store, 160 GiB pool/rank):\n\n- **26,056 decode tok/s sustained** at 5,173 avg / 6,092 peak of 6,144 seats (99% peak occupancy), ITL p50/p95 201/294 ms, **zero preemptions**, host pool 62% peak — 3.3× the same stack's throughput at c=1000. The binding constraint was the configured seat cap (`max_num_seqs=96` × 64 ranks), not compute, pool, or prefill (which sat nearly idle under shortcut routing).\n- **A/B vs plain GPU-KV decode** — identical topology, traffic, and 50-min saturated measurement window; per-engine cumulative deltas over all 128 engines:\n\n| decode side | GPU-KV | HiSparse |\n|---|---|---|\n| generation throughput | 10,653 tok/s | **12,951 tok/s** (+22%) |\n| requests completed | 84,026 | **101,653** (+21%) |\n| preemptions | 5,174 | **0** |\n| TTFT p99 | 99.9 s | **2.5 s** |\n| queue time p99 | 101 s | **0.8 s** |\n| local prefix-cache hit | 40.4% | **92.2%** |\n| NIXL transfer volume | 26.5 TiB (326 MiB avg) | **7.0 TiB**",
-    "author": "faresobeid",
-    "state": "open",
-    "labels": [
-      "documentation",
-      "performance",
-      "new-model",
-      "rocm",
-      "structured-output",
-      "frontend",
-      "intel-gpu",
-      "speculative-decoding",
-      "ci/build",
-      "v1",
-      "multi-modality",
-      "llama",
-      "qwen",
-      "deepseek",
-      "cpu",
-      "gpt-oss",
-      "kv-connector",
-      "nvidia",
-      "quantization",
-      "mistral",
-      "rust",
-      "kv-cache-manager",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/46326",
-    "createdAt": "2026-06-22T02:05:51.000Z",
-    "updatedAt": "2026-09-08T23:42:44.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:b2cba3e1f7defec111e3c076515f9a4f5f4efdcbb02ae64fe19d685b4d534d55",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "HiSparse 支持 GLM-5.2 稀疏 MLA 解码",
-      "summaryZh": "新增基于主机常驻稀疏 MLA KV 和请求级 GPU 热缓冲区的 HiSparse 解码，并加入 GLM-5.2 indexCache 一次性规划共享与重叠预取；在 16 节点 GLM-5.2-FP8 生产栈中，HiSparse 相比普通 GPU-KV 解码吞吐提升 22%，请求完成数提升 21%，抢占降为 0，TTFT p99 从 99.9 秒降至 2.5 秒",
-      "models": [
-        "GLM-5.2"
-      ],
-      "hardware": [
-        "GPU",
-        "CPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "HIGH",
-      "impactScopeZh": "面向 GLM-5.2 宽 EP 解码及长上下文请求，涉及主机内存 KV、GPU 热缓冲区和 P/D 部署。",
-      "attention": "WATCH",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】HiSparse: host-resident sparse-MLA decode hot-buffering + GLM-5.2 indexCache opts",
-        "【正文】full sparse-MLA KV lives in pinned host memory, decode is served from per-request GPU hot buffers"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
   },
   {
     "id": "vllm-pr-46196",
@@ -1170,55 +1144,6 @@
       "evidence": [
         "【标题】Support DCP for DeepSeek Sparse Attention",
         "【正文】Add Decode Context Parallelism (DCP) support for DeepSeek Sparse Attention through the FLASHMLA_SPARSE MLA backend."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-47146",
-    "nodeId": "PR_kwDOI7xefs7sMMnI",
-    "repository": "vllm-project/vllm",
-    "number": 47146,
-    "type": "pr",
-    "title": "Allow GLM-4.7 required tool parsing when strict mode is disabled",
-    "bodyExcerpt": "This is a draft for discussion based on observed GLM-4.7 behavior with `VLLM_ENFORCE_STRICT_TOOL_CALLING=0`.\n\n## Summary\n- Let `Glm47MoeModelToolParser` inherit the default `supports_required_and_named=True` when strict structural-tag enforcement is disabled.\n- Keep the existing strict-mode behavior: `ToolParser.__init_subclass__` still forces structural-tag parsers to `supports_required_and_named=False` when `VLLM_ENFORCE_STRICT_TOOL_CALLING` is enabled.\n- Add a subprocess regression test for importing GLM-4.7 with `VLLM_ENFORCE_STRICT_TOOL_CALLING=0`.\n\n## Context\nIn local GLM-4.7 deployments using `--enable-auto-tool-choice --tool-call-parser glm47` with `VLLM_ENFORCE_STRICT_TOOL_CALLING=0`, forcing the parser to always set `supports_required_and_named=False` sends required/named tool-choice paths through the XML auto-parser fallback even when strict structural-tag enforcement is intentionally disabled. This increases exposure to malformed XML tool-call generations such as concatenating the tool name and first argument name.\n\n## Testing\n- `git diff --check`\n- Attempted: `uv run --with pytest python -m pytest tests/tool_parsers/test_glm47_moe_tool_parser.py::test_supports_required_and_named_when_strict_tool_calling_disabled -q`\n  - Could not run locally on macOS because the checkout resolves unsatisfiable project torch constraints (`torch==2.11.0+cpu`) for this platform.",
-    "author": "Tib-Gridello",
-    "state": "open",
-    "labels": [
-      "tool-calling",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/47146",
-    "createdAt": "2026-06-30T11:06:39.000Z",
-    "updatedAt": "2026-08-20T01:04:33.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:eb7e711295820a4c7c3be5c6b9cc99152eebfbc744f07fb891147926d97dbfed",
-    "category": "COMPATIBILITY",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "放宽 GLM-4.7 非严格工具解析",
-      "summaryZh": "调整 Glm47MoeModelToolParser：关闭严格结构标签校验时继承 supports_required_and_named=True；严格模式下继续保持 supports_required_and_named=False，并新增对应的 GLM-4.7 导入回归测试，解决在 VLLM_ENFORCE_STRICT_TOOL_CALLING=0 时，解析器仍固定设置 supports_required_and_named=False，导致 required/named 工具选择路径进入 XML 自动解析回退，并增加生成格式错误工具调用的风险；适用于启用 --enable-auto-tool-choice、使用 glm47 解析器且关闭严格工具调用的 GLM-4.7 部署，减少不必要的 XML 自动解析回退",
-      "models": [
-        "GLM-4.7"
-      ],
-      "hardware": [
-        "UNKNOWN"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "COMPATIBILITY",
-      "severity": "MEDIUM",
-      "impactScopeZh": "影响 vLLM 中 GLM-4.7 的 required/named 工具选择解析路径。",
-      "attention": "WATCH",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】Allow GLM-4.7 required tool parsing when strict mode is disabled",
-        "【正文】Let Glm47MoeModelToolParser inherit the default supports_required_and_named=True when strict structural-tag enforcementが"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
