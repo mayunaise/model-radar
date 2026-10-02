@@ -6,7 +6,7 @@
     "number": 54527,
     "type": "pr",
     "title": "[Bugfix][Multimodal] Honor modality-scoped mm_processor_kwargs in every model that reads them",
-    "bodyExcerpt": "> **Update 2026-09-30:** #56372 removed `get_merged_mm_kwargs(..., modality=)`, which the text below describes. The reads now go through `InputProcessingContext.get_modality_mm_kwargs(kwargs, modality)`: the resolved kwargs, with that modality's scope overlaid for vLLM-side reads. Each call site's change is otherwise unchanged. `mistral3` and `qwen2_5_omni_thinker` now match `main` (#56372 fixed mistral3 itself). Details and a fresh test run: https://github.com/vllm-project/vllm/pull/54527#issuecomment-5905006141\n\nFollow-up to #53808.\n\n## Background\n\n#53808 taught `get_merged_mm_kwargs` to overlay HF-style nested\n`images_kwargs` / `videos_kwargs` / `audio_kwargs` onto the flat namespace, and\nthreaded a `modality` argument through Qwen2-VL and Qwen3-VL. Its docstring\nstates the rule:\n\n> When `modality` is set, HF-style nested `images_kwargs` / `videos_kwargs` /\n> `audio_kwargs` are overlaid onto the flat namespace for vLLM-side reads\n> (token budgets, dummy inputs). Processor construction and HF `__call__`\n> should omit `modality` so the nested dicts still reach the HF processor.\n\nEvery model outside the Qwen family that predicts sizes or token counts from\nthose kwargs was left reading the flat namespace only. The HF processor honors\nthe nested dict in its `__call__`, so vLLM and the processor disagree about how\nmany tokens an item expands to.\n\n## Scope: every call site audited\n\nPer review this now covers every multi-modal model, not just the VL three.\nI enumerated every `get_merged_mm_kwargs` call site and classified each (40 when\nthis PR was opened, 44 on current `main`).\n\n### Fixed (vLLM-side reads)\n\n| model | site | modality |\n| --- | --- | --- |\n| `glm4_1v` | `_get_image_max_pixels`, `_get_video_max_pixels` | static |\n| `ernie45_vl`, `keye`, `mimo_v2_omni` | `_get_vision_info`, via `get_num_{image,video}_tokens` | threaded, as Qwen2-VL |\n| `cohere_compass` | `_get_vision_info`, via `get_num_image_tokens` | threaded, as Qwen2-VL |\n| `transformers/multimodal` | bo",
+    "bodyExcerpt": "> **Update 2026-09-30:** #56372 removed `get_merged_mm_kwargs(..., modality=)`, which the text below describes. The reads now go through `InputProcessingContext.get_modality_mm_kwargs(kwargs, modality)`: the resolved kwargs, with that modality's scope overlaid for vLLM-side reads. Each call site's change is otherwise unchanged. `mistral3` and `qwen2_5_omni_thinker` now match `main` (#56372 fixed mistral3 itself). Details and a fresh test run: https://github.com/vllm-project/vllm/pull/54527#issuecomment-5905006141\r\n\r\nFollow-up to #53808.\r\n\r\n## Background\r\n\r\n#53808 taught `get_merged_mm_kwargs` to overlay HF-style nested\r\n`images_kwargs` / `videos_kwargs` / `audio_kwargs` onto the flat namespace, and\r\nthreaded a `modality` argument through Qwen2-VL and Qwen3-VL. Its docstring\r\nstates the rule:\r\n\r\n> When `modality` is set, HF-style nested `images_kwargs` / `videos_kwargs` /\r\n> `audio_kwargs` are overlaid onto the flat namespace for vLLM-side reads\r\n> (token budgets, dummy inputs). Processor construction and HF `__call__`\r\n> should omit `modality` so the nested dicts still reach the HF processor.\r\n\r\nEvery model outside the Qwen family that predicts sizes or token counts from\r\nthose kwargs was left reading the flat namespace only. The HF processor honors\r\nthe nested dict in its `__call__`, so vLLM and the processor disagree about how\r\nmany tokens an item expands to.\r\n\r\n## Scope: every call site audited\r\n\r\nPer review this now covers every multi-modal model, not just the VL three.\r\nI enumerated every `get_merged_mm_kwargs` call site and classified each (40 when\r\nthis PR was opened, 44 on current `main`).\r\n\r\n### Fixed (vLLM-side reads)\r\n\r\n| model | site | modality |\r\n| --- | --- | --- |\r\n| `glm4_1v` | `_get_image_max_pixels`, `_get_video_max_pixels` | static |\r\n| `ernie45_vl`, `keye`, `mimo_v2_omni` | `_get_vision_info`, via `get_num_{image,video}_tokens` | threaded, as Qwen2-VL |\r\n| `cohere_compass` | `_get_vision_info`, via `get_num_image_tokens` | threaded, as Qwen2-VL |",
     "author": "Hotragn",
     "state": "open",
     "labels": [
@@ -22,38 +22,88 @@
     ],
     "url": "https://github.com/vllm-project/vllm/pull/54527",
     "createdAt": "2026-08-31T08:21:53.000Z",
-    "updatedAt": "2026-10-01T06:14:29.000Z",
+    "updatedAt": "2026-10-02T02:13:16.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-09-01T05:28:24.707Z",
-    "contentHash": "sha256:468ebea5e857a44e650d1c8ce9791d9e83ceed35442d45734e194150477227e9",
+    "contentHash": "sha256:004c0fb5252963cd6e9b2b7e0edecfb3d78a71083b3adec7be08add9759743e6",
     "category": "FIX",
     "categorySource": "rules",
     "summary": null
   },
   {
-    "id": "vllm-pr-53692",
-    "nodeId": "PR_kwDOI7xefs8AAAABA5jEiA",
+    "id": "vllm-pr-52711",
+    "nodeId": "PR_kwDOI7xefs8AAAABAHVOow",
     "repository": "vllm-project/vllm",
-    "number": 53692,
+    "number": 52711,
     "type": "pr",
-    "title": "[CI][Docs] Fix decode/prefill consistency test prefix construction; add GLM-4-9B and Phi-4 to batch-invariant tested models",
-    "bodyExcerpt": "## Purpose\r\n\r\nTwo related changes, both following the review on this PR:\r\n\r\n1. **Fix a soundness bug in `tests/v1/determinism/test_batch_invariance.py::test_decode_logprobs_match_prefill_logprobs`.** The test rebuilt each prefill prefix from *text* and re-encoded it; `encode(decode(ids))` is not lossless for BPE tokenizers, so the \"prefill\" could evaluate a different token sequence than decode did and report false mismatches. The prefix is now built directly from token ids (`prompt_token_ids + decode_token_ids[:i]`), which also removes an O(N²) extra `llm.generate` per decoded token. This is the fix from #43317 (@Evangade), carried here at the maintainer's request after that PR went stale; the standalone tokenizer regression test from #43317 is dropped per the review there. Original report by @xRay2016 in #27433.\r\n2. **Add `zai-org/glm-4-9b-chat` and `microsoft/phi-4` to the tested-model list**, following the [invitation to submit model validations without a separate issue](https://github.com/vllm-project/vllm/pull/53247#issuecomment-5374419058).\r\n\r\nWhy the fix matters here: GLM was originally removed from this PR because the official suite reported a decode/prefill mismatch. Root cause (see the comments below): the model emits `'.'` + `'Here'` as `[13, 8419]`, which re-encodes to the single token `89329` (`'.Here'`), so the text-based prefix diverged from position 11 onward. With token-id prefixes GLM is fully green. Any model whose greedy output hits a BPE merge point can false-fail the unfixed test the same way.\r\n\r\nNot a duplicate: #43317 proposes the same test fix but has had no author activity since the May review and is marked stale; this PR carries that commit with its original authorship and sign-off instead of opening another PR.\r\n\r\n## Test Plan\r\n\r\nOfficial suite, `VLLM_BATCH_INVARIANT=1`, vLLM 0.28.0 (cu129 wheel), torch 2.13.0, Triton 3.7.1, RTX 4090 D (sm89) and H20 (sm90):\r\n\r\n```bash\r\nVLLM_TEST_MODEL=<model> pytest tests/v1/determinism/test_batch_invari",
-    "author": "LioEinaudi",
+    "title": "fix(mooncake): Restore TP replication awareness for DCP and reduce write amplification",
+    "bodyExcerpt": "\r\n### Motivation\r\n\r\nWhen `dcp_size > 1`, `_spec_tp_replication_factor` unconditionally returns 1, forcing every TP rank to save every chunk — `tp_size`× write amplification (e.g. 8× under TP8+DCP4). This is correct but wastes store bandwidth and capacity.\r\n\r\n### Changes\r\n\r\n**Restore TP replication awareness** (`worker.py`):\r\n- Remove the `if self.dcp_size > 1: return 1` override in `_spec_tp_replication_factor`, so the true factor is used (MLA=`tp_size`, GQA=`tp_size//num_kv_head`, Mamba=1).\r\n- Generalize `put_step` to `max(1, group_put_steps[g_idx] // dcp_size)` so each chunk is saved by exactly one rank per DCP namespace, reducing write amplification from `tp_size`× to `dcp_size`×.\r\n- Adjust `put_step_rank` to `(tp_rank // dcp_size + g_idx) % put_step` to stripe within each DCP subgroup.\r\n\r\n**Explicit per-rank DCP namespace** (`worker.py`, `data.py`):\r\n- Add `dcp_size`/`dcp_rank` to `KVCacheStoreSendingThread` and `KVCacheStoreRecvingThread`.\r\n- `key_for()` gains an optional `dcp_rank` parameter; save and load pass `dcp_rank=self.dcp_rank` so each rank writes to its own namespace.\r\n- Restructure `_init_lookup_key_prefixes` into `(shard_rank, dcp_rank, prefix)` tuples with separate TP-shard and DCP-namespace dimensions. Add `_lookup_num_shards` for the total shard count per group.\r\n\r\n**Safety guards** (`worker.py`):\r\n- Clamp `token_len` to `len(block_hashes) * hash_block_size` before save (prevents `AssertionError` after external cache hit).\r\n- Skip `NULL_BLOCK_ID` chunks during load (protects against abort races).\r\n- Early return when all load chunks are filtered out (prevents `ZeroDivisionError`).\r\n\r\n### Performance impact (MLA, TP8, DCP4)\r\n\r\n| Metric | main | this PR |\r\n|--------|------|----------|\r\n| Write amplification | 8× per chunk | 2× per chunk |\r\n| Lookup keys per chunk | 8 | 4 |\r\n| Correctness | ✓ | ✓ |\r\n\r\n### Production verification\r\n\r\nDeployed to GLM-5.2 (TP8, DCP4, MLA): external prefix cache hit rate 28.3%, no regressions.\r\n\r\n### Breaking changes\r\n\r\n",
+    "author": "Leoyzen",
     "state": "open",
     "labels": [
-      "documentation",
-      "ready",
-      "glm"
+      "needs-rebase",
+      "kv-connector",
+      "mooncake"
     ],
-    "url": "https://github.com/vllm-project/vllm/pull/53692",
-    "createdAt": "2026-08-25T07:02:31.000Z",
-    "updatedAt": "2026-10-01T06:01:25.000Z",
+    "url": "https://github.com/vllm-project/vllm/pull/52711",
+    "createdAt": "2026-08-18T07:57:26.000Z",
+    "updatedAt": "2026-10-01T11:01:15.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-26T02:09:14.386Z",
-    "contentHash": "sha256:fde18ea8178e92f22bb7cd15f8176b15f2df313d129be5bf282e9aa002d4af7c",
+    "contentHash": "sha256:da25e2f4eeba399496d1e7afb83f1940f5cb9d72df7005bc2eec7d486e0e69d8",
     "category": "FIX",
     "categorySource": "rules",
     "summary": null
+  },
+  {
+    "id": "vllm-pr-51309",
+    "nodeId": "PR_kwDOI7xefs77w-6a",
+    "repository": "vllm-project/vllm",
+    "number": 51309,
+    "type": "pr",
+    "title": "[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
+    "bodyExcerpt": "## Summary\r\n\r\nWith cross-layer index sharing, only some attention layers update the shared top-k buffer.\r\nThe old path still remapped that buffer on every layer.\r\n\r\nThis PR runs the remap only when the layer owns an indexer. For GLM-5.2 with\r\n`index_topk_freq = 4`, this reduces remaps from 78 to 21 per forward pass.\r\n\r\n## Safety\r\n\r\n- Layer 0 always owns an indexer, so the shared output is initialized before reuse.\r\n- Non-indexer layers do not change the inputs to the remap.\r\n- The default `index_topk_freq = 1` path is unchanged.\r\n- Speculative decoding still remaps on every layer.\r\n\r\n## Update: indexer and non-indexer layers are two KV cache groups\r\n\r\nhttps://github.com/vllm-project/vllm/pull/53781  added the is_index_group_leader field to MLAAttentionSpec: `is_index_group_leader=self.indexer is not None,`. Layers can only share a KV cache group if they agree on is_index_group_leader, so once the flag is set per layer, indexer and non-indexer layers land in different groups and therefore get different metadata instances with separate paged_kv_indices\r\n\r\n```\r\nindex_group_leader_set = {spec.is_index_group_leader for spec in specs}\r\nassert (\r\n    ...\r\n    and len(index_group_leader_set) == 1\r\n    ...\r\n), (\r\n    \"All attention layers in the same KV cache group must use the same \"\r\n    \"... index-sharing role, ...\"\r\n)\r\n```\r\n\r\nSo, remap should run for all indexer layers and the first non-indexer layer. The two non-indexer layer following the first non-indexer layer doesn't need a remap.\r\n\r\nThe following table shows how the remap condition changed between the commits and how it is implemented by `index_epoch` and  `remapped_epoch`. index_epoch is fixed per layer at construction: it counts indexer writes up to and including that layer - which selection is this layer entitled to read. remapped_epoch lives on the metadata and moves during the pass: it records which selection is currently sitting in that group's paged_kv_indices. A mismatch means the group is holding an older ",
+    "author": "amd-sriram",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "ready",
+      "mrv1-only"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/51309",
+    "createdAt": "2026-08-06T21:10:14.000Z",
+    "updatedAt": "2026-10-01T10:01:08.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T07:14:16.853Z",
+    "contentHash": "sha256:e9ac6f3c1c41e5b9e02481e822dc582509cf4415aab599c07eac984d5d8e6678",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "ROCm跳过非索引层冗余稀疏索引重映射",
+      "summaryZh": "优化仅由拥有 indexer 的层执行稀疏索引 remap；非索引层直接进入 MLA kernel，解决跨层索引共享时，旧路径在每一层都重映射共享 top-k 缓冲区，导致非索引层执行冗余 remap；在 MI355X、TP=4、GLM-5.2-MXFP4、index_topk_freq=4 条件下，每次前向 remap 从 78 次降至 21 次；remap kernel 启动次数减少 73.3%，GPU 时间减少 73.0%。默认 index_topk_freq=1 路径及推测解码路径保持不变",
+      "models": [
+        "GLM-5.2-MXFP4"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "面向 ROCm 稀疏索引器和跨层索引共享场景，实测硬件为 MI355X。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
+        "【正文】This PR runs the remap only when the layer owns an indexer. For GLM-5.2 with index_topk_freq = 4, this reduces remaps من"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
   },
   {
     "id": "vllm-pr-51314",
@@ -71,10 +121,10 @@
     ],
     "url": "https://github.com/vllm-project/vllm/pull/51314",
     "createdAt": "2026-08-06T21:41:17.000Z",
-    "updatedAt": "2026-09-30T18:36:42.000Z",
+    "updatedAt": "2026-10-01T10:00:20.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-21T07:14:16.853Z",
-    "contentHash": "sha256:617cdeb626c1b9fefbb34a2e7903fddd26d06863ee5b7c0b7bb2c2cda022113e",
+    "contentHash": "sha256:3554ed5ee7a30e346dcbb074621365396712aa6c09000b6cd0a48d6c9ef999b8",
     "category": "PERFORMANCE",
     "categorySource": "ai",
     "summary": {
@@ -105,54 +155,29 @@
     }
   },
   {
-    "id": "vllm-pr-51309",
-    "nodeId": "PR_kwDOI7xefs77w-6a",
+    "id": "vllm-pr-53692",
+    "nodeId": "PR_kwDOI7xefs8AAAABA5jEiA",
     "repository": "vllm-project/vllm",
-    "number": 51309,
+    "number": 53692,
     "type": "pr",
-    "title": "[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
-    "bodyExcerpt": "## Summary\r\n\r\nWith cross-layer index sharing, only some attention layers update the shared top-k buffer.\r\nThe old path still remapped that buffer on every layer.\r\n\r\nThis PR runs the remap only when the layer owns an indexer. For GLM-5.2 with\r\n`index_topk_freq = 4`, this reduces remaps from 78 to 21 per forward pass.\r\n\r\n## Safety\r\n\r\n- Layer 0 always owns an indexer, so the shared output is initialized before reuse.\r\n- Non-indexer layers do not change the inputs to the remap.\r\n- The default `index_topk_freq = 1` path is unchanged.\r\n- Speculative decoding still remaps on every layer.\r\n\r\n## Update: indexer and non-indexer layers are two KV cache groups\r\n\r\nhttps://github.com/vllm-project/vllm/pull/53781  added the is_index_group_leader field to MLAAttentionSpec: `is_index_group_leader=self.indexer is not None,`. Layers can only share a KV cache group if they agree on is_index_group_leader, so once the flag is set per layer, indexer and non-indexer layers land in different groups and therefore get different metadata instances with separate paged_kv_indices\r\n\r\n```\r\nindex_group_leader_set = {spec.is_index_group_leader for spec in specs}\r\nassert (\r\n    ...\r\n    and len(index_group_leader_set) == 1\r\n    ...\r\n), (\r\n    \"All attention layers in the same KV cache group must use the same \"\r\n    \"... index-sharing role, ...\"\r\n)\r\n```\r\n\r\nSo, remap should run for all indexer layers and the first non-indexer layer. The two non-indexer layer following the first non-indexer layer doesn't need a remap.\r\n\r\nThe following table shows how the remap condition changed between the commits and how it is implemented by `index_epoch` and  `remapped_epoch`. index_epoch is fixed per layer at construction: it counts indexer writes up to and including that layer - which selection is this layer entitled to read. remapped_epoch lives on the metadata and moves during the pass: it records which selection is currently sitting in that group's paged_kv_indices. A mismatch means the group is holding an older ",
-    "author": "amd-sriram",
+    "title": "[CI][Docs] Fix decode/prefill consistency test prefix construction; add GLM-4-9B and Phi-4 to batch-invariant tested models",
+    "bodyExcerpt": "## Purpose\r\n\r\nTwo related changes, both following the review on this PR:\r\n\r\n1. **Fix a soundness bug in `tests/v1/determinism/test_batch_invariance.py::test_decode_logprobs_match_prefill_logprobs`.** The test rebuilt each prefill prefix from *text* and re-encoded it; `encode(decode(ids))` is not lossless for BPE tokenizers, so the \"prefill\" could evaluate a different token sequence than decode did and report false mismatches. The prefix is now built directly from token ids (`prompt_token_ids + decode_token_ids[:i]`), which also removes an O(N²) extra `llm.generate` per decoded token. This is the fix from #43317 (@Evangade), carried here at the maintainer's request after that PR went stale; the standalone tokenizer regression test from #43317 is dropped per the review there. Original report by @xRay2016 in #27433.\r\n2. **Add `zai-org/glm-4-9b-chat` and `microsoft/phi-4` to the tested-model list**, following the [invitation to submit model validations without a separate issue](https://github.com/vllm-project/vllm/pull/53247#issuecomment-5374419058).\r\n\r\nWhy the fix matters here: GLM was originally removed from this PR because the official suite reported a decode/prefill mismatch. Root cause (see the comments below): the model emits `'.'` + `'Here'` as `[13, 8419]`, which re-encodes to the single token `89329` (`'.Here'`), so the text-based prefix diverged from position 11 onward. With token-id prefixes GLM is fully green. Any model whose greedy output hits a BPE merge point can false-fail the unfixed test the same way.\r\n\r\nNot a duplicate: #43317 proposes the same test fix but has had no author activity since the May review and is marked stale; this PR carries that commit with its original authorship and sign-off instead of opening another PR.\r\n\r\n## Test Plan\r\n\r\nOfficial suite, `VLLM_BATCH_INVARIANT=1`, vLLM 0.28.0 (cu129 wheel), torch 2.13.0, Triton 3.7.1, RTX 4090 D (sm89) and H20 (sm90):\r\n\r\n```bash\r\nVLLM_TEST_MODEL=<model> pytest tests/v1/determinism/test_batch_invari",
+    "author": "LioEinaudi",
     "state": "open",
     "labels": [
-      "rocm",
+      "documentation",
       "ready",
-      "mrv1-only"
+      "glm"
     ],
-    "url": "https://github.com/vllm-project/vllm/pull/51309",
-    "createdAt": "2026-08-06T21:10:14.000Z",
-    "updatedAt": "2026-09-30T18:36:29.000Z",
+    "url": "https://github.com/vllm-project/vllm/pull/53692",
+    "createdAt": "2026-08-25T07:02:31.000Z",
+    "updatedAt": "2026-10-01T06:01:25.000Z",
     "mergedAt": null,
-    "firstSeenAt": "2026-08-21T07:14:16.853Z",
-    "contentHash": "sha256:4a0ddcce2e3bed9312f38f916d442436abb5e9f47b1859209a0889282226e64f",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "ROCm跳过非索引层冗余稀疏索引重映射",
-      "summaryZh": "优化仅由拥有 indexer 的层执行稀疏索引 remap；非索引层直接进入 MLA kernel，解决跨层索引共享时，旧路径在每一层都重映射共享 top-k 缓冲区，导致非索引层执行冗余 remap；在 MI355X、TP=4、GLM-5.2-MXFP4、index_topk_freq=4 条件下，每次前向 remap 从 78 次降至 21 次；remap kernel 启动次数减少 73.3%，GPU 时间减少 73.0%。默认 index_topk_freq=1 路径及推测解码路径保持不变",
-      "models": [
-        "GLM-5.2-MXFP4"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "面向 ROCm 稀疏索引器和跨层索引共享场景，实测硬件为 MI355X。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
-        "【正文】This PR runs the remap only when the layer owns an indexer. For GLM-5.2 with index_topk_freq = 4, this reduces remaps من"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
+    "firstSeenAt": "2026-08-26T02:09:14.386Z",
+    "contentHash": "sha256:fde18ea8178e92f22bb7cd15f8176b15f2df313d129be5bf282e9aa002d4af7c",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
   },
   {
     "id": "vllm-pr-51315",
@@ -1134,30 +1159,6 @@
     "firstSeenAt": "2026-08-24T10:27:08.865Z",
     "contentHash": "sha256:b8658b1466065493707de40d4ed49018b1cf5edc71f882e46ff8acad32ce6671",
     "category": "DOCS",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-52711",
-    "nodeId": "PR_kwDOI7xefs8AAAABAHVOow",
-    "repository": "vllm-project/vllm",
-    "number": 52711,
-    "type": "pr",
-    "title": "fix(mooncake): Restore TP replication awareness for DCP and reduce write amplification",
-    "bodyExcerpt": "\r\n### Motivation\r\n\r\nWhen `dcp_size > 1`, `_spec_tp_replication_factor` unconditionally returns 1, forcing every TP rank to save every chunk — `tp_size`× write amplification (e.g. 8× under TP8+DCP4). This is correct but wastes store bandwidth and capacity.\r\n\r\n### Changes\r\n\r\n**Restore TP replication awareness** (`worker.py`):\r\n- Remove the `if self.dcp_size > 1: return 1` override in `_spec_tp_replication_factor`, so the true factor is used (MLA=`tp_size`, GQA=`tp_size//num_kv_head`, Mamba=1).\r\n- Generalize `put_step` to `max(1, group_put_steps[g_idx] // dcp_size)` so each chunk is saved by exactly one rank per DCP namespace, reducing write amplification from `tp_size`× to `dcp_size`×.\r\n- Adjust `put_step_rank` to `(tp_rank // dcp_size + g_idx) % put_step` to stripe within each DCP subgroup.\r\n\r\n**Explicit per-rank DCP namespace** (`worker.py`, `data.py`):\r\n- Add `dcp_size`/`dcp_rank` to `KVCacheStoreSendingThread` and `KVCacheStoreRecvingThread`.\r\n- `key_for()` gains an optional `dcp_rank` parameter; save and load pass `dcp_rank=self.dcp_rank` so each rank writes to its own namespace.\r\n- Restructure `_init_lookup_key_prefixes` into `(shard_rank, dcp_rank, prefix)` tuples with separate TP-shard and DCP-namespace dimensions. Add `_lookup_num_shards` for the total shard count per group.\r\n\r\n**Safety guards** (`worker.py`):\r\n- Clamp `token_len` to `len(block_hashes) * hash_block_size` before save (prevents `AssertionError` after external cache hit).\r\n- Skip `NULL_BLOCK_ID` chunks during load (protects against abort races).\r\n- Early return when all load chunks are filtered out (prevents `ZeroDivisionError`).\r\n\r\n### Performance impact (MLA, TP8, DCP4)\r\n\r\n| Metric | main | this PR |\r\n|--------|------|----------|\r\n| Write amplification | 8× per chunk | 2× per chunk |\r\n| Lookup keys per chunk | 8 | 4 |\r\n| Correctness | ✓ | ✓ |\r\n\r\n### Production verification\r\n\r\nDeployed to GLM-5.2 (TP8, DCP4, MLA): external prefix cache hit rate 28.3%, no regressions.\r\n\r\n### Breaking changes\r\n\r\n",
-    "author": "Leoyzen",
-    "state": "open",
-    "labels": [
-      "needs-rebase",
-      "kv-connector"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/52711",
-    "createdAt": "2026-08-18T07:57:26.000Z",
-    "updatedAt": "2026-09-16T16:37:37.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-26T02:09:14.386Z",
-    "contentHash": "sha256:f20ae1323603ab7b57f2fbc14ca42935ef3393aa171aa6c4ff4f0c55ff630835",
-    "category": "FIX",
     "categorySource": "rules",
     "summary": null
   },

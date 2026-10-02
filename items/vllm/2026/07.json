@@ -1,5 +1,106 @@
 [
   {
+    "id": "vllm-pr-50240",
+    "nodeId": "PR_kwDOI7xefs736h44",
+    "repository": "vllm-project/vllm",
+    "number": 50240,
+    "type": "pr",
+    "title": "[Bugfix] Count prompt-opened Poolside reasoning tokens",
+    "bodyExcerpt": "Count prompt-injected thinking spans through the first closing marker, including generations truncated before the marker, while preserving disabled-thinking accounting.\r\n\r\n## Purpose\r\n\r\nPoolside Laguna's chat template can inject the opening `<think>` token into the generation prompt. Generated token IDs then begin inside the reasoning span and contain only `</think>`, or contain no marker at all when generation is truncated.\r\n\r\n`PoolsideV1ReasoningParser` currently inherits the default token counter through `DeepSeekV3ReasoningParser`, so the Responses API reports `reasoning_tokens=0` even when the parser emitted a reasoning item.\r\n\r\nThis change adds a Poolside-specific counter that:\r\n\r\n- preserves zero reasoning tokens for the `IdentityReasoningParser` path;\r\n- delegates generated `<think>...</think>` spans to the shared counter;\r\n- counts prompt-opened reasoning up to the first `</think>`; and\r\n- counts all generated tokens when generation truncates before `</think>`.\r\n\r\nFixes #49711.\r\n\r\nThis is not a duplicate of the related open PRs:\r\n\r\n- #49743 handles output containing `</think>` without `<think>`, but its current implementation still returns zero when generation truncates before the closing marker.\r\n- #41077 adds DeepSeek V3 forwarding and GLM-specific absent-start handling; it likewise returns zero when no closing marker is generated.\r\n- #49728 changes Poolside's reasoning-parser enablement semantics. This change does not force reasoning on and preserves the existing Identity path for no-thinking messages and native tool calls.\r\n\r\nThe follow-up also updates ParsableContext to buffer token IDs for the current generation and count reasoning at the RequestOutput.finished boundary. This preserves streaming deltas within a generation while counting built-in-tool follow-up generations independently.\r\n\r\nModel evaluation is not applicable because this patch only corrects token accounting in the Responses usage metadata. It does not change model generation, reasoning",
+    "author": "BIT-Orange",
+    "state": "open",
+    "labels": [
+      "bug",
+      "frontend",
+      "needs-rebase",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/50240",
+    "createdAt": "2026-07-29T10:02:53.000Z",
+    "updatedAt": "2026-10-02T03:38:38.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-28T05:42:54.507Z",
+    "contentHash": "sha256:281a987cceca19370fab8a533084a2877adbdb8d2b1d56579797d172fb9ae7c4",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-48726",
+    "nodeId": "PR_kwDOI7xefs7x-6o7",
+    "repository": "vllm-project/vllm",
+    "number": 48726,
+    "type": "pr",
+    "title": "[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
+    "bodyExcerpt": "## 📌 Description\r\n\r\nHi @youkaichao @WoosukKwon @mgoin @hmellor @njhill @Isotr0py @DarkLight1337, could you please take a look at this PR when you have a chance?\r\n\r\nThis PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA):\r\n\r\n- **LiteTopK** accelerates the indexer by fusing MQA scoring, online filtering, and TopK selection without materializing the `[num_q, seq_len]` score matrix.\r\n- **LiteDSA** further accelerates the subsequent sparse-attention computation by packing multiple neighboring queries into one larger masked attention GEMM, reusing their heavily overlapping KV sets.\r\n\r\nTo the best of our knowledge, LiteTopk is the first Indexer-Topk implementation that avoids to store the score matrix, and LiteDSA is the first that converts multiple small per-token sparse-attention GEMMs into a grouped masked GEMM while preserving each query's original attend set. The corresponding paper is available on [arXiv](https://arxiv.org/abs/2607.11976).\r\n\r\n**At 1M-token prefill, LiteTopK accelerates GLM-5.2 and DeepSeek-V4-Flash by 1.29× and 1.08×, respectively. LiteDSA increases the end-to-end speedups to 1.40× and 1.25×, with no accuracy loss.**\r\n\r\nThanks to my collaborators Jianyang Gao ([@gaoj0017](https://github.com/gaoj0017)) from ETH Zurich, Peiqi Yin ([@yinpeiqi](https://github.com/yinpeiqi)) from CUHK, and Jiangneng Li ([@gravesprite](https://github.com/gravesprite)) from NTU.\r\n\r\n### Motivation\r\n\r\nDSA models such as **DeepSeek-V3.2/DeepSeek-V4**, **GLM-4.6/GLM-5.2**, and **LongCat-2.0** use a sparse-attention indexer during prefill. The current indexer computes an FP8 MQA score for every query/KV pair, materializes a `[num_q, seq_len]` matrix in HBM, and then runs a per-row TopK:\r\n\r\n```python\r\nlogits = fp8_fp4_mqa_logits(...)        # materializes [num_q, seq_len] in HBM\r\nops.top_k_per_row_prefill(logits, ...)  # TopK over the materialized matrix\r\n```\r\n\r\nAt 256K–1M context, this transient matrix is both large and expensive to ",
+    "author": "Heisenberg-Yin",
+    "state": "open",
+    "labels": [
+      "documentation",
+      "performance",
+      "new-model",
+      "rocm",
+      "structured-output",
+      "frontend",
+      "intel-gpu",
+      "speculative-decoding",
+      "needs-rebase",
+      "ci/build",
+      "multi-modality",
+      "llama",
+      "qwen",
+      "deepseek",
+      "cpu",
+      "gpt-oss",
+      "kv-connector",
+      "nvidia",
+      "quantization",
+      "mrv2",
+      "DSv4",
+      "rust",
+      "kimi"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/48726",
+    "createdAt": "2026-07-15T10:48:12.000Z",
+    "updatedAt": "2026-10-01T21:32:06.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:e0de407202fbdbec5abcc3c63077928c545254d65c58ecdb9bba3278370f093c",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "新增DSA LiteTopK与LiteDSA预填充优化",
+      "summaryZh": "新增LiteTopK与LiteDSA两项SM100预填充优化：LiteTopK融合MQA评分、在线过滤和TopK选择，避免物化[num_q, seq_len]评分矩阵；LiteDSA将相邻查询的多个小型稀疏注意力GEMM打包为带掩码的分组GEMM，并保留各查询原有的注意力集合；在1M-token预填充下，LiteTopK使GLM-5.2和DeepSeek-V4-Flash分别加速1.29倍和1.08倍；结合LiteDSA后端到端加速分别达到1.40倍和1.25倍，且无精度损失",
+      "models": [
+        "GLM-5.2",
+        "DeepSeek-V4-Flash",
+        "DeepSeek-V3.2",
+        "DeepSeek-V4",
+        "GLM-4.6",
+        "LongCat-2.0"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "TRAINING"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "面向SM100平台的DSA模型预填充性能优化。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
+        "【正文】This PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA)"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-issue-47236",
     "nodeId": "I_kwDOI7xefs8AAAABHQUigw",
     "repository": "vllm-project/vllm",
@@ -198,31 +299,6 @@
     "firstSeenAt": "2026-09-05T04:48:46.974Z",
     "contentHash": "sha256:c40269e95de723700c9c31841792b9a07add88de7714a2eaa34594c2e44afd5f",
     "category": "NEW_SUPPORT",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-50240",
-    "nodeId": "PR_kwDOI7xefs736h44",
-    "repository": "vllm-project/vllm",
-    "number": 50240,
-    "type": "pr",
-    "title": "[Bugfix] Count prompt-opened Poolside reasoning tokens",
-    "bodyExcerpt": "Count prompt-injected thinking spans through the first closing marker, including generations truncated before the marker, while preserving disabled-thinking accounting.\r\n\r\n## Purpose\r\n\r\nPoolside Laguna's chat template can inject the opening `<think>` token into the generation prompt. Generated token IDs then begin inside the reasoning span and contain only `</think>`, or contain no marker at all when generation is truncated.\r\n\r\n`PoolsideV1ReasoningParser` currently inherits the default token counter through `DeepSeekV3ReasoningParser`, so the Responses API reports `reasoning_tokens=0` even when the parser emitted a reasoning item.\r\n\r\nThis change adds a Poolside-specific counter that:\r\n\r\n- preserves zero reasoning tokens for the `IdentityReasoningParser` path;\r\n- delegates generated `<think>...</think>` spans to the shared counter;\r\n- counts prompt-opened reasoning up to the first `</think>`; and\r\n- counts all generated tokens when generation truncates before `</think>`.\r\n\r\nFixes #49711.\r\n\r\nThis is not a duplicate of the related open PRs:\r\n\r\n- #49743 handles output containing `</think>` without `<think>`, but its current implementation still returns zero when generation truncates before the closing marker.\r\n- #41077 adds DeepSeek V3 forwarding and GLM-specific absent-start handling; it likewise returns zero when no closing marker is generated.\r\n- #49728 changes Poolside's reasoning-parser enablement semantics. This change does not force reasoning on and preserves the existing Identity path for no-thinking messages and native tool calls.\r\n\r\nThe follow-up also updates ParsableContext to buffer token IDs for the current generation and count reasoning at the RequestOutput.finished boundary. This preserves streaming deltas within a generation while counting built-in-tool follow-up generations independently.\r\n\r\nModel evaluation is not applicable because this patch only corrects token accounting in the Responses usage metadata. It does not change model generation, reasoning",
-    "author": "BIT-Orange",
-    "state": "open",
-    "labels": [
-      "bug",
-      "frontend",
-      "tool-calling"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/50240",
-    "createdAt": "2026-07-29T10:02:53.000Z",
-    "updatedAt": "2026-09-28T02:46:58.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-28T05:42:54.507Z",
-    "contentHash": "sha256:edcaa308d03a84aaf7abbed11f4cbe79a483325cd20beff7fa695ec532765689",
-    "category": "FIX",
     "categorySource": "rules",
     "summary": null
   },
@@ -620,81 +696,6 @@
     "category": "DOCS",
     "categorySource": "rules",
     "summary": null
-  },
-  {
-    "id": "vllm-pr-48726",
-    "nodeId": "PR_kwDOI7xefs7x-6o7",
-    "repository": "vllm-project/vllm",
-    "number": 48726,
-    "type": "pr",
-    "title": "[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
-    "bodyExcerpt": "## 📌 Description\r\n\r\nHi @youkaichao @WoosukKwon @mgoin @hmellor @njhill @Isotr0py @DarkLight1337, could you please take a look at this PR when you have a chance?\r\n\r\nThis PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA):\r\n\r\n- **LiteTopK** accelerates the indexer by fusing MQA scoring, online filtering, and TopK selection without materializing the `[num_q, seq_len]` score matrix.\r\n- **LiteDSA** further accelerates the subsequent sparse-attention computation by packing multiple neighboring queries into one larger masked attention GEMM, reusing their heavily overlapping KV sets.\r\n\r\nTo the best of our knowledge, LiteTopk is the first Indexer-Topk implementation that avoids to store the score matrix, and LiteDSA is the first that converts multiple small per-token sparse-attention GEMMs into a grouped masked GEMM while preserving each query's original attend set. The corresponding paper is available on [arXiv](https://arxiv.org/abs/2607.11976).\r\n\r\n**At 1M-token prefill, LiteTopK accelerates GLM-5.2 and DeepSeek-V4-Flash by 1.29× and 1.08×, respectively. LiteDSA increases the end-to-end speedups to 1.40× and 1.25×, with no accuracy loss.**\r\n\r\nThanks to my collaborators Jianyang Gao ([@gaoj0017](https://github.com/gaoj0017)) from ETH Zurich, Peiqi Yin ([@yinpeiqi](https://github.com/yinpeiqi)) from CUHK, and Jiangneng Li ([@gravesprite](https://github.com/gravesprite)) from NTU.\r\n\r\n### Motivation\r\n\r\nDSA models such as **DeepSeek-V3.2/DeepSeek-V4**, **GLM-4.6/GLM-5.2**, and **LongCat-2.0** use a sparse-attention indexer during prefill. The current indexer computes an FP8 MQA score for every query/KV pair, materializes a `[num_q, seq_len]` matrix in HBM, and then runs a per-row TopK:\r\n\r\n```python\r\nlogits = fp8_fp4_mqa_logits(...)        # materializes [num_q, seq_len] in HBM\r\nops.top_k_per_row_prefill(logits, ...)  # TopK over the materialized matrix\r\n```\r\n\r\nAt 256K–1M context, this transient matrix is both large and expensive to ",
-    "author": "Heisenberg-Yin",
-    "state": "open",
-    "labels": [
-      "documentation",
-      "performance",
-      "new-model",
-      "rocm",
-      "structured-output",
-      "frontend",
-      "intel-gpu",
-      "speculative-decoding",
-      "needs-rebase",
-      "ci/build",
-      "multi-modality",
-      "llama",
-      "qwen",
-      "deepseek",
-      "cpu",
-      "gpt-oss",
-      "kv-connector",
-      "nvidia",
-      "quantization",
-      "mrv2",
-      "DSv4",
-      "rust",
-      "kimi"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/48726",
-    "createdAt": "2026-07-15T10:48:12.000Z",
-    "updatedAt": "2026-09-10T07:50:10.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:fa09baea1aa4dfca0aa56c334de0997f6477b0dfc9694804a7ce2119eb7ddbf3",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "新增DSA LiteTopK与LiteDSA预填充优化",
-      "summaryZh": "新增LiteTopK与LiteDSA两项SM100预填充优化：LiteTopK融合MQA评分、在线过滤和TopK选择，避免物化[num_q, seq_len]评分矩阵；LiteDSA将相邻查询的多个小型稀疏注意力GEMM打包为带掩码的分组GEMM，并保留各查询原有的注意力集合；在1M-token预填充下，LiteTopK使GLM-5.2和DeepSeek-V4-Flash分别加速1.29倍和1.08倍；结合LiteDSA后端到端加速分别达到1.40倍和1.25倍，且无精度损失",
-      "models": [
-        "GLM-5.2",
-        "DeepSeek-V4-Flash",
-        "DeepSeek-V3.2",
-        "DeepSeek-V4",
-        "GLM-4.6",
-        "LongCat-2.0"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "TRAINING"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "面向SM100平台的DSA模型预填充性能优化。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
-        "【正文】This PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA)"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
   },
   {
     "id": "vllm-pr-49539",
