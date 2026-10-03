@@ -1,5 +1,53 @@
 [
   {
+    "id": "vllm-issue-47127",
+    "nodeId": "I_kwDOI7xefs8AAAABHJbjoA",
+    "repository": "vllm-project/vllm",
+    "number": 47127,
+    "type": "issue",
+    "title": "[Bug] OOM during profile_run with GLM-5.2 PD disaggregation + FlashInfer CUTLASS MoE on H100",
+    "bodyExcerpt": "## Description\n\nWhen launching GLM-5.2 with PD (prefill/decode) disaggregation using the configuration from [recipes.vllm.ai](https://recipes.vllm.ai/zai-org/GLM-5.2?prefill_mode=dep&decode_mode=dep&features=tool_calling%2Creasoning%2Cspec_decoding&advanced=max_batched_8k%2Cgpu_mem_095%2Cmax_model_len_auto%2Cmax_num_seqs_256), the worker process OOMs during `profile_run` → `_dummy_run` when FlashInfer CUTLASS MoE kernel attempts to allocate 26.21 GiB workspace memory.\n\n## Environment\n\n- vLLM version: 0.23.0\n- GPU: H100 80GB (79.18 GiB)\n- Model: GLM-5.2 (703.74 GiB checkpoint, GlmMoeDsaForCausalLM architecture)\n- Python: 3.12\n\n## Command\n\n```bash\nvllm serve /data/ \\\n  --served-model-name GLM-5.2 \\\n  --trust-remote-code \\\n  --host 10.16.0.228 \\\n  --max-num-seqs 128 \\\n  --max-model-len 202752 \\\n  --port 8001 \\\n  --max-num-batched-tokens 8192 \\\n  --tensor-parallel-size 1 \\\n  --gpu-memory-utilization 0.95 \\\n  --kv-transfer-config '{\"kv_connector\":\"MultiConnector\",\"kv_role\":\"kv_both\",\"kv_connector_extra_config\":{\"connectors\":[{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\",\"kv_load_failure_policy\":\"fail\",\"kv_buffer_device\":\"cuda\",\"kv_connector_extra_config\":{\"enforce_handshake_compat\":false}},{\"kv_connector\":\"MooncakeStoreConnector\",\"kv_role\":\"kv_both\",\"kv_connector_extra_config\":{\"load_async\":true,\"enable_cross_layers_blocks\":true}}]}}' \\\n  --data-parallel-size 16 \\\n  --data-parallel-size-local 8 \\\n  --data-parallel-start-rank 0 \\\n  --data-parallel-address 10.16.0.228 \\\n  --data-parallel-rpc-port 13389 \\\n  --tool-call-parser glm47 \\\n  --enable-expert-parallel \\\n  --enable-chunked-prefill \\\n  --enforce-eager \\\n  --speculative-config '{\"num_speculative_tokens\":5,\"method\":\"deepseek_mtp\"}' \\\n  --enable-auto-tool-choice \\\n  --reasoning-parser glm45 \\\n  --data-parallel-hybrid-lb \\\n  --disable-hybrid-kv-cache-manager \\\n  --kv-cache-dtype fp8\n```\n\n## Error\n\nModel weights load successfully (67.2 GiB on each GPU), but the profiling run fails when the FlashInfer CUTLASS MoE ker",
+    "author": "felix0080",
+    "state": "open",
+    "labels": [
+      "unstale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/47127",
+    "createdAt": "2026-06-30T07:22:15.000Z",
+    "updatedAt": "2026-10-03T01:46:19.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:7f16d2ebdd167f68215d1addb9eb19086fbe2f34fee7673dcd327894a8eb6d85",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.2 profile_run 因 MoE 工作区 OOM",
+      "summaryZh": "H100 80GB 上使用 PD 分离和 FlashInfer CUTLASS MoE 启动 GLM-5.2：模型权重加载成功后，profile_run 的 _dummy_run 在 FlashInfer CUTLASS MoE 内核尝试分配 26.21 GiB 工作区内存时发生 OOM；vLLM 0.23.0、GlmMoeDsaForCausalLM 架构及给定 PD 分离配置无法完成启动",
+      "models": [
+        "GLM-5.2"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 H100 80GB 上采用该配置启动 GLM-5.2 的推理服务。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】OOM during profile_run with GLM-5.2 PD disaggregation + FlashInfer CUTLASS MoE on H100",
+        "【正文】the worker process OOMs during profile_run → _dummy_run when FlashInfer CUTLASS MoE kernel attempts to allocate 26.21 Gi"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-issue-44184",
     "nodeId": "I_kwDOI7xefs8AAAABD-kYNg",
     "repository": "vllm-project/vllm",
@@ -303,54 +351,6 @@
       "evidence": [
         "【标题】sparse-MLA indexer error with GLM 5.2 NVFP4 on RTX 6000 Pro SM120",
         "【正文】GPU models and configuration: NVIDIA RTX PRO 6000 Blackwell Server Edition"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-47127",
-    "nodeId": "I_kwDOI7xefs8AAAABHJbjoA",
-    "repository": "vllm-project/vllm",
-    "number": 47127,
-    "type": "issue",
-    "title": "[Bug] OOM during profile_run with GLM-5.2 PD disaggregation + FlashInfer CUTLASS MoE on H100",
-    "bodyExcerpt": "## Description\n\nWhen launching GLM-5.2 with PD (prefill/decode) disaggregation using the configuration from [recipes.vllm.ai](https://recipes.vllm.ai/zai-org/GLM-5.2?prefill_mode=dep&decode_mode=dep&features=tool_calling%2Creasoning%2Cspec_decoding&advanced=max_batched_8k%2Cgpu_mem_095%2Cmax_model_len_auto%2Cmax_num_seqs_256), the worker process OOMs during `profile_run` → `_dummy_run` when FlashInfer CUTLASS MoE kernel attempts to allocate 26.21 GiB workspace memory.\n\n## Environment\n\n- vLLM version: 0.23.0\n- GPU: H100 80GB (79.18 GiB)\n- Model: GLM-5.2 (703.74 GiB checkpoint, GlmMoeDsaForCausalLM architecture)\n- Python: 3.12\n\n## Command\n\n```bash\nvllm serve /data/ \\\n  --served-model-name GLM-5.2 \\\n  --trust-remote-code \\\n  --host 10.16.0.228 \\\n  --max-num-seqs 128 \\\n  --max-model-len 202752 \\\n  --port 8001 \\\n  --max-num-batched-tokens 8192 \\\n  --tensor-parallel-size 1 \\\n  --gpu-memory-utilization 0.95 \\\n  --kv-transfer-config '{\"kv_connector\":\"MultiConnector\",\"kv_role\":\"kv_both\",\"kv_connector_extra_config\":{\"connectors\":[{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\",\"kv_load_failure_policy\":\"fail\",\"kv_buffer_device\":\"cuda\",\"kv_connector_extra_config\":{\"enforce_handshake_compat\":false}},{\"kv_connector\":\"MooncakeStoreConnector\",\"kv_role\":\"kv_both\",\"kv_connector_extra_config\":{\"load_async\":true,\"enable_cross_layers_blocks\":true}}]}}' \\\n  --data-parallel-size 16 \\\n  --data-parallel-size-local 8 \\\n  --data-parallel-start-rank 0 \\\n  --data-parallel-address 10.16.0.228 \\\n  --data-parallel-rpc-port 13389 \\\n  --tool-call-parser glm47 \\\n  --enable-expert-parallel \\\n  --enable-chunked-prefill \\\n  --enforce-eager \\\n  --speculative-config '{\"num_speculative_tokens\":5,\"method\":\"deepseek_mtp\"}' \\\n  --enable-auto-tool-choice \\\n  --reasoning-parser glm45 \\\n  --data-parallel-hybrid-lb \\\n  --disable-hybrid-kv-cache-manager \\\n  --kv-cache-dtype fp8\n```\n\n## Error\n\nModel weights load successfully (67.2 GiB on each GPU), but the profiling run fails when the FlashInfer CUTLASS MoE ker",
-    "author": "felix0080",
-    "state": "open",
-    "labels": [
-      "stale"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/47127",
-    "createdAt": "2026-06-30T07:22:15.000Z",
-    "updatedAt": "2026-09-29T01:54:36.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:4a2dd3e0e173c1c5f286ea7ecb0e6752786cefd78c254209b9479abe760c4bd2",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5.2 profile_run 因 MoE 工作区 OOM",
-      "summaryZh": "H100 80GB 上使用 PD 分离和 FlashInfer CUTLASS MoE 启动 GLM-5.2：模型权重加载成功后，profile_run 的 _dummy_run 在 FlashInfer CUTLASS MoE 内核尝试分配 26.21 GiB 工作区内存时发生 OOM；vLLM 0.23.0、GlmMoeDsaForCausalLM 架构及给定 PD 分离配置无法完成启动",
-      "models": [
-        "GLM-5.2"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 H100 80GB 上采用该配置启动 GLM-5.2 的推理服务。",
-      "attention": "IMMEDIATE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】OOM during profile_run with GLM-5.2 PD disaggregation + FlashInfer CUTLASS MoE on H100",
-        "【正文】the worker process OOMs during profile_run → _dummy_run when FlashInfer CUTLASS MoE kernel attempts to allocate 26.21 Gi"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",

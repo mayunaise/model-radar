@@ -1,0 +1,23 @@
+[
+  {
+    "id": "verl-pr-8096",
+    "nodeId": "PR_kwDONIZfbs8AAAABGVHwAQ",
+    "repository": "volcengine/verl",
+    "number": 8096,
+    "type": "pr",
+    "title": "[fsdp, model] fix: run fused LM heads through FSDP2 hooks",
+    "bodyExcerpt": "### What does this PR do?\n\nFixes #8091. With untied embeddings, FSDP2 shards `lm_head` independently, but fused forwards read its weight from the parent. This bypasses the head's unsharding, mixed precision, CPU offload and backward hooks. A two-GPU Qwen3 reproducer fails with mixed Tensor/DTensor operands (Torch), BF16/FP32 operands (Triton), or CPU weights under offload.\n\nRun the fused projection through an FSDP-registered forward method on the existing head. The head keeps its own sharding group and ordinary logits `forward`; backend selection and label preparation remain unchanged. The dense, Qwen2-VL, Qwen3-VL, Qwen3.5 and GLM4V adapters share this entry point.\n\nRelated work: closed #7427 instead keeps the fused head in the root FSDP unit. Open #8004 adds an opt-in FP32 head and routes that branch through its head forward, while the default fused path still reads the weight directly. Open #5948 falls back to materialized logits for a sharded Qwen3-VL Torch head; this change retains fused computation and also fixes the default dense and other adapter paths. It does not implement #8090's Triton shape change or #7323's visual-call alignment.\n\n### Checklist Before Starting\n\n- [x] Search for similar PRs: https://github.com/verl-project/verl/pulls?q=is%3Apr+is%3Aopen+FSDP+fused\n- [x] Format the PR title as `[{modules}] {type}: {description}`.\n\n### Test\n\nOn two RTX 5090 GPUs, PyTorch 2.11.0+cu129, Transformers 5.6.1 and Liger 0.8.2:\n\n```bash\npython -m torch.distributed.run --standalone --nproc-per-node=2 -m pytest -sv tests/special_distributed/test_fused_lm_head_fsdp2.py\n# 144 passed on each rank (144 distributed cases, not 288 independent tests)\n```\n\nThe matrix covers six small random model configurations, Torch/Triton/Liger, tied/untied heads, CPU offload on/off, two accumulated micro-batches per update, two updates, and no-grad inference. Outputs, all trainable gradients and updated parameters are compared with both ordinary HF logits and the same fused arithmetic ",
+    "author": "cyanseek",
+    "state": "open",
+    "labels": [],
+    "url": "https://github.com/verl-project/verl/pull/8096",
+    "createdAt": "2026-10-02T18:05:35.000Z",
+    "updatedAt": "2026-10-02T18:05:37.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-10-03T05:35:22.408Z",
+    "contentHash": "sha256:42e4a482ce80e660ad4bc8b04d9866c774504c4c05d3a23c29c7ee4fe1c9412e",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  }
+]
