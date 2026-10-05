@@ -1,5 +1,31 @@
 [
   {
+    "id": "vllm-pr-49845",
+    "nodeId": "PR_kwDOI7xefs72bYW4",
+    "repository": "vllm-project/vllm",
+    "number": 49845,
+    "type": "pr",
+    "title": "[Bugfix] Pick a KV block size supported by every attention backend",
+    "bodyExcerpt": "## Purpose\n\nFixes #48286.\n\n`Platform.update_block_size_for_backend()` picks the KV cache block size from the **first** non-SSM attention backend only. Models that mix attention backends with disjoint block-size support break: GLM-DSA / DeepSeek-V3.2-style models pair a sparse-MLA main backend (`FLASHINFER_MLA_SPARSE`, supports `[32, 64]`, prefers 32) with `DeepseekV32IndexerBackend` (supports only `[64]`). The auto-selected 32 then fails much later in `select_common_block_size()` with the opaque\n\n```\nValueError: No common block size for 32.\n```\n\nand the only workaround is a manual `--block-size 64` (undocumented, as #48286 notes).\n\nThis PR was split in two to keep the diff reviewable. It now carries backend collection and block-size selection only (+131/-21). Aligning phases 2 and 3 to the full backend list follows in a separate PR once this one merges.\n\n## Changes\n\n- `Platform._find_non_ssm_backend()` becomes `_find_non_ssm_backends()` and returns every distinct non-SSM backend in layer order rather than the first. Both call sites are updated (`interface.py`, `cpu.py`); no caller of the old name remains.\n- New `Platform._preferred_block_size_for_backends()` returns the smallest block size every backend accepts:\n  - a single backend keeps today's behaviour via `get_preferred_block_size()`;\n  - if every backend accepts the default, the default wins;\n  - otherwise candidates are the least common multiples formed by taking one supported size per backend, tried in ascending order, and **each candidate is confirmed against every backend** via `supports_block_size()`;\n  - if nothing is common it raises `ValueError` naming each backend and its supported sizes.\n- Candidates are validated rather than inferred. A backend may override `supports_block_size()` to accept exact sizes only, as CPU_MLA does by accepting 16 but no multiple of it, so \"a multiple of a supported size\" is not a safe assumption. This is the correctness point @yewentao256 raised in review.\n- Phase 1 of `up",
+    "author": "divyvasal",
+    "state": "merged",
+    "labels": [
+      "bug",
+      "ready",
+      "v1",
+      "cpu"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49845",
+    "createdAt": "2026-07-25T23:47:24.000Z",
+    "updatedAt": "2026-10-04T17:13:36.000Z",
+    "mergedAt": "2026-09-23T20:36:35.000Z",
+    "firstSeenAt": "2026-09-04T04:56:30.610Z",
+    "contentHash": "sha256:9f00f337829e56573fe794a3b93a9b32cfdc9b85033be8d8f13f68109d66f875",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-48370",
     "nodeId": "PR_kwDOI7xefs7wnO--",
     "repository": "vllm-project/vllm",
@@ -419,32 +445,6 @@
     "firstSeenAt": "2026-09-24T05:10:30.315Z",
     "contentHash": "sha256:afbe4ee93f8873fa3ac581950614f3a47d28bbd664eb6a247c65c89a36f3770d",
     "category": "BUG",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-49845",
-    "nodeId": "PR_kwDOI7xefs72bYW4",
-    "repository": "vllm-project/vllm",
-    "number": 49845,
-    "type": "pr",
-    "title": "[Bugfix] Pick a KV block size supported by every attention backend",
-    "bodyExcerpt": "## Purpose\n\nFixes #48286.\n\n`Platform.update_block_size_for_backend()` picks the KV cache block size from the **first** non-SSM attention backend only. Models that mix attention backends with disjoint block-size support break: GLM-DSA / DeepSeek-V3.2-style models pair a sparse-MLA main backend (`FLASHINFER_MLA_SPARSE`, supports `[32, 64]`, prefers 32) with `DeepseekV32IndexerBackend` (supports only `[64]`). The auto-selected 32 then fails much later in `select_common_block_size()` with the opaque\n\n```\nValueError: No common block size for 32.\n```\n\nand the only workaround is a manual `--block-size 64` (undocumented, as #48286 notes).\n\nThis PR was split in two to keep the diff reviewable. It now carries backend collection and block-size selection only (+131/-21). Aligning phases 2 and 3 to the full backend list follows in a separate PR once this one merges.\n\n## Changes\n\n- `Platform._find_non_ssm_backend()` becomes `_find_non_ssm_backends()` and returns every distinct non-SSM backend in layer order rather than the first. Both call sites are updated (`interface.py`, `cpu.py`); no caller of the old name remains.\n- New `Platform._preferred_block_size_for_backends()` returns the smallest block size every backend accepts:\n  - a single backend keeps today's behaviour via `get_preferred_block_size()`;\n  - if every backend accepts the default, the default wins;\n  - otherwise candidates are the least common multiples formed by taking one supported size per backend, tried in ascending order, and **each candidate is confirmed against every backend** via `supports_block_size()`;\n  - if nothing is common it raises `ValueError` naming each backend and its supported sizes.\n- Candidates are validated rather than inferred. A backend may override `supports_block_size()` to accept exact sizes only, as CPU_MLA does by accepting 16 but no multiple of it, so \"a multiple of a supported size\" is not a safe assumption. This is the correctness point @yewentao256 raised in review.\n- Phase 1 of `up",
-    "author": "divyvasal",
-    "state": "merged",
-    "labels": [
-      "bug",
-      "ready",
-      "v1",
-      "cpu"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/49845",
-    "createdAt": "2026-07-25T23:47:24.000Z",
-    "updatedAt": "2026-09-23T20:36:36.000Z",
-    "mergedAt": "2026-09-23T20:36:35.000Z",
-    "firstSeenAt": "2026-09-04T04:56:30.610Z",
-    "contentHash": "sha256:62f0879271a625b09103324ab65944ad2088acc6ed1a8aa141ac599f5e5d1201",
-    "category": "FIX",
     "categorySource": "rules",
     "summary": null
   },
