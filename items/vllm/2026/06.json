@@ -1,5 +1,152 @@
 [
   {
+    "id": "vllm-issue-45317",
+    "nodeId": "I_kwDOI7xefs8AAAABFM1QcQ",
+    "repository": "vllm-project/vllm",
+    "number": 45317,
+    "type": "issue",
+    "title": "[Feature/Gap] DSA models (GLM-5.1 / DeepSeek-V3.2-family, use_sparse=True) cannot select any attention backend on SM121 (GB10 / DGX Spark)",
+    "bodyExcerpt": "## Summary\n\nOn SM121, models requiring sparse MLA (`use_mla=True, use_sparse=True`) fail at attention-backend selection: every MLA backend is rejected for sparse support and/or compute capability. Net effect: GLM-5.1 (and presumably other GlmMoeDsa/DSv3.2-family checkpoints) cannot load on DGX Spark with upstream vLLM, even though the rest of the SM12x NVFP4 path (#40082 b12x GEMM + MoE) now works well there.\n\n## Environment\n\n- Image: `vllm/vllm-openai:nightly-aarch64` @ `sha256:42fcb68037a0e65f1f7c65152ba43931bef52a6c3d6fde328098243fae52a672` (vLLM 0.22.1rc1.dev392+g43914dd74, 2026-06-11 nightly)\n- Hardware: 4x NVIDIA DGX Spark (GB10, SM121, 128GB unified), TP=4, ray executor (ray==2.48.0)\n- Model: `0xSero/GLM-5.1-555B-NVFP4` (REAP-pruned GLM-5.1, `GlmMoeDsaForCausalLM`, compressed-tensors NVFP4)\n\n## Error (verbatim)\n\n```\nValueError: No valid attention backend found for cuda with AttentionSelectorConfig(head_size=576,\ndtype=torch.bfloat16, kv_cache_dtype=bfloat16, block_size=None, use_mla=True, has_sink=False,\nuse_sparse=True, ...). Reasons: {FLASH_ATTN_MLA: [sparse not supported, compute capability not\nsupported, FlashAttention MLA not supported on this device], FLASHMLA: [sparse not supported,\ncompute capability not supported, FlashMLA Sparse is only supported on Hopper and Blackwell\ndevices.], FLASHINFER_MLA: [sparse not supported, compute capability not supported],\nTRITON_MLA: [sparse not supported], FLASHMLA_SPARSE: [compute capability not supported]}.\n```\n\nReached after a healthy init: ray cluster 4/4, ranks assigned, `FlashInferB12xNvFp4LinearKernel` engaged for NVFP4 GEMM. The selector is the sole blocker.\n\n## Notes\n\n- The non-sparse SM12x story is in good shape since #40082 — we measured the b12x GEMM+MoE path at ~81 tok/s warm on Qwen3-30B-A3B-NVFP4 on a single GB10 (b12x MoE +6.5% over flashinfer-cutlass, consistent with that PR). (The 80.9 tok/s run used FlashInfer’s in-image b12x port — no separate pip b12x package; the pinned image digest above is the",
+    "author": "SeedSource",
+    "state": "open",
+    "labels": [
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/45317",
+    "createdAt": "2026-06-11T20:27:23.000Z",
+    "updatedAt": "2026-10-06T01:52:53.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:f3c97f876d5c538f13bfd149df71df0fad7b1ce27049ffa085fe6cb217f5a80b",
+    "category": "COMPATIBILITY",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "SM121无法选择稀疏MLA后端",
+      "summaryZh": "DGX Spark（GB10、SM121）上的GLM-5.1及DeepSeek-V3.2系列稀疏MLA模型：在SM121上，启用use_mla=True、use_sparse=True的模型在注意力后端选择阶段失败，所有候选MLA后端均因不支持稀疏能力或计算能力而被拒绝，并报出“No valid attention backend found”。因此GLM-5.1等模型无法在DGX Spark上通过上游vLLM加载；SM12x上的NVFP4 GEMM和MoE路径已可用，但稀疏MLA后端选择仍阻塞相关模型加载",
+      "models": [
+        "GLM-5.1",
+        "DeepSeek-V3.2系列",
+        "GlmMoeDsaForCausalLM"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "COMPATIBILITY",
+      "severity": "HIGH",
+      "impactScopeZh": "影响使用DGX Spark（GB10、SM121）和上游vLLM加载稀疏MLA模型的场景。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】DSA models (GLM-5.1 / DeepSeek-V3.2-family, use_sparse=True) cannot select any attention backend on SM121",
+        "【正文】On SM121, models requiring sparse MLA (`use_mla=True, use_sparse=True`) fail at attention-backend selection"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-46221",
+    "nodeId": "I_kwDOI7xefs8AAAABGHn-ig",
+    "repository": "vllm-project/vllm",
+    "number": 46221,
+    "type": "issue",
+    "title": "[Feature]: Add a 2-bit KV-cache quantisation backend from Together AI",
+    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\n## Purpose\n\nIntegrate a new INT2 KV-cache quantisation backend.\n\nPaper:**OSCAR** ([arXiv:2605.17757](https://arxiv.org/abs/2605.17757)). \nCode: https://github.com/FutureMLS-Lab/OSCAR \n(500+ stars, proved to be working on Qwen3-32B, GLM-4.7-FP8.)\nWebsite: https://oscar-quantize.github.io/\n\nvLLM already has TurboQuant, a data-free Hadamard-rotation KV-cache quantizer. Oscar is similar, but has better accuracy. If we apply the most aggresive quantisation method in TurboQuant, (`turboquant_3bit_nc`), the accuracy will drop by 20%. But with Oscar, for Qwen3-32B and GLM-4.7-FP8 respectively, the mean gap to BF16 is −0.02, and +0.27 points while reducing KV memory by ~8× and increasing large-batch throughput by up to ~7×. \n\nThe main idea is, before applying clipped INT2 scalar quantization, we first apply a per-layer covariance-aware orthogonal rotation to distribute the values evenly, so they can be later de-quantised with higher precision. \n\nTo use this feature, just need to load the original model checkpoints, and download a small per-layer rotation file\n(`[head_dim, head_dim]` orthogonal matrices, a few MB), published in the [OSCAR RotationZoo](https://huggingface.co/Zhongzhu/OSCAR-RotationZoo).\n\n## CC List\nPaper author: @zzz0906\nvLLM maintainer: @mgoin, @robertgshaw2-redhat \n\n## Implementation Details\n- We stored rotation matrix for K and V. \n- Then, we use the same fp16 `(scale, zero)` parameter for each vector. We then store these values by re-using TurboQuant's `TQFullAttentionSpec` in a Combined `[key_packed | value_packed]` slot (72 B/token/kv-head\n  at `head_dim=128`). \n- We also introuced 3 additional triton kernels for this feature. Fused Triton store (quant + pack + scatter) and split-KV decode attention (INT2 unpack + online softmax + AV), plus a full-dequant kernel for the continuation-prefill path.\n\nWe will mainly change these files:\n- `vllm/model_executor/layers/quantization/oscar/`: config,  rotation loading.\n- `",
+    "author": "zhangj1an",
+    "state": "open",
+    "labels": [
+      "feature request",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/46221",
+    "createdAt": "2026-06-20T07:47:30.000Z",
+    "updatedAt": "2026-10-06T01:51:48.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-10-06T06:41:40.022Z",
+    "contentHash": "sha256:d94a651af783c8947d984ed63cb8779955917594a017de6b0dea956d46bfbdf8",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-46613",
+    "nodeId": "I_kwDOI7xefs8AAAABGjalHw",
+    "repository": "vllm-project/vllm",
+    "number": 46613,
+    "type": "issue",
+    "title": "[RFC]: KVarN: a calibration-free, variance-normalized sub-8-bit KV-cache quantization backend",
+    "bodyExcerpt": "### Motivation.\n\nKV cache is the dominant memory cost for long-context and high-concurrency serving. vLLM already supports fp8 KV cache (~2x capacity) and, as of [#38479](https://github.com/vllm-project/vllm/pull/38479), a sub-4-bit rotation-based backend (**TurboQuant**). But sub-4-bit KV quantization is still rarely turned on in production, for one reason: **it costs throughput and accuracy.**\n\nAs vLLM's own [TurboQuant blog](https://vllm.ai/blog/2026-05-11-turboquant) reports, existing sub-4-bit methods buy 2.3 to 3.7x capacity but give up **40 to 52% of throughput**, and aggressive low-bit quant also tends to cost accuracy. Losing both speed and quality is why the feature stays off.\n\n**KVarN** ([arXiv:2606.03458](https://arxiv.org/abs/2606.03458)) is a variance-normalized KV-cache quantization scheme built to keep all three at once: capacity, throughput, and accuracy.\n\n- **~3.2 to 3.4x measured KV-cache capacity** at int4-K / int2-V.\n- **Throughput at or above FP16/baseline in the memory-bound regime**, *uniquely* among KV-quant backends (measured +9% at 14B, rising to +18% at ~106B), not the throughput regression every other sub-4-bit method pays.\n- **FP16-level accuracy**, calibration-free, no model changes, one flag (measured lossless on Qwen3-14B/30B and GLM-4.5-Air).\n\nIt also covers models TurboQuant cannot: it supports MLA, and it runs on hybrid and sliding-window models. TurboQuant supports full-attention and uniform sliding-window only.\n\nMechanism in one line: a Sinkhorn variance-normalizing rotation equalizes per-channel scale before scalar int4/int2 quantization, with a small fp16 outlier/sink pool, which is what preserves accuracy without calibration. (Full method in the paper.)\n\n### Proposed Change.\n\nAdd KVarN as a **native vLLM attention backend selected via `--kv-cache-dtype`**, fully transparent (pass-through) for every non-KVarN dtype.\n\n- **New backend** for the dense path (`KVarNAttentionBackend`) plus an MLA latent-quant path on the FlashMLA ba",
+    "author": "philippebich",
+    "state": "open",
+    "labels": [
+      "RFC",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/46613",
+    "createdAt": "2026-06-24T12:21:51.000Z",
+    "updatedAt": "2026-10-06T01:51:12.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-10-06T06:41:40.022Z",
+    "contentHash": "sha256:48274d7d87a17d1ec8f4931efdff36931318e66c70f8a637de61bae18ac772ab",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-46985",
+    "nodeId": "I_kwDOI7xefs8AAAABG_3NZw",
+    "repository": "vllm-project/vllm",
+    "number": 46985,
+    "type": "issue",
+    "title": "[Bug]: Why does kv-cache-dtype=fp8 OOM more easily than bf16/fp16 on long-context GLM-5.1-AWQ runs?",
+    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\n kubectl exec -it  glm-code-glm-awq-deployment-vllm-68ddbcd44b-hm9r6 -n vllm-system -- python3 /tmp/collect_env.py\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nClang version                : Could not collect\nCMake version                : Could not collect\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.11.0+cu130\nIs debug build               : False\nCUDA used to build PyTorch   : 13.0\nROCM used to build PyTorch   : N/A\nXPU used to build PyTorch    : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.13 (main, Mar  4 2026, 09:23:07) [GCC 11.4.0] (64-bit runtime)\nPython platform              : Linux-6.8.0-101-generic-x86_64-with-glibc2.35\n    \n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 13.0.88\nCUDA_MODULE_LOADING set to   : \nGPU models and configuration : \nGPU 0: NVIDIA H100 80GB HBM3\nGPU 1: NVIDIA H100 80GB HBM3\nGPU 2: NVIDIA H100 80GB HBM3\nGPU 3: NVIDIA H100 80GB HBM3\nGPU 4: NVIDIA H100 80GB HBM3\nGPU 5: NVIDIA H100 80GB HBM3\nGPU 6: NVIDIA H100 80GB HBM3\nGPU 7: NVIDIA H100 80GB HBM3\n\nNvidia driver version        : 595.71.05\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\n",
+    "author": "jianjungki",
+    "state": "open",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/46985",
+    "createdAt": "2026-06-29T02:38:23.000Z",
+    "updatedAt": "2026-10-06T01:50:46.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:c9f383ecb2ede3a462b0b4c6d64f89755b8acbd1447659462f8b74fff2a0f424",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.1-AWQ长上下文FP8 KV缓存更易OOM",
+      "summaryZh": "GLM-5.1-AWQ长上下文运行中的FP8与BF16/FP16 KV缓存：在长上下文 GLM-5.1-AWQ 运行中，将 kv-cache-dtype 设置为 fp8 时比使用 bf16 或 fp16 更容易发生显存不足（OOM）；环境使用 8 张 NVIDIA H100 80GB HBM3 GPU",
+      "models": [
+        "GLM-5.1-AWQ"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 vLLM 上 GLM-5.1-AWQ 的长上下文推理。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】Why does kv-cache-dtype=fp8 OOM more easily than bf16/fp16 on long-context GLM-5.1-AWQ runs?",
+        "【正文】GPU 0: NVIDIA H100 80GB HBM3"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-pr-46162",
     "nodeId": "PR_kwDOI7xefs7oZUK8",
     "repository": "vllm-project/vllm",
@@ -1408,102 +1555,6 @@
       "evidence": [
         "【标题】[ROCm][gfx942] GPU memory access fault with MTP spec-decode + sparse-MLA decode under cuda graph (GLM-5.1-FP8)",
         "【正文】GPU models and configuration : (gfx942:sramecc+:xnack-)"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-45317",
-    "nodeId": "I_kwDOI7xefs8AAAABFM1QcQ",
-    "repository": "vllm-project/vllm",
-    "number": 45317,
-    "type": "issue",
-    "title": "[Feature/Gap] DSA models (GLM-5.1 / DeepSeek-V3.2-family, use_sparse=True) cannot select any attention backend on SM121 (GB10 / DGX Spark)",
-    "bodyExcerpt": "## Summary\n\nOn SM121, models requiring sparse MLA (`use_mla=True, use_sparse=True`) fail at attention-backend selection: every MLA backend is rejected for sparse support and/or compute capability. Net effect: GLM-5.1 (and presumably other GlmMoeDsa/DSv3.2-family checkpoints) cannot load on DGX Spark with upstream vLLM, even though the rest of the SM12x NVFP4 path (#40082 b12x GEMM + MoE) now works well there.\n\n## Environment\n\n- Image: `vllm/vllm-openai:nightly-aarch64` @ `sha256:42fcb68037a0e65f1f7c65152ba43931bef52a6c3d6fde328098243fae52a672` (vLLM 0.22.1rc1.dev392+g43914dd74, 2026-06-11 nightly)\n- Hardware: 4x NVIDIA DGX Spark (GB10, SM121, 128GB unified), TP=4, ray executor (ray==2.48.0)\n- Model: `0xSero/GLM-5.1-555B-NVFP4` (REAP-pruned GLM-5.1, `GlmMoeDsaForCausalLM`, compressed-tensors NVFP4)\n\n## Error (verbatim)\n\n```\nValueError: No valid attention backend found for cuda with AttentionSelectorConfig(head_size=576,\ndtype=torch.bfloat16, kv_cache_dtype=bfloat16, block_size=None, use_mla=True, has_sink=False,\nuse_sparse=True, ...). Reasons: {FLASH_ATTN_MLA: [sparse not supported, compute capability not\nsupported, FlashAttention MLA not supported on this device], FLASHMLA: [sparse not supported,\ncompute capability not supported, FlashMLA Sparse is only supported on Hopper and Blackwell\ndevices.], FLASHINFER_MLA: [sparse not supported, compute capability not supported],\nTRITON_MLA: [sparse not supported], FLASHMLA_SPARSE: [compute capability not supported]}.\n```\n\nReached after a healthy init: ray cluster 4/4, ranks assigned, `FlashInferB12xNvFp4LinearKernel` engaged for NVFP4 GEMM. The selector is the sole blocker.\n\n## Notes\n\n- The non-sparse SM12x story is in good shape since #40082 — we measured the b12x GEMM+MoE path at ~81 tok/s warm on Qwen3-30B-A3B-NVFP4 on a single GB10 (b12x MoE +6.5% over flashinfer-cutlass, consistent with that PR). (The 80.9 tok/s run used FlashInfer’s in-image b12x port — no separate pip b12x package; the pinned image digest above is the",
-    "author": "SeedSource",
-    "state": "open",
-    "labels": [],
-    "url": "https://github.com/vllm-project/vllm/issues/45317",
-    "createdAt": "2026-06-11T20:27:23.000Z",
-    "updatedAt": "2026-07-06T23:19:32.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:d14ca94bfcb3a175e1bfff762a848d7c64fad5a73aba8d137c42b7a40d0fe6b1",
-    "category": "COMPATIBILITY",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "SM121无法选择稀疏MLA后端",
-      "summaryZh": "DGX Spark（GB10、SM121）上的GLM-5.1及DeepSeek-V3.2系列稀疏MLA模型：在SM121上，启用use_mla=True、use_sparse=True的模型在注意力后端选择阶段失败，所有候选MLA后端均因不支持稀疏能力或计算能力而被拒绝，并报出“No valid attention backend found”。因此GLM-5.1等模型无法在DGX Spark上通过上游vLLM加载；SM12x上的NVFP4 GEMM和MoE路径已可用，但稀疏MLA后端选择仍阻塞相关模型加载",
-      "models": [
-        "GLM-5.1",
-        "DeepSeek-V3.2系列",
-        "GlmMoeDsaForCausalLM"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "COMPATIBILITY",
-      "severity": "HIGH",
-      "impactScopeZh": "影响使用DGX Spark（GB10、SM121）和上游vLLM加载稀疏MLA模型的场景。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】DSA models (GLM-5.1 / DeepSeek-V3.2-family, use_sparse=True) cannot select any attention backend on SM121",
-        "【正文】On SM121, models requiring sparse MLA (`use_mla=True, use_sparse=True`) fail at attention-backend selection"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-46985",
-    "nodeId": "I_kwDOI7xefs8AAAABG_3NZw",
-    "repository": "vllm-project/vllm",
-    "number": 46985,
-    "type": "issue",
-    "title": "[Bug]: Why does kv-cache-dtype=fp8 OOM more easily than bf16/fp16 on long-context GLM-5.1-AWQ runs?",
-    "bodyExcerpt": "### Your current environment\n\n<details>\n<summary>The output of <code>python collect_env.py</code></summary>\n\n```text\n kubectl exec -it  glm-code-glm-awq-deployment-vllm-68ddbcd44b-hm9r6 -n vllm-system -- python3 /tmp/collect_env.py\nCollecting environment information...\n==============================\n        System Info\n==============================\nOS                           : Ubuntu 22.04.5 LTS (x86_64)\nGCC version                  : (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nClang version                : Could not collect\nCMake version                : Could not collect\nLibc version                 : glibc-2.35\n\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.11.0+cu130\nIs debug build               : False\nCUDA used to build PyTorch   : 13.0\nROCM used to build PyTorch   : N/A\nXPU used to build PyTorch    : N/A\n\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.13 (main, Mar  4 2026, 09:23:07) [GCC 11.4.0] (64-bit runtime)\nPython platform              : Linux-6.8.0-101-generic-x86_64-with-glibc2.35\n    \n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 13.0.88\nCUDA_MODULE_LOADING set to   : \nGPU models and configuration : \nGPU 0: NVIDIA H100 80GB HBM3\nGPU 1: NVIDIA H100 80GB HBM3\nGPU 2: NVIDIA H100 80GB HBM3\nGPU 3: NVIDIA H100 80GB HBM3\nGPU 4: NVIDIA H100 80GB HBM3\nGPU 5: NVIDIA H100 80GB HBM3\nGPU 6: NVIDIA H100 80GB HBM3\nGPU 7: NVIDIA H100 80GB HBM3\n\nNvidia driver version        : 595.71.05\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version       : N/A\nIs XNNPACK available         : True\n\n==============================\n          CPU Info\n==============================\nArchitecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\n",
-    "author": "jianjungki",
-    "state": "open",
-    "labels": [
-      "bug"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/46985",
-    "createdAt": "2026-06-29T02:38:23.000Z",
-    "updatedAt": "2026-07-06T16:56:39.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:e7100144c189fc1e90cdd52f54c4b5e83bfc4c6505cbcbfef07fdb6ecf65c7ff",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5.1-AWQ长上下文FP8 KV缓存更易OOM",
-      "summaryZh": "GLM-5.1-AWQ长上下文运行中的FP8与BF16/FP16 KV缓存：在长上下文 GLM-5.1-AWQ 运行中，将 kv-cache-dtype 设置为 fp8 时比使用 bf16 或 fp16 更容易发生显存不足（OOM）；环境使用 8 张 NVIDIA H100 80GB HBM3 GPU",
-      "models": [
-        "GLM-5.1-AWQ"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 vLLM 上 GLM-5.1-AWQ 的长上下文推理。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】Why does kv-cache-dtype=fp8 OOM more easily than bf16/fp16 on long-context GLM-5.1-AWQ runs?",
-        "【正文】GPU 0: NVIDIA H100 80GB HBM3"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",

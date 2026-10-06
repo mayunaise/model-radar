@@ -1,5 +1,128 @@
 [
   {
+    "id": "vllm-issue-47626",
+    "nodeId": "I_kwDOI7xefs8AAAABHslavg",
+    "repository": "vllm-project/vllm",
+    "number": 47626,
+    "type": "issue",
+    "title": "[Bug]: RuntimeError: scheduler_metadata must have shape (metadata_size) when using dspark speculative decoding with FP8 quantization on H20-3e",
+    "bodyExcerpt": "### Your current environment\n\nvLLM version: 0.23.1rc1.dev786+g34b560b72 (development build)\n\nPyTorch version: 2.11.0+cu130\n\nCUDA version: 13.0.88\n\nGPU model and count: 8 × NVIDIA H20-3e\n\nOS: Ubuntu 24.04.3 LTS \n\n### 🐛 Describe the bug\n\nWhen deploying an FP8-quantized GLM5.2 model with vLLM v0.23.1rc1 and enabling dspark speculative decoding (using a separate [draft model on hugginface),](https://huggingface.co/RedHatAI/GLM-5.2-speculator.dspark) the service crashes after about 30–40 seconds of receiving a request. All worker processes raise the following RuntimeError:\n\n**RuntimeError: scheduler_metadata must have shape (metadata_size)**\n\nThe error occurs inside the Flash Attention flash_attn_varlen_func call, with the stack trace pointing to speculator.propose → _generate_draft → _run_model → the attention forward pass of the model.\n\nSteps to Reproduce\n1.Start the vLLM server with the command provided below.\n\n2.Send a simple chat completion request via the OpenAI client (example below).\n\n3.The service crashes after generating a few tokens (~10–20) and returns HTTP 500.\n\nLaunch Command\n```\nnohup vllm serve /model_dir \\\n    --host 0.0.0.0 \\\n    --port 8000 \\\n    --gpu-memory-utilization 0.85 \\\n    --served-model-name \"GLM-5.2-FP8\" \\\n    --tensor-parallel-size 8 \\\n    --enforce-eager \\\n    --max-model-len 16384 \\\n    --trust-remote-code \\\n    --max-num-seqs 256 \\\n    --max-num-batched-tokens 8192 \\\n    --enable-prefix-caching \\\n    --speculative-config '{\n        \"model\": \"/mnt/temp/weight\",\n        \"num_speculative_tokens\": 7,\n        \"method\": \"dspark\",\n\"draft_sample_method\":\"greedy\"\n    }' > log.txt  2>&1 & \n``` \n Request Example\ncurl http://localhost:8000/v1/chat/completions     -H \"Content-Type: application/json\"     -d '{\"messages\":[{\"role\":\"user\",\"content\":\"写一个科技小说\"}],\"max_tokens\":10000,\"stream\":false}'\n\n\n{\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}\n\nThe",
+    "author": "qin-xi",
+    "state": "open",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/47626",
+    "createdAt": "2026-07-05T03:33:51.000Z",
+    "updatedAt": "2026-10-06T01:50:11.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-10-06T06:41:40.022Z",
+    "contentHash": "sha256:1e3e1356c35f4f8e0d3884c8cb21d86c0b03eeb5cc798f008870b850139e3c99",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-48726",
+    "nodeId": "PR_kwDOI7xefs7x-6o7",
+    "repository": "vllm-project/vllm",
+    "number": 48726,
+    "type": "pr",
+    "title": "[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
+    "bodyExcerpt": "## 📌 Description\r\n\r\nHi @youkaichao @WoosukKwon @mgoin @hmellor @njhill @Isotr0py @DarkLight1337, could you please take a look at this PR when you have a chance?\r\n\r\nThis PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA):\r\n\r\n- **LiteTopK** accelerates the indexer by fusing MQA scoring, online filtering, and TopK selection without materializing the `[num_q, seq_len]` score matrix.\r\n- **LiteDSA** further accelerates the subsequent sparse-attention computation by packing multiple neighboring queries into one larger masked attention GEMM, reusing their heavily overlapping KV sets.\r\n\r\nTo the best of our knowledge, LiteTopk is the first Indexer-Topk implementation that avoids to store the score matrix, and LiteDSA is the first that converts multiple small per-token sparse-attention GEMMs into a grouped masked GEMM while preserving each query's original attend set. The corresponding paper is available on [arXiv](https://arxiv.org/abs/2607.11976).\r\n\r\n**At 1M-token prefill, LiteTopK accelerates GLM-5.2 and DeepSeek-V4-Flash by 1.29× and 1.08×, respectively. LiteDSA increases the end-to-end speedups to 1.40× and 1.25×, with no accuracy loss.**\r\n\r\nThanks to my collaborators Jianyang Gao ([@gaoj0017](https://github.com/gaoj0017)) from ETH Zurich, Peiqi Yin ([@yinpeiqi](https://github.com/yinpeiqi)) from CUHK, and Jiangneng Li ([@gravesprite](https://github.com/gravesprite)) from NTU.\r\n\r\n### Motivation\r\n\r\nDSA models such as **DeepSeek-V3.2/DeepSeek-V4**, **GLM-4.6/GLM-5.2**, and **LongCat-2.0** use a sparse-attention indexer during prefill. The current indexer computes an FP8 MQA score for every query/KV pair, materializes a `[num_q, seq_len]` matrix in HBM, and then runs a per-row TopK:\r\n\r\n```python\r\nlogits = fp8_fp4_mqa_logits(...)        # materializes [num_q, seq_len] in HBM\r\nops.top_k_per_row_prefill(logits, ...)  # TopK over the materialized matrix\r\n```\r\n\r\nAt 256K–1M context, this transient matrix is both large and expensive to ",
+    "author": "Heisenberg-Yin",
+    "state": "open",
+    "labels": [
+      "documentation",
+      "performance",
+      "new-model",
+      "rocm",
+      "structured-output",
+      "frontend",
+      "intel-gpu",
+      "speculative-decoding",
+      "needs-rebase",
+      "ci/build",
+      "multi-modality",
+      "llama",
+      "qwen",
+      "deepseek",
+      "cpu",
+      "gpt-oss",
+      "kv-connector",
+      "nvidia",
+      "quantization",
+      "mrv2",
+      "DSv4",
+      "rust",
+      "kimi"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/48726",
+    "createdAt": "2026-07-15T10:48:12.000Z",
+    "updatedAt": "2026-10-05T23:26:45.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:eb1fbe01df62a87c2bae3a30551d1421e2533a3f5f6a7a6d8002d69f25b121e2",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "新增DSA LiteTopK与LiteDSA预填充优化",
+      "summaryZh": "新增LiteTopK与LiteDSA两项SM100预填充优化：LiteTopK融合MQA评分、在线过滤和TopK选择，避免物化[num_q, seq_len]评分矩阵；LiteDSA将相邻查询的多个小型稀疏注意力GEMM打包为带掩码的分组GEMM，并保留各查询原有的注意力集合；在1M-token预填充下，LiteTopK使GLM-5.2和DeepSeek-V4-Flash分别加速1.29倍和1.08倍；结合LiteDSA后端到端加速分别达到1.40倍和1.25倍，且无精度损失",
+      "models": [
+        "GLM-5.2",
+        "DeepSeek-V4-Flash",
+        "DeepSeek-V3.2",
+        "DeepSeek-V4",
+        "GLM-4.6",
+        "LongCat-2.0"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "TRAINING"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "面向SM100平台的DSA模型预填充性能优化。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
+        "【正文】This PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA)"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-49349",
+    "nodeId": "I_kwDOI7xefs8AAAABJn8gYg",
+    "repository": "vllm-project/vllm",
+    "number": 49349,
+    "type": "issue",
+    "title": "Zero JIT compilation during runtime",
+    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\n## Summary\n\nThis issue tracks adoption and follow-up work for the shared JIT warmup infrastructure proposed in #47456.\n\n## Foundation (blockers)\n\n- [x] #47451\n- [x] #49315\n- [x] #50174\n\n## Model-level de-JITification\n\n### DeepSeek V4\n- [ ] #49627\n    - [x] #50175\n    - [x] https://github.com/vllm-project/vllm/pull/53564\n    - [x] https://github.com/vllm-project/vllm/pull/53565\n    - [x] #50176\n    - [x] https://github.com/vllm-project/vllm/pull/53566\n    - [x] ~https://github.com/vllm-project/vllm/pull/56323~ (reverted)\n    - [ ] #50177\n    - [ ] https://github.com/vllm-project/vllm/pull/53567\n    - [x] #50178\n    - [ ] https://github.com/vllm-project/vllm/pull/55967\n    - [ ] https://github.com/vllm-project/vllm/pull/56494\n    - [ ] https://github.com/vllm-project/vllm/pull/56693\n\n### Gemma 4\n- [x] https://github.com/vllm-project/vllm/pull/55768\n    - [ ] Enable `--jit-monitor-mode error` on CI for Gemma 4: https://github.com/vllm-project/vllm/pull/50109\n\n### gpt-oss\n- [ ] https://github.com/vllm-project/vllm/pull/55769\n    - [ ] Enable `--jit-monitor-mode error` on CI for gpt-oss: https://github.com/vllm-project/vllm/pull/50109\n\n### GLM-5.2/5.3\n- [ ] https://github.com/vllm-project/vllm/pull/55348\n    - [ ] Enable `--jit-monitor-mode error` on CI for GLM-5.2/5.3: https://github.com/vllm-project/vllm/pull/50109\n    \n### Kimi-K3\n- [ ] https://github.com/vllm-project/vllm/pull/54784\n    - [ ] Enable `--jit-monitor-mode error` on CI for Kimi-K3: https://github.com/vllm-project/vllm/pull/50109\n\nComplete model de-JITification is achieved when the model can run seamlessly with `--jit-monitor-mode error,` introduced in [#46167](https://github.com/vllm-project/vllm/pull/46167). Enabling this mode in CI will detect any untracked kernels that still compile at runtime and therefore require additional warmup coverage.\n\n## Supporting work. Related backend/kernel coverage\n\n### CuTeDSL\n\n- [ ] #48156\n- [ ] https://github.com/vllm-project/v",
+    "author": "LopezCastroRoberto",
+    "state": "open",
+    "labels": [
+      "feature request",
+      "kimi"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/49349",
+    "createdAt": "2026-07-21T16:09:37.000Z",
+    "updatedAt": "2026-10-05T18:35:33.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-05T04:48:46.974Z",
+    "contentHash": "sha256:f3c6eced1261f228879e25f15b3a02430f0cde35bc51b246fbee0671c825064d",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-49845",
     "nodeId": "PR_kwDOI7xefs72bYW4",
     "repository": "vllm-project/vllm",
@@ -97,81 +220,6 @@
     "category": "FIX",
     "categorySource": "rules",
     "summary": null
-  },
-  {
-    "id": "vllm-pr-48726",
-    "nodeId": "PR_kwDOI7xefs7x-6o7",
-    "repository": "vllm-project/vllm",
-    "number": 48726,
-    "type": "pr",
-    "title": "[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
-    "bodyExcerpt": "## 📌 Description\r\n\r\nHi @youkaichao @WoosukKwon @mgoin @hmellor @njhill @Isotr0py @DarkLight1337, could you please take a look at this PR when you have a chance?\r\n\r\nThis PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA):\r\n\r\n- **LiteTopK** accelerates the indexer by fusing MQA scoring, online filtering, and TopK selection without materializing the `[num_q, seq_len]` score matrix.\r\n- **LiteDSA** further accelerates the subsequent sparse-attention computation by packing multiple neighboring queries into one larger masked attention GEMM, reusing their heavily overlapping KV sets.\r\n\r\nTo the best of our knowledge, LiteTopk is the first Indexer-Topk implementation that avoids to store the score matrix, and LiteDSA is the first that converts multiple small per-token sparse-attention GEMMs into a grouped masked GEMM while preserving each query's original attend set. The corresponding paper is available on [arXiv](https://arxiv.org/abs/2607.11976).\r\n\r\n**At 1M-token prefill, LiteTopK accelerates GLM-5.2 and DeepSeek-V4-Flash by 1.29× and 1.08×, respectively. LiteDSA increases the end-to-end speedups to 1.40× and 1.25×, with no accuracy loss.**\r\n\r\nThanks to my collaborators Jianyang Gao ([@gaoj0017](https://github.com/gaoj0017)) from ETH Zurich, Peiqi Yin ([@yinpeiqi](https://github.com/yinpeiqi)) from CUHK, and Jiangneng Li ([@gravesprite](https://github.com/gravesprite)) from NTU.\r\n\r\n### Motivation\r\n\r\nDSA models such as **DeepSeek-V3.2/DeepSeek-V4**, **GLM-4.6/GLM-5.2**, and **LongCat-2.0** use a sparse-attention indexer during prefill. The current indexer computes an FP8 MQA score for every query/KV pair, materializes a `[num_q, seq_len]` matrix in HBM, and then runs a per-row TopK:\r\n\r\n```python\r\nlogits = fp8_fp4_mqa_logits(...)        # materializes [num_q, seq_len] in HBM\r\nops.top_k_per_row_prefill(logits, ...)  # TopK over the materialized matrix\r\n```\r\n\r\nAt 256K–1M context, this transient matrix is both large and expensive to ",
-    "author": "Heisenberg-Yin",
-    "state": "open",
-    "labels": [
-      "documentation",
-      "performance",
-      "new-model",
-      "rocm",
-      "structured-output",
-      "frontend",
-      "intel-gpu",
-      "speculative-decoding",
-      "needs-rebase",
-      "ci/build",
-      "multi-modality",
-      "llama",
-      "qwen",
-      "deepseek",
-      "cpu",
-      "gpt-oss",
-      "kv-connector",
-      "nvidia",
-      "quantization",
-      "mrv2",
-      "DSv4",
-      "rust",
-      "kimi"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/48726",
-    "createdAt": "2026-07-15T10:48:12.000Z",
-    "updatedAt": "2026-10-01T21:32:06.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:e0de407202fbdbec5abcc3c63077928c545254d65c58ecdb9bba3278370f093c",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "新增DSA LiteTopK与LiteDSA预填充优化",
-      "summaryZh": "新增LiteTopK与LiteDSA两项SM100预填充优化：LiteTopK融合MQA评分、在线过滤和TopK选择，避免物化[num_q, seq_len]评分矩阵；LiteDSA将相邻查询的多个小型稀疏注意力GEMM打包为带掩码的分组GEMM，并保留各查询原有的注意力集合；在1M-token预填充下，LiteTopK使GLM-5.2和DeepSeek-V4-Flash分别加速1.29倍和1.08倍；结合LiteDSA后端到端加速分别达到1.40倍和1.25倍，且无精度损失",
-      "models": [
-        "GLM-5.2",
-        "DeepSeek-V4-Flash",
-        "DeepSeek-V3.2",
-        "DeepSeek-V4",
-        "GLM-4.6",
-        "LongCat-2.0"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "TRAINING"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "面向SM100平台的DSA模型预填充性能优化。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[Perf][Kernel] Fused DSA indexer Top-k kernel (LiteTopk)",
-        "【正文】This PR introduces two complementary SM100 prefill optimizations for DeepSeek Sparse Attention (DSA)"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
   },
   {
     "id": "vllm-issue-47236",
@@ -348,30 +396,6 @@
     "firstSeenAt": "2026-08-24T10:27:08.865Z",
     "contentHash": "sha256:0cacf4fa73cf0899465b4fae7d53b2b4b0913c58f166aa3e42bb98dfe6164d61",
     "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-issue-49349",
-    "nodeId": "I_kwDOI7xefs8AAAABJn8gYg",
-    "repository": "vllm-project/vllm",
-    "number": 49349,
-    "type": "issue",
-    "title": "Zero JIT compilation during runtime",
-    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\n## Summary\n\nThis issue tracks adoption and follow-up work for the shared JIT warmup infrastructure proposed in #47456.\n\n## Foundation (blockers)\n\n- [x] #47451\n- [x] #49315\n- [x] #50174\n\n## Model-level de-JITification\n\n### DeepSeek V4\n- [ ] #49627\n    - [x] #50175\n    - [x] https://github.com/vllm-project/vllm/pull/53564\n    - [x] https://github.com/vllm-project/vllm/pull/53565\n    - [x] #50176\n    - [x] https://github.com/vllm-project/vllm/pull/53566\n    - [x] ~https://github.com/vllm-project/vllm/pull/56323~ (reverted)\n    - [ ] #50177\n    - [ ] https://github.com/vllm-project/vllm/pull/53567\n    - [x] #50178\n    - [ ] https://github.com/vllm-project/vllm/pull/55967\n    - [ ] https://github.com/vllm-project/vllm/pull/56494\n    - [ ] https://github.com/vllm-project/vllm/pull/56693\n\n### Gemma 4\n- [x] https://github.com/vllm-project/vllm/pull/55768\n    - [ ] Enable `--jit-monitor-mode error` on CI for Gemma 4: https://github.com/vllm-project/vllm/pull/50109\n\n### gpt-oss\n- [ ] https://github.com/vllm-project/vllm/pull/55769\n    - [ ] Enable `--jit-monitor-mode error` on CI for gpt-oss: https://github.com/vllm-project/vllm/pull/50109\n\n### GLM-5.2/5.3\n- [ ] https://github.com/vllm-project/vllm/pull/55348\n    - [ ] Enable `--jit-monitor-mode error` on CI for GLM-5.2/5.3: https://github.com/vllm-project/vllm/pull/50109\n    \n### Kimi-K3\n- [ ] https://github.com/vllm-project/vllm/pull/54784\n    - [ ] Enable `--jit-monitor-mode error` on CI for Kimi-K3: https://github.com/vllm-project/vllm/pull/50109\n\nComplete model de-JITification is achieved when the model can run seamlessly with `--jit-monitor-mode error,` introduced in [#46167](https://github.com/vllm-project/vllm/pull/46167). Enabling this mode in CI will detect any untracked kernels that still compile at runtime and therefore require additional warmup coverage.\n\n## Supporting work. Related backend/kernel coverage\n\n### CuTeDSL\n\n- [ ] #48156\n- [ ] https://github.com/vllm-project/v",
-    "author": "LopezCastroRoberto",
-    "state": "open",
-    "labels": [
-      "feature request",
-      "kimi"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/49349",
-    "createdAt": "2026-07-21T16:09:37.000Z",
-    "updatedAt": "2026-09-28T22:47:36.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-05T04:48:46.974Z",
-    "contentHash": "sha256:c40269e95de723700c9c31841792b9a07add88de7714a2eaa34594c2e44afd5f",
-    "category": "NEW_SUPPORT",
     "categorySource": "rules",
     "summary": null
   },
