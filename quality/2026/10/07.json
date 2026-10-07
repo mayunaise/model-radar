@@ -1,0 +1,1760 @@
+{
+  "schemaVersion": 1,
+  "scope": "daily-incremental",
+  "date": "2026-10-07",
+  "generatedAt": "2026-10-07T06:18:28.701Z",
+  "seed": "2026-10-07",
+  "samplePerStratum": 2,
+  "summary": {
+    "population": 62,
+    "sampled": 62,
+    "strata": 8,
+    "structuralFailures": 0,
+    "sourceMismatches": 0,
+    "sourceChecksSkipped": 0,
+    "classificationDrifts": 0,
+    "relevanceFailures": 0,
+    "reviewWarnings": 31
+  },
+  "items": [
+    {
+      "id": "verl-issue-6985",
+      "repository": "volcengine/verl",
+      "number": 6985,
+      "type": "issue",
+      "category": "OTHER",
+      "categoryValid": true,
+      "ruleCategory": "OTHER",
+      "classificationConsistent": true,
+      "title": "[roadmap] verl 26Q3 roadmap",
+      "bodyExcerpt": "### Model Engine\n- Megatron\n  - [x] Deprecate and drop mbrige support: https://github.com/verl-project/verl/pull/6951\n  - [ ] Low precision MXFP8/NVFP4 support: https://github.com/verl-project/verl/issues/5972\n  - [ ] Polish mlite integration to make it production ready https://github.com/verl-project/verl/issues/7056\n  - [ ] New model support\n    - [x] DeepSeek V4: https://github.com/verl-project/verl/pull/6473 https://github.com/verl-project/verl/pull/7224 https://github.com/verl-project/verl/pull/7050\n    - [ ] GLM 5.2\n\n- VeOmni\n  - [x] Low precision support: QAT https://github.com/verl-project/verl/pull/7577\n  - [ ] New model support\n    - [x] DeepSeek V4 https://github.com/verl-project/verl/pull/7242 https://github.com/verl-project/verl/pull/7272\n    - [ ] GLM 5.2\n\n### Rollout\n- Optimize weight sync performance\n  - [ ] Delta weight sync: https://github.com/verl-project/verl/issues/7060\n  - [ ] DeviceMesh p2p remaping, avoiding all-gather + broadcast https://github.com/NVIDIA-NeMo/RL/pull/2971 https://github.com/verl-project/verl/pull/7552\n  - [ ] NCCL [suspend/resume](https://github.com/NVIDIA/nccl/releases/tag/v2.29.7-1) to release communicator memory \n\n- Optimize request load balance\n  - [ ] KV cache awareness scheduling: https://github.com/verl-project/verl/pull/6940\n  - [ ] Dynamo integration\n  - [ ] workload awareness scheduling, e.g [ThunderAgent](https://arxiv.org/html/2602.13692v1)\n  - [ ] Integrating Mooncake's distributed KV cache store\n\n### Trainer\n- [ ] Remove legacy `RayPPOTrainer`\n- Polish unify V1 trainer\n  - [x] Streaming dataloader https://github.com/verl-project/verl/pull/7037\n  - [x] Support DAPO dynamic sample filter and refill https://github.com/verl-project/verl/pull/7082\n  - [x] Support dynamic trainer<->rollout switch in disaggregate fully async https://github.com/verl-project/verl/pull/7373\n  - [x] Decouple PPO support in fully async https://github.com/verl-project/verl/pull/7188\n\n### Enhance hardware support\n- Ascend NPU support: https",
+      "labels": [],
+      "filterDisposition": "eligible",
+      "relevanceScore": 6,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "TRAINING",
+        "INFERENCE",
+        "RL"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "verl-pr-8096",
+      "repository": "volcengine/verl",
+      "number": 8096,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[fsdp, model] fix: run fused LM heads through FSDP2 hooks",
+      "bodyExcerpt": "### What does this PR do?\n\nFixes #8091. With untied embeddings, FSDP2 shards `lm_head` independently, but fused forwards read its weight from the parent. This bypasses the head's unsharding, mixed precision, CPU offload and backward hooks. A two-GPU Qwen3 reproducer fails with mixed Tensor/DTensor operands (Torch), BF16/FP32 operands (Triton), or CPU weights under offload.\n\nRun the fused projection through an FSDP-registered forward method on the existing head. The head keeps its own sharding group and ordinary logits `forward`; backend selection and label preparation remain unchanged. The dense, Qwen2-VL, Qwen3-VL, Qwen3.5 and GLM4V adapters share this entry point.\n\nRelated work: closed #7427 instead keeps the fused head in the root FSDP unit. Open #8004 adds an opt-in FP32 head and routes that branch through its head forward, while the default fused path still reads the weight directly. Open #5948 falls back to materialized logits for a sharded Qwen3-VL Torch head; this change retains fused computation and also fixes the default dense and other adapter paths. It does not implement #8090's Triton shape change or #7323's visual-call alignment.\n\n### Checklist Before Starting\n\n- [x] Search for similar PRs: https://github.com/verl-project/verl/pulls?q=is%3Apr+is%3Aopen+FSDP+fused\n- [x] Format the PR title as `[{modules}] {type}: {description}`.\n\n### Test\n\nOn two RTX 5090 GPUs, PyTorch 2.11.0+cu129, Transformers 5.6.1 and Liger 0.8.2:\n\n```bash\npython -m torch.distributed.run --standalone --nproc-per-node=2 -m pytest -xsv --tb=short tests/special_distributed/test_fused_lm_head_fsdp2.py\n# 144 passed on each rank (144 distributed cases, not 288 independent tests)\n```\n\nThe matrix covers six small random model configurations, Torch/Triton/Liger, tied/untied heads, CPU offload on/off, two accumulated micro-batches per update, two updates, and no-grad inference. Outputs, all trainable gradients and updated parameters are compared with both ordinary HF logits and the same fused",
+      "labels": [],
+      "filterDisposition": "eligible",
+      "relevanceScore": 5,
+      "matchedTerms": [
+        "GLM",
+        "GLM4"
+      ],
+      "scenarios": [
+        "TRAINING",
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-issue-38175",
+      "repository": "vllm-project/vllm",
+      "number": 38175,
+      "type": "issue",
+      "category": "NEW_SUPPORT",
+      "categoryValid": true,
+      "ruleCategory": "NEW_SUPPORT",
+      "classificationConsistent": true,
+      "title": "[RFC]: Support ViT Full CUDA Graph (Tracker)",
+      "bodyExcerpt": "### Motivation.\n\nMultimodal large language models (e.g., Qwen3-VL, Qwen3.5, GLM-V, Kimi K2.5) rely on a Vision Transformer (ViT) encoder to process visual inputs before feeding them into the language model backbone. In production serving scenarios, the ViT forward pass involves launching a large number of small CUDA kernels — including patch embedding, layer normalization, multi-head self-attention, and MLP projections — each of which incurs non-trivial kernel launch overhead on the host side.\n\nCurrently, vLLM supports CUDA graph capture for the decoder (LLM) portion of the model, which has proven effective at reducing kernel launch costs and improving throughput. However, the ViT encoder is still executed eagerly, meaning every forward pass re-launches all kernels from scratch. Extending full CUDA graph support to the ViT encoder would allow the entire encoder forward pass to be captured and replayed as a single graph, eliminating per-kernel launch overhead and enabling more consistent, low-latency inference for multimodal models.\n\n### Proposed Change.\n\n**Model Integration:**\n- [x] https://github.com/vllm-project/vllm/pull/35963 @b-mu \n- [x] https://github.com/vllm-project/vllm/pull/41736 @johncalesp \n- [x] https://github.com/vllm-project/vllm/pull/40830 @johncalesp\n- [x] https://github.com/vllm-project/vllm/pull/38061 @shen-shanshan \n- [x] https://github.com/vllm-project/vllm/pull/42151 @shen-shanshan \n- [x] https://github.com/vllm-project/vllm/pull/44720 @harsha20032020 \n- [x] https://github.com/vllm-project/vllm/pull/42224 @JisoLya  \n- [x] https://github.com/vllm-project/vllm/pull/40576 @grYe99 \n- [x] https://github.com/vllm-project/vllm/pull/40660 @allgather \n- [x] https://github.com/vllm-project/vllm/pull/41759 @oguzhankir \n- [x] https://github.com/vllm-project/vllm/pull/41992 @oguzhankir \n- [x] https://github.com/vllm-project/vllm/pull/50929 @lk-chen \n- [x] https://github.com/vllm-project/vllm/pull/42785 @YunzhuLu \n- [x] https://github.com/vllm-project/vllm/p",
+      "labels": [
+        "help wanted",
+        "RFC",
+        "multi-modality",
+        "kimi"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-issue-44711",
+      "repository": "vllm-project/vllm",
+      "number": 44711,
+      "type": "issue",
+      "category": "NEW_SUPPORT",
+      "categoryValid": true,
+      "ruleCategory": "NEW_SUPPORT",
+      "classificationConsistent": true,
+      "title": "[ROCm Test-First CI]: Day 0 vLLM MI455X UALoE72 Helios Rack open source community upstream CI by AMD Advancing AI July 22 2026",
+      "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\nhi @andyluo7\n\n+viz @chunfangamd @powderluv\n\nafter discussion with AMD senior leader, in an effort to start MI455 gfx1250 helios off on the correct path, the goal is to have MI455X UALoE72 Helios rack CI by AMD Advancing AI on July 22 2026.\n\nDay 0 MI455X UALoE72 Helios rack  open source community upstream CI should aim for:\n- basic tests\n- EP, TP\n- performance & accuracy regression testing\n- at least 1 modern 2026 MoE model FP4 multi-node distributed inferencing CI nightly tests with disaggrgegated prefill (&potentially wideEP) ideally using AMD's first class MoRI-IO kvcache transfer backend & MoRI-EP collective \n   - multi node being at least 2-8 compute trays of MI455 UALoE72 running each distributed inferencing tests\n   -  the day 0 CI model should **not** be \"GPTOSS\" or \"DeepSeek R1\" as those r pretty old architecture, they should be on 2026 modern frontier MoE models (Deepseek v4 pro, kimi, minimax m3, glm5, qwen3.5, etc)    \n\n\n### Alternatives\n\n_No response_\n\n### Additional context\n\n_No response_\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+      "labels": [
+        "feature request",
+        "rocm",
+        "stale"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-issue-53963",
+      "repository": "vllm-project/vllm",
+      "number": 53963,
+      "type": "issue",
+      "category": "BUG",
+      "categoryValid": true,
+      "ruleCategory": "BUG",
+      "classificationConsistent": true,
+      "title": "GLM-5.3-Flash (glm5_next): no SM120 sparse-MLA path for rope-free MLA (qk_rope_head_dim=0) — three failure modes on RTX PRO 6000",
+      "bodyExcerpt": "### Summary\n\nGLM-5.3-Flash (`glm5_next`) cannot start on **SM120** (RTX PRO 6000 Blackwell, compute 12.0) with the dedicated `glm53-flash` image: the architecture's **rope-free sparse MLA** (`qk_rope_head_dim: 0`) has no working attention/KV path on this capability. Three distinct failure modes below, ending at an explicit kernel shape guard. Weight loading itself is clean (including a quantized checkpoint — Marlin NvFp4 auto-selected), so this is purely the sparse-MLA attention/KV-cache lane.\n\n### Environment\n\n- Image: `vllm/vllm-openai:glm53-flash-x86_64-cu130@sha256:2e771fa615452282cc331eb418b3ef21636fce355bea0491fca89e6d362ab703` (engine banner: `0.1.dev20051+g487ecf187`; per-model image published for #53906)\n- GPUs: 4× NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition (96 GB, **SM120 / compute 12.0**), driver 595.71.05, host CUDA 13.2, TP=4\n- Model: `zai-org/GLM-5.3-Flash` — text config `kv_lora_rank=512`, `qk_nope_head_dim=256`, **`qk_rope_head_dim=0`**, `index_topk=2048` (34 linear-attention + 11 DSA layers)\n- Checkpoint under test: local weight-only NVFP4 (compressed-tensors, routed experts only; attention/vision/MTP in BF16). The failures below are independent of weight quantization — they occur in backend selection / KV-cache paths before or regardless of quantized GEMMs.\n- Args: `--tensor-parallel-size 4 --max-model-len 131072 --max-num-seqs 256 --reasoning-parser glm45 --tool-call-parser glm47 --enable-prefix-caching --gpu-memory-utilization 0.90` (no speculative config)\n\n### Failure mode 1 — default (`kv_cache_dtype=auto`, also explicit `fp8_e4m3`)\n\nEngine init reaches CUDA-graph memory profiling, then the MLA cache write asserts:\n\n```\nRuntimeError: Worker failed with error 'concat_and_cache_mla,\n/workspace/csrc/libtorch_stable/cache_kernels.cu:866, pe_dim must be 64 for fp8_ds_mla'\n```\n\n`FLASHINFER_MLA_SPARSE_SM120` requires the packed `fp8_ds_mla` layout (explicit `fp8_e4m3` is normalized into it), whose cache-write kernel hardcodes the DeepSeek",
+      "labels": [
+        "quantization",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 8,
+      "matchedTerms": [
+        "GLM",
+        "GLM4"
+      ],
+      "scenarios": [
+        "TRAINING",
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-issue-56699",
+      "repository": "vllm-project/vllm",
+      "number": 56699,
+      "type": "issue",
+      "category": "BUG",
+      "categoryValid": true,
+      "ruleCategory": "BUG",
+      "classificationConsistent": true,
+      "title": "[Bug][HiSparse] Decode engine dies with cudaErrorLaunchFailure in the host-mirror path under sustained P/D host imports",
+      "bodyExcerpt": "## Summary\n\nWith HiSparse enabled on the decode side of a NIXL P/D deployment, and every\nimported prefix landing in the pinned host pool, the decode engine dies with a\nsticky `CUDA error: unspecified launch failure`. All TP workers fail at the same\nstep, the engine never recovers, and every subsequent request in the run fails.\n\nThe fault is reported at `_finish_mirror_phase`'s `event.synchronize()`, which is\nwhere an already-failed async launch gets collected — not necessarily the\nfaulting kernel.\n\n```\nFile \"vllm/v1/worker/gpu/model_runner.py\", line 1928, in execute_model\n  self.kv_connector.finish_forward()\nFile \"vllm/v1/worker/gpu/kv_connector.py\", line 96, in finish_forward\nFile \"vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py\", line 310, in finish_forward\nFile \"vllm/distributed/kv_transfer/kv_connector/v1/hisparse/connector.py\", line 247, in finish_forward\nFile \"vllm/distributed/kv_transfer/kv_connector/v1/hisparse/worker.py\", line 831, in finish_forward\n  self._finish_mirror_phase(self._forward_ready_event)\nFile \"vllm/distributed/kv_transfer/kv_connector/v1/hisparse/worker.py\", line 823, in _finish_mirror_phase\n  state.event.synchronize()\ntorch.AcceleratorError: CUDA error: unspecified launch failure\n```\n\nA second worker independently fails at `gpu/async_utils.py:168\ncopy_event.synchronize()` in the same step.\n\n## Reproducer\n\nReproduced twice out of two attempts, ~35 minutes of engine time each.\n\n**Base:** PR #55398 head, `abde160237`. The HiSparse connector does not exist on\n`main`, so this is against the PR stack.\n\n**Hardware:** 2 nodes x 8 B200, 1P(TP8) + 1D(TP8), NIXL pull connector over IB.\n\n**One-line local change** to force every import onto the host path, i.e. the\nalways-host behaviour that #55398 makes adaptive\n(`vllm/distributed/kv_transfer/kv_connector/v1/nixl/pull_scheduler.py:54`):\n\n```diff\n-        request.hisparse_gpu_import = True\n+        request.hisparse_gpu_import = False\n```\n\n**Prefill engine:**\n\n```\nvllm serve nvidia/GLM-5.2",
+      "labels": [],
+      "filterDisposition": "eligible",
+      "relevanceScore": 5,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-issue-57406",
+      "repository": "vllm-project/vllm",
+      "number": 57406,
+      "type": "issue",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[Feature]: GLM 5.3 Performance Optimization",
+      "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\nFollowing up to https://github.com/vllm-project/vllm/issues/46654\n\nGLM-5.3 uses the same `glm_moe_dsa` base architecture as GLM-5.2 so the optimizations we did before should still apply, there are still some work we can do to optimize it further\n\n### CUDA\n\n- [x] https://github.com/vllm-project/vllm/pull/52164  @zobinHuang\n- [x] https://github.com/vllm-project/vllm/pull/51724 @sychen52 \n- [x] https://github.com/vllm-project/vllm/pull/53781  @MatthewBonanni\n- [ ] https://github.com/vllm-project/vllm/pull/54951 @zigzagcai \n- [x] https://github.com/vllm-project/vllm/pull/55222 @drakosha \n- [x] https://github.com/vllm-project/vllm/pull/56629  @LucasWilkinson\n- [x] https://github.com/vllm-project/vllm/pull/57443 @yewentao256 \n- [x] https://github.com/vllm-project/vllm/pull/57458 @GirasoleY \n- [x] https://github.com/vllm-project/vllm/pull/57701 @yewentao256 \n- [x] https://github.com/vllm-project/vllm/pull/58450 @yewentao256 \n- [ ] https://github.com/vllm-project/vllm/pull/58686 @LuminolT \n- [x] https://github.com/vllm-project/vllm/pull/58845 @yewentao256 \n- [ ] https://github.com/vllm-project/vllm/pull/59084 @yewentao256 \n- [x] https://github.com/vllm-project/vllm/pull/59464 @yewentao256 \n- [x] https://github.com/vllm-project/vllm/pull/60140 @yewentao256 \n- [ ] https://github.com/vllm-project/vllm/pull/60229 @jonahsamost\n\n### ROCm\n\n- [x] https://github.com/vllm-project/vllm/pull/44527  @frida-andersson\n- [x] https://github.com/vllm-project/vllm/pull/45149  @tvirolai-amd\n- [x] https://github.com/vllm-project/vllm/pull/46832  @frida-andersson\n- [ ] https://github.com/vllm-project/vllm/pull/47335  @xaguilar-amd\n- [ ] https://github.com/vllm-project/vllm/pull/51314  @amd-sriram\n- [ ] https://github.com/vllm-project/vllm/pull/58167 @simondanielsson\n",
+      "labels": [
+        "feature request",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 6,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-issue-58365",
+      "repository": "vllm-project/vllm",
+      "number": 58365,
+      "type": "issue",
+      "category": "BUG",
+      "categoryValid": true,
+      "ruleCategory": "BUG",
+      "classificationConsistent": true,
+      "title": "[Bug] `ep_gather` output store overflows int32 with DeepEP v2 expanded layout (IMA in `_fwd_kernel_ep_gather`)",
+      "bodyExcerpt": "## Summary\n\n`_fwd_kernel_ep_gather` in `vllm/model_executor/layers/fused_moe/deep_gemm_utils.py` computes the output row offset as `cur_token * output_tensor_stride0` in int32. With hidden size K = 6144, this wraps once the output has more than 2^31 / 6144 = 349,525 rows. The store then lands out of bounds and faults with `cudaErrorIllegalAddress`.\n\n#53914 (fe284ea17d) fixed the matching **input** read (`source_token_index_i64 * input_tensor_stride0`). The **output** store is still int32 on main (9ed81581, line 410):\n\nhttps://github.com/vllm-project/vllm/blob/9ed81581a896a5bf0448b26d43f52486a435f799/vllm/model_executor/layers/fused_moe/deep_gemm_utils.py#L405-L413\n\n```python\n        tl.store(\n            output_tensor\n            + cur_token * output_tensor_stride0   # int32 * int32\n            + cur_block * BLOCK_D\n            + off_d,\n            ...\n```\n\nWith the DeepEP v2 all2all backend, the gather receives an **expanded** layout: `recv_topk_ids` is `(rows, 1)`, with one row per (token, local expert) pair. So the output has as many rows as the permuted input, and both offsets hit the same limit. When `topk_ids` is `(tokens, topk)`, the output has one row per received token and normally stays far below the limit, which is presumably why this hasn't shown up before.\n\n## Setup\n\n- GLM-5.2-FP8 (K = 6144, 256 experts, top-8), `--moe-backend deep_gemm`, `--all2all-backend deepep_v2` (hybrid mode)\n- 4 nodes × 8 × H100, DP4 × PCP8 (DCP8), TP1, EP32, eager\n- vLLM from #57075 at bf0dca88, with the #53914 `ep_gather` input fix applied on top\n- `--max-num-batched-tokens 4096` (8192 fails the same way, sooner)\n\n## Evidence\n\nWith `CUDA_LAUNCH_BLOCKING=1`, the first memory-profiling forward (`determine_available_memory` → `profile_run`) faults in the gather on the busiest EP rank:\n\n```\ndeep_gemm_moe.py:385 apply → deepgemm_unpermute_and_reduce → ep_gather\n  → _fwd_kernel_ep_gather\nRuntimeError: Triton Error [CUDA]: an illegal memory access was encountered\n```\n\nA host-side boun",
+      "labels": [],
+      "filterDisposition": "review",
+      "relevanceScore": 3,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-issue-59218",
+      "repository": "vllm-project/vllm",
+      "number": 59218,
+      "type": "issue",
+      "category": "BUG",
+      "categoryValid": true,
+      "ruleCategory": "BUG",
+      "classificationConsistent": true,
+      "title": "[Bug]: Engine-based parsers drop text after/between tool calls in non-streaming (streaming keeps it)",
+      "bodyExcerpt": "### Your current environment\n\n`collect_env.py` fails on macOS, so manually: macOS arm64 (CPU), Python 3.12, vLLM main @ 998490cd9f.\nParser-only bug, hardware doesn't matter.\n\n### 🐛 Describe the bug\n\nWith the parsers built on `ParserEngine` (qwen3_coder, qwen3_xml, glm45, minimax_m2, ...), text that comes after a tool call is returned when streaming but dropped in non-streaming responses. Text between two tool calls is dropped too.\n\nRepro against a real server, with the model output forced through `structured_outputs` so it's deterministic:\n\n```\nvllm serve Qwen/Qwen3-0.6B --enable-auto-tool-choice --tool-call-parser qwen3_coder\n```\n\n```python\nimport json\nimport requests\n\nURL = \"http://localhost:8000/v1/chat/completions\"\nforced = (\"<tool_call>\\n<function=get_weather>\\n<parameter=city>\\nParis\\n</parameter>\\n\"\n          \"</function>\\n</tool_call>\\nDone.\")\nbody = {\n    \"model\": \"Qwen/Qwen3-0.6B\",\n    \"messages\": [{\"role\": \"user\", \"content\": \"Weather in Paris?\"}],\n    \"tools\": [{\"type\": \"function\", \"function\": {\"name\": \"get_weather\",\n               \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}}}}],\n    \"chat_template_kwargs\": {\"enable_thinking\": False},\n    \"structured_outputs\": {\"choice\": [forced]},\n    \"max_tokens\": 64,\n}\n\nmsg = requests.post(URL, json=body).json()[\"choices\"][0][\"message\"]\nprint(\"non-streaming:\", repr(msg[\"content\"]), [tc[\"function\"][\"name\"] for tc in msg[\"tool_calls\"]])\n\ncontent = \"\"\nwith requests.post(URL, json={**body, \"stream\": True}, stream=True) as r:\n    for line in r.iter_lines():\n        if line.startswith(b\"data: {\"):\n            content += json.loads(line[6:])[\"choices\"][0][\"delta\"].get(\"content\") or \"\"\nprint(\"streaming:    \", repr(content))\n```\n\n```\nnon-streaming: None ['get_weather']\nstreaming:     'Done.'\n```\n\n(`/v1/completions` with the same `structured_outputs` returns exactly `forced`, so the model output is the same in both cases.)\n\n`_events_to_delta` defers text that follows a tool event so a delta never",
+      "labels": [
+        "tool-calling"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 5,
+      "matchedTerms": [
+        "GLM",
+        "GLM4"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-issue-59608",
+      "repository": "vllm-project/vllm",
+      "number": 59608,
+      "type": "issue",
+      "category": "BUG",
+      "categoryValid": true,
+      "ruleCategory": "BUG",
+      "classificationConsistent": true,
+      "title": "[Bug]: Structured output skips the `<tool_call>` that implicitly ends reasoning, so GLM-4.7/5.x `required`/named tool calls are lost",
+      "bodyExcerpt": "> **AI disclosure:** this issue was investigated and drafted with an AI assistant (Claude). The reproducers were run on the hardware below, and every number in this issue comes from those runs. A human reviewed the issue before filing.\n\n## Your current environment\n\n- vLLM main at `e5e38ba9b` (0.30.1rc1.dev505), editable install over the precompiled wheel for that commit.\n- 8x H100 80GB (SM90). All runs use TP4.\n- Model: `RedHatAI/GLM-5.3-Flash-NVFP4`, `--enable-auto-tool-choice --tool-call-parser glm47 --reasoning-parser glm45`. Default structured-output backend (xgrammar), default `VLLM_ENFORCE_STRICT_TOOL_CALLING=1`.\n\n<details>\n<summary><code>vllm collect-env</code></summary>\n\n```\n==============================\n        System Info\n==============================\nOS                           : Red Hat Enterprise Linux 9.6 (Plow) (x86_64)\nGCC version                  : (GCC) 11.5.0 20240719 (Red Hat 11.5.0-5)\nClang version                : Could not collect\nCMake version                : version 3.26.5\nLibc version                 : glibc-2.34\n==============================\n       PyTorch Info\n==============================\nPyTorch version              : 2.13.0+cu130\nIs debug build               : False\nCUDA used to build PyTorch   : 13.0\nROCM used to build PyTorch   : N/A\nXPU used to build PyTorch    : N/A\n==============================\n      Python Environment\n==============================\nPython version               : 3.12.9 (main, Mar  9 2026, 00:00:00) [GCC 11.5.0 20240719 (Red Hat 11.5.0-5)] (64-bit runtime)\nPython platform              : Linux-5.14.0-570.98.1.el9_6.x86_64-x86_64-with-glibc2.34\n==============================\n       CUDA / GPU Info\n==============================\nIs CUDA available            : True\nCUDA runtime version         : 13.0.88\nCUDA_MODULE_LOADING set to   : \nGPU 0: NVIDIA H100 80GB HBM3\nNvidia driver version        : 580.126.09\ncuDNN version                : Could not collect\nHIP runtime version          : N/A\nMIOpen runtime version  ",
+      "labels": [
+        "structured-output",
+        "tool-calling",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 6,
+      "matchedTerms": [
+        "GLM",
+        "GLM-4",
+        "GLM4"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-issue-60072",
+      "repository": "vllm-project/vllm",
+      "number": 60072,
+      "type": "issue",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[Tracking] HiSparse bugfixes and performance improvements",
+      "bodyExcerpt": "Tracking HiSparse correctness, performance, and feature work.\n\n## Correctness\n- [ ] #60161 register the shared HiSparse host pool with NIXL from one TP rank\n- [ ] #60109 crash on prefix hits that adopt GPU copies (fix: #60117 in HiSparse or #60123 in MRv2)\n- [x] #56699 decode dies with `cudaErrorLaunchFailure` under sustained P/D host imports (possibly fixed; unable to reproduce)\n- [ ] #58041 `/pause` stall with P/D (general fix: #59670)\n- [x] #59681 `FULL` prefill replay crashes with SM100 FlashInfer sparse MLA (not HiSparse-specific; fixed by #59751)\n- [x] ~~#59633 hold freed host blocks until deferred writes land~~ (closed: race is latent and can't change outputs)\n- [ ] #59283 keep unpinned blocks last in the free queue\n- [x] #59688 reject `cudagraph_mode=FULL` with HiSparse\n- [x] #59309 MTP acceptance collapse under FULL graphs with a saturated GPU pool\n- [x] #59450 admission hang (size the KV cache from the groups HiSparse allocates)\n- [x] #59494 chunked-prefill preemption livelock\n- [x] #59235 MTP residency race\n- [x] #59036 never allocate GPU pages without host backing\n- [x] #59007 late write acks\n- [x] #59282 `Cannot get N free blocks` (also #59440)\n- [x] #56889 0% GSM8K\n\n## Cleanup\n- [ ] #59465 standardize terminology\n- [x] #60060 CODEOWNERS for HiSparse\n- [x] #59476 test mock fix\n\n## P/D\n- [x] #60107 size NIXL per-region replicate flags by each region's block count (P_TP > D_TP into a HiSparse decoder)\n- [x] #60108 return NumPy descriptors from mixed-memory local registration (companion to #60107)\n- [ ] #55398 direct GPU landing for P/D transfers\n\n## Performance\n- [x] #60083 cache per-request residency instead of rescanning every page each step (GLM-5.3 TP8 B200: 764 → 1209 output tok/s vs 1302 without HiSparse)\n- [ ] #60103 fuse per-layer slot invalidation and shorten the all-resident resolver path\n- [ ] #58852 hugetlbfs-backed host pool\n- [ ] make HiSparse prefill graph-capturable, so `cudagraph_mode=FULL` can be allowed again\n- [x] #57930 avoid repeated",
+      "labels": [],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-issue-60124",
+      "repository": "vllm-project/vllm",
+      "number": 60124,
+      "type": "issue",
+      "category": "BUG",
+      "categoryValid": true,
+      "ruleCategory": "BUG",
+      "classificationConsistent": true,
+      "title": "[Bug][KV Connector] MultiConnector on prefill silently disables the hybrid KV cache manager, so a NixlConnector decode rejects every transfer with an opaque \"NIXL compatibility hash mismatch\"",
+      "bodyExcerpt": "### Your current environment\nvLLM v0.31.0 (CUDA 13.0 image), nixl 1.4.1 (LIBFABRIC backend over EFA), 2 nodes, TP8 per node, B300. Model zai-org/GLM-5.3 (DeepSeek-V3.2-style: MLA + DSA indexer cache), `--kv-cache-dtype fp8_e4m3`, MTP 1, `--block-size 64`.\n\n### Describe the bug\nPrefill/decode disaggregation works with `NixlConnector` on both sides. To keep CPU KV offload on the prefill node, we switched only the prefill instance to a `MultiConnector`:\n\n```json\n{\"kv_connector\": \"MultiConnector\", \"kv_role\": \"kv_both\",\n \"kv_connector_extra_config\": {\"connectors\": [\n   {\"kv_connector\": \"NixlConnector\", \"kv_role\": \"kv_both\", \"kv_connector_extra_config\": {\"backends\": [\"LIBFABRIC\"]}},\n   {\"kv_connector\": \"LMCacheConnectorV1\", \"kv_role\": \"kv_both\"}]}}\n```\n\nThe decode instance kept plain `NixlConnector`. On startup the prefill logs:\n\n```\nWARNING [vllm.py] Turning off hybrid kv cache manager because `--kv-transfer-config` selects a KV connector that does not support it.\n```\n\nThe decode instance keeps the hybrid KV cache manager on (NixlConnector supports it). From then on every request fails on decode at the handshake:\n\n```\nFile \".../kv_connector/v1/nixl/base_worker.py\", line 1101, in _nixl_handshake\n    raise RuntimeError(\nRuntimeError: NIXL compatibility hash mismatch. Local: ac9aa5b3…, Remote: d6e05114…\n```\n\nThe client gets HTTP 500 and the prefill side releases the KV when the lease expires. Starting the decode with `--disable-hybrid-kv-cache-manager` makes the layouts (and hashes) match, and P/D with the MultiConnector prefill then works correctly (cache hits from the offload connector, correct outputs).\n\nThe check itself is right: refusing the transfer is much better than reading a different layout. The problem is that nothing tells the operator which setting differs, and the setting was changed implicitly by choosing a connector on one side only.\n\n### Suggestions\n1. Include the differing fields in the \"compatibility hash mismatch\" error (or log the hashed fields on both",
+      "labels": [
+        "kv-connector",
+        "kv-cache-manager"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 5,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-issue-60204",
+      "repository": "vllm-project/vllm",
+      "number": 60204,
+      "type": "issue",
+      "category": "BUG",
+      "categoryValid": true,
+      "ruleCategory": "BUG",
+      "classificationConsistent": true,
+      "title": "[Bug]: [KV Offload][P2P] A NIXL error raised by `write_blocks` during a fetch is never reported to the requesting peer, so it waits the full round timeout",
+      "bodyExcerpt": "### Your current environment\n\n- vLLM `0.30.0+g87ecf7d`, plus open PRs #56836 and #57139 and some local P2P hardening patches (see the note below).\n- torch 2.13.0+cu130, CUDA 13.0, `nixl-cu13` 1.3.2 (UCX backend).\n- 8× H100 80GB HBM3 per node, driver 580.126.20, RoCE.\n- Model: GLM-5.3, disaggregated prefill/decode. Prefill is DP4 × PCP8, one DP rank per node, with `TieringOffloadingSpec`: a 512 GiB CPU primary tier plus a `p2p` secondary tier over UCX.\n\nThe code path below is unchanged on `main` (checked against `e11962fc1c`): our build's `session/server.py` is byte-identical to `main`, and `data/nixl.py`'s `write_blocks` is identical too.\n\n\n### 🐛 Describe the bug\n\n\nWhen the source side of a P2P fetch calls `NixlTransport.write_blocks` and NIXL raises (we saw `nixlRemoteDisconnectError` and `nixlNotFoundError`), the exception escapes to the session's message dispatcher, which only logs it. The requesting peer is never told the fetch failed. It waits for its round timeout (30 s here), aborts, and only then falls back to recomputing the prefix.\n\nCall chain, from our traceback (line numbers from our build, same code on `main`):\n\n```\nsession.py   _on_message            -> _dispatch_message\nserver.py    on_fetch               (line 390) -> self._submit_transfer(...)\nserver.py    _submit_transfer       (line 1072) -> self._transport.write_blocks(...)\nnixl.py      write_blocks           (line 294) -> self._agent.transfer(handle)\nnixl_cu13/_api.py transfer          (line 632) raises nixlRemoteDisconnectError / nixlNotFoundError\n```\n\n`_submit_transfer` already has a fail-fast path, but only for `write_blocks` *returning* `None` (no remote descriptor list for the peer). That path marks the round finishing and calls `_finalize_outbound(kv_request_id, round_key, success=False)` so that \"the peer and the local store jobs don't wait for finish_request or for `_STORE_TIMEOUT_S` / `_LOAD_TIMEOUT_S`\". A raised exception skips it. The dispatcher in `session.py` (`main` lines ~319-333",
+      "labels": [
+        "bug",
+        "kv-connector"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-issue-60205",
+      "repository": "vllm-project/vllm",
+      "number": 60205,
+      "type": "issue",
+      "category": "BUG",
+      "categoryValid": true,
+      "ruleCategory": "BUG",
+      "classificationConsistent": true,
+      "title": "[Bug]: [KV Offload][P2P] After a peer's EngineCore stalls ~45 s, P2P transfers to and from it fail permanently, although the control session reconnects",
+      "bodyExcerpt": "### Your current environment\n\n- vLLM `0.30.0+g87ecf7d`, plus open PRs #56836 and #57139 and some local P2P hardening patches (see the note below).\n- torch 2.13.0+cu130, CUDA 13.0, `nixl-cu13` 1.3.2 (UCX backend).\n- 8× H100 80GB HBM3 per node, driver 580.126.20, RoCE.\n- Model: GLM-5.3, disaggregated prefill/decode. Prefill is DP4 × PCP8, one DP rank per node, with `TieringOffloadingSpec`: a 512 GiB CPU primary tier plus a `p2p` secondary tier over UCX.\n\n\nThe P2P tier config on each prefill rank:\n\n```json\n{\"type\": \"p2p\", \"host\": \"<pod ip>\", \"port\": 7777, \"backends\": [\"UCX\"], \"num_threads\": 4,\n \"connect_timeout_s\": 30, \"heartbeat_interval_s\": 2, \"heartbeat_timeout_s\": 10}\n```\n\nNote: this build is vLLM `87ecf7d` plus #56836, #57139 (`data/nixl.py` byte-identical to #57139's head `590a8d97`) and four local patches: unacked handshakes expire to MISS; reconnects that reuse a peer's identity are accepted (`ROUTER_HANDOVER`); configurable heartbeat and connect timeouts (the last three fields above); and control sends that never block the scheduler. We have not yet reproduced this on plain `main`. The relevant path does exist there: `manager.py` (around line 774) calls `self._data.remove_remote_peer(pid)` when a peer goes down, and the session re-registers the peer on reconnect.\n\n### 🐛 Describe the bug\n\n\nOne prefill rank's EngineCore, which also serves its P2P port, was paused with `SIGSTOP` for 45 s and then resumed with `SIGCONT`. This was under steady multi-turn load, 32 concurrent sessions with ~90K-token contexts. The DP group stalled and recovered as expected: 45 s is under DeepEP's timeout, and no request failed.\n\nAfter the resume, the **control plane recovered but the data plane did not**:\n\n- Peers marked the paused rank `down` and later logged `created connected session` for it; heartbeats and lookups work again.\n- Every P2P data transfer **to or from** that rank fails, with all 3 peers, in both directions. Errors: `check_xfer_state failed … NIXL_ERR_REMOTE_DISCONNE",
+      "labels": [
+        "bug"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 5,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-41197",
+      "repository": "vllm-project/vllm",
+      "number": 41197,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[ROCm][benchmark][perf] fix moe tuning script for RDNA",
+      "bodyExcerpt": "\r\n\r\n## Purpose\r\nEffective tuning for the fused_moe_triton kernel seems crucial. An optimal .json can results in +15% speedup for GLM4.7-Flash model on gfx1100. However, the existing benchmarking script is very slow (>4hrs with 8 GPUs) due to the large search space, with crashes that hang the ray worker indefinitely. \r\n\r\nThis PR addresses three problems for RDNA:\r\n\r\n- Remove _matrix_instr_nonkdim_ and _kpack_, which are CDNA only. This reduces the search space up to 4 times as they contribute to name hashings. For some Triton versions, using _matrix_instr_nonkdim_=32 on gfx12 results in \"no matching matrix core intrinsic\" **HARD FAILURE** for tl.dot. (tensorcore/WMMA is always 16*16*16)\r\n- More pruning based on register spilling - some bad configs even cause low level kernel crashes due to cudagraph hitting illegal memory. so this is necessary.\r\n- Proper Triton cache cleanup for Triton 3.6+\r\n\r\n## Test Plan\r\n\r\n## Test Result\r\n\r\n---\r\n<details>\r\n<summary> Essential Elements of an Effective PR Description Checklist </summary>\r\n\r\n- [ ] The purpose of the PR, such as \"Fix some issue (link existing issues this PR will resolve)\".\r\n- [ ] The test plan, such as providing test command.\r\n- [ ] The test results, such as pasting the results comparison before and after, or e2e results\r\n- [ ] (Optional) The necessary documentation update, such as updating `supported_models.md` and `examples` for a new model.\r\n</details>\r\n\r\n",
+      "labels": [
+        "performance",
+        "rocm",
+        "verified"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 3,
+      "matchedTerms": [
+        "GLM",
+        "GLM4"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-51309",
+      "repository": "vllm-project/vllm",
+      "number": 51309,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
+      "bodyExcerpt": "## Summary\r\n\r\nWith cross-layer index sharing, only some attention layers update the shared top-k buffer.\r\nThe old path still remapped that buffer on every layer.\r\n\r\nThis PR runs the remap only when the layer owns an indexer. For GLM-5.2 with\r\n`index_topk_freq = 4`, this reduces remaps from 78 to 21 per forward pass.\r\n\r\n## Safety\r\n\r\n- Layer 0 always owns an indexer, so the shared output is initialized before reuse.\r\n- Non-indexer layers do not change the inputs to the remap.\r\n- The default `index_topk_freq = 1` path is unchanged.\r\n- Speculative decoding still remaps on every layer.\r\n\r\n## Update: indexer and non-indexer layers are two KV cache groups\r\n\r\nhttps://github.com/vllm-project/vllm/pull/53781  added the is_index_group_leader field to MLAAttentionSpec: `is_index_group_leader=self.indexer is not None,`. Layers can only share a KV cache group if they agree on is_index_group_leader, so once the flag is set per layer, indexer and non-indexer layers land in different groups and therefore get different metadata instances with separate paged_kv_indices\r\n\r\n```\r\nindex_group_leader_set = {spec.is_index_group_leader for spec in specs}\r\nassert (\r\n    ...\r\n    and len(index_group_leader_set) == 1\r\n    ...\r\n), (\r\n    \"All attention layers in the same KV cache group must use the same \"\r\n    \"... index-sharing role, ...\"\r\n)\r\n```\r\n\r\nSo, remap should run for all indexer layers and the first non-indexer layer. The two non-indexer layer following the first non-indexer layer doesn't need a remap.\r\n\r\nThe following table shows how the remap condition changed between the commits and how it is implemented by `index_epoch` and  `remapped_epoch`. index_epoch is fixed per layer at construction: it counts indexer writes up to and including that layer - which selection is this layer entitled to read. remapped_epoch lives on the metadata and moves during the pass: it records which selection is currently sitting in that group's paged_kv_indices. A mismatch means the group is holding an older ",
+      "labels": [
+        "rocm",
+        "ready",
+        "mrv1-only"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-51314",
+      "repository": "vllm-project/vllm",
+      "number": 51314,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[ROCm][Perf] Skip cleaning sparse prefill MQA logits",
+      "bodyExcerpt": "## Summary\n\nThe sparse prefill path creates the MQA-logits buffer with `torch.full(..., -inf)`.\nThis launches an FP32 fill before every logits kernel.\n\nThis PR passes `clean_logits=False` to AITER, so the buffer uses `torch.empty`\nand the fill is removed.\n\n## Safety\n\nThe only consumer is `top_k_per_row_prefill`. It reads each row only inside\n`[cu_seqlen_ks, cu_seqlen_ke)`. Its vectorized path also guards the final partial\nload, so padding values are never read. The top-k result is unchanged.\n\n## Results\n\nMI355X, TP=4, rank 0, comparable before/after captures:\n\n| metric | before | after |\n|---|---:|---:|\n| FP32 fill launches | 18,162 | **0** |\n| FP32 fill GPU time | 1,250.2 ms | **0 ms** |\n| MQA-logits launches | 18,108 | 17,930 |\n\nThe removed fill was **0.89% of total GPU kernel time**. In the sample below it\ntakes 74.6 µs and is fully serialized before the logits kernel.\n\n![Before: FP32 fill before MQA logits](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr4_before.png)\n\n![After: fill removed](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr4_after.png)\n\n## Model-level e2e results\n\n### Test conditions\n\n| | |\n|---|---|\n| Hardware | MI355X (gfx950), TP=4 |\n| Model | `amd/GLM-5.2-MXFP4`, fp8 KV cache |\n| Stack | vLLM `69715823`, AITER `4a1cc77`, flydsl `0.3.0` |\n| Server | `--async-scheduling --max-num-seqs 256 --max-num-batched-tokens 16384 --block-size 64 --no-enable-prefix-caching`, `index_topk_freq=4` |\n| Env | `VLLM_ROCM_USE_AITER=1`, `VLLM_ROCM_USE_AITER_SPARSE_INDEXER=1`, `AITER_USE_FLYDSL_MOE_SORTING=1`, `VLLM_ROCM_QUICK_REDUCE_QUANTIZATION=INT4` |\n| Perf | `vllm bench serve`, random dataset, `--ignore-eos --request-rate inf`, ISL 1024 and 8192, OSL 1024, concurrency 1-256 (16 points) |\n| Accuracy | `lm_eval` gsm8k 5-shot chat template with thinking enabled, `max_gen_toks=8192`; RULER `niah_single_2` at 16k |\n| Sampling | checkpoint default (tempe",
+      "labels": [
+        "rocm",
+        "ready"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-53953",
+      "repository": "vllm-project/vllm",
+      "number": 53953,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[ROCm][Model][AMD][Performance]: Added AITER fusion on top of the existing TRITON fusion path for GLM-5.2-MXFP4 through deepseek_v32",
+      "bodyExcerpt": "## Purpose\r\n\r\nAdds an AITER-backed fusion path for the ROCm `deepseek_v32` (DeepSeek Sparse\r\nAttention) forward, used by both DeepSeek-V3.2 and GLM-5.2. The existing\r\nshared-Triton fusion path is untouched and remains the default; the AITER path\r\nis selected at runtime per fusion via opt-in env flags, so behaviour on ROCm is\r\nunchanged unless a flag is set.\r\n\r\nThis PR is stacked on top of: https://github.com/vllm-project/vllm/pull/51915, so needs enablement to land first before this fusion add-on.\r\n\r\n### Fusions added\r\n\r\n**1. MLA dual RMSNorm** \r\nFuses the q and kv-a RMSNorms into one AITER call\r\n(`fused_mla_dual_rms_norm_out`). An out-variant was added so the norms write\r\nmodel-owned buffers rather than allocating per layer, which lets the call be\r\nhoisted out of the eager region and captured by cudagraph. Also wires the\r\nper-token-quant variant for the quantized case.\r\n\r\n**2. Fused QK RoPE + concat + MLA cache write** \r\n`rocm_aiter_fused_qk_rope_concat_and_cache_mla` replaces the separate RoPE,\r\nconcat and KV-cache-write steps on the MLA path. The uint8 KV cache allocated by\r\n`--kv-cache-dtype fp8` is viewed as `float8_e4m3fn` before the call, since the\r\nAITER op rejects the raw uint8 buffer.\r\n\r\n**3. Fused indexer QK RoPE + fp8 quant + cache write**\r\n`rocm_aiter_indexer_qk_rope_quant_and_cache` fuses the lightning-indexer key\r\nLayerNorm, RoPE, fp8 quantization, and cache write into one call for the 21\r\nindexer layers.\r\n\r\n**4. Fused all-reduce + RMSNorm**\r\nUses AITER's custom all-reduce with an in-kernel RMSNorm. Gated on custom-AR\r\neligibility (`should_custom_ar`) because the op asserts the kernel ran, and\r\noversized batches must fall back to the standard path — this is the check the\r\ntorch.compile pass performs at compile time and which an inline call has to do\r\nitself.\r\n\r\n**5. `VLLM_ROCM_USE_AITER_CUSTOM_AR`** exposes AITER's custom all-reduce\r\nindependently of the fused variant.\r\n\r\n## Test Plan\r\n\r\nTo switch between the two fusion paths, use the env var below:\r\n",
+      "labels": [
+        "rocm",
+        "deepseek",
+        "verified",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 7,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-54074",
+      "repository": "vllm-project/vllm",
+      "number": 54074,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[ROCm][Perf] Use the fused clamped SwiGLU kernel on ROCm",
+      "bodyExcerpt": "## Purpose\n\n`SiluAndMulWithClamp` routes ROCm to `forward_native`, which evaluates the activation as six eager kernels — two clamps, a sigmoid, two multiplies and an add. The fused op it skips, `torch.ops._C.silu_and_mul_with_clamp`, carries no HIP-specific guard in `csrc/libtorch_stable/activation_kernels.cu` and is built and numerically correct on gfx950. `SiluAndMul`, a few classes up in the same file, already takes the `is_cuda_alike()` path on ROCm — this exclusion looks like an oversight rather than a guard.\n\n```diff\n- if current_platform.is_rocm() or current_platform.is_xpu():\n+ if current_platform.is_xpu():\n      self._forward_method = self.forward_native\n  elif current_platform.is_cuda_alike():\n      self.op = torch.ops._C.silu_and_mul_with_clamp\n```\n\nXPU keeps its existing native path.\n\n## Test Plan\n\nMeasured on 8× MI355X (gfx950), ROCm 7.2.3, with GLM-5.3-Flash — a 320B/18B multimodal MoE that clamps the SwiGLU gate in both its dense and MoE MLPs (`swiglu_limit=10.0`). TP8, 1M context, bf16 KV cache.\n\n1. **Numerical check** — fused output vs `forward_native` over the model's shapes.\n2. **Isolated kernel timing** — both arms interleaved inside a single process, so the board's shared power budget (which drifts an unchanged kernel by up to ~13% between processes here) cannot bias one arm against the other.\n3. **End to end** — `vllm bench serve`, each arm on a freshly started server so prefix-cache state matches.\n\n## Test Result\n\nNumerics: fused matches `forward_native` within bf16 rounding (max abs diff 3.1e-02 at values up to the clamp limit of 10).\n\nIsolated kernel, interleaved:\n\n| shape | tokens | native | fused | speedup |\n|---|---|---|---|---|\n| dense MLP d=1536 | 64 | 54.67 µs | 23.95 µs | 2.28× |\n| MoE d=256 | 64 | 55.06 µs | 23.89 µs | 2.31× |\n| dense MLP d=1536 | 512 | 57.75 µs | 24.58 µs | 2.35× |\n| MoE d=256 | 512 | 54.01 µs | 23.55 µs | 2.29× |\n\nA decode-phase torch profile attributed 1.94 ms per step to the six eager kernels across 45 layers — e",
+      "labels": [
+        "rocm",
+        "needs-rebase",
+        "verified"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-54929",
+      "repository": "vllm-project/vllm",
+      "number": 54929,
+      "type": "pr",
+      "category": "OTHER",
+      "categoryValid": true,
+      "ruleCategory": "OTHER",
+      "classificationConsistent": true,
+      "title": "[Attention] Portable Triton sparse-MLA fallback for SM12x (consumer Blackwell)",
+      "bodyExcerpt": "## Purpose\r\n\r\nDSA models (DeepSeek-V3.2, GLM-5.2) currently have **no working sparse-attention backend on\r\nconsumer Blackwell** (SM12x: RTX 5090, GB10): the native FlashMLA sparse kernels\r\n(`vllm._flashmla_C`) only build for sm90/sm100, and the sole SM12x option,\r\n`FLASHINFER_MLA_SPARSE_SM120`, livelocks under sustained load — GPUs pin at 100 % with zero\r\noutput until the NCCL watchdog kills the server. Fixes #51921 (on SM12x).\r\n\r\nThis makes the `FLASHMLA_SPARSE` backend work on SM12x by binding portable **Triton**\r\nimplementations of `flash_mla_sparse_fwd` / `flash_mla_with_kvcache` when the native extension\r\ncan't serve the device. The kernels are from #49026 (@marksunner, validated there on\r\nsm_121/GB10) — this PR is that work rebased onto current main as a first-class code path\r\ninstead of that PR's runtime monkeypatch, with its model-side diffs dropped (main already has\r\nthat content). Supersedes/continues #49026 — happy to hand back or co-drive.\r\n\r\n## Scope\r\n\r\nThis path covers **DeepSeek-geometry sparse MLA** — `qk_rope_head_dim = 64`, i.e. the\r\n512 NoPE + 64 RoPE = **576** head layout: DeepSeek-V3.2/V4.1 and GLM-5.2. The Triton kernels\r\nand the `fp8_ds_mla` 656-byte per-token entry are built around that 576 layout\r\n(`get_supported_head_sizes() == [576]`).\r\n\r\n**Not covered:** NoPE MLA models (`qk_rope_head_dim = 0`, `head_size = 512`) such as\r\nGLM-5.3-Flash. Those are correctly rejected at the head-size gate and need the `pe_dim != 64`\r\nwork in #55277 / #53969 *in addition to* this PR. Thanks to @haqishen for confirming this\r\nboundary on real SM120 hardware (see comments).\r\n\r\nChanges:\r\n- `ops/flashmla.py`: `_use_triton_sparse_mla()` (auto on SM12x; `VLLM_TRITON_MLA_SPARSE`\r\n  forces on/off) selects the Triton binding; `is_flashmla_sparse_supported()` reports True\r\n  there; `get_mla_metadata` returns `(None, None)` (the Triton kernels self-schedule).\r\n- New files: `sm12x_sparse_mla_attn.py`, `sparse_mla_kernels.py`, `sparse_mla_env.py`,\r\n  `ops/deepseek_v4_ops/",
+      "labels": [],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-54951",
+      "repository": "vllm-project/vllm",
+      "number": 54951,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[Perf][GLM-5.3-Flash] Shard long-context indexer prefill rows across TP",
+      "bodyExcerpt": "## TL;DR\r\n\r\n**How it works / why it is faster:** Instead of repeating sparse-indexer prefill MQA scoring and top-k on every TP rank, partition independent query rows into cost-balanced contiguous slices. Each rank scores its rows against the full available key history; `all_gatherv` reassembles the final int32 indices. This removes redundant computation in exchange for fixed-width index communication, so savings grow with context length. There is no attention approximation. Decode kernels are unchanged; smaller batches retain the existing path (activation requires at least `16,384 × TP` scheduled prefill query rows).\r\n\r\n**Performance, baseline → optimized:** main parent `5893426b88f7` → PR head `16934c6e76e5`; GLM-5.3-Flash on 4× H200, TP4, C1, 256 output tokens, 65,536-token batch budget, legacy runner + explicit FA3 backend. Four fresh-process A/B pairs in ABBA/BAAB order; warmups excluded. Throughput below counts input + output tokens at C1, **not saturated serving throughput**.\r\n\r\n| Input context | Server TTFT, seconds (B → O) | TTFT reduction | Total tok/s (B → O) | Throughput increase |\r\n|---|---|---|---|---|\r\n| 128K | 4.782 → 4.605 | 3.69% | 20,269.73 → 20,835.80 | 2.79% |\r\n| 256K | 10.154 → 9.372 | 7.70% | 22,090.93 → 23,651.89 | 7.07% |\r\n| 512K | 22.760 → 19.418 | 14.68% | 21,379.03 → 24,752.65 | 15.78% |\r\n| 1M (1,000,000) | 54.154 → 40.388 | 25.42% | 17,856.28 → 23,675.18 | 32.59% |\r\n\r\nServer-side TPOT at 1M: **6.631 → 6.633 ms/token**. Across the full 1K–1M scan, absolute TPOT percentage-change point estimates are <0.04%; every paired 95% interval includes zero. This does not prove equivalence. The 2K TTFT point estimate is 2.84% slower (interval crosses zero); we do not claim blanket short-input non-regression.\r\n\r\n**Correctness / targeted accuracy, baseline → optimized:** Across 33 distinct retrieval probes spanning 1K–1M, repeated over four processes per arm, expected-answer presence is **132/132 → 132/132**; strict answer-only accuracy is **127/132 → 1",
+      "labels": [
+        "new-model",
+        "rocm",
+        "speculative-decoding",
+        "torch.compile",
+        "needs-rebase",
+        "ci/build",
+        "multi-modality",
+        "deepseek",
+        "kv-connector",
+        "nvidia",
+        "quantization",
+        "mrv2",
+        "verified",
+        "scheduler",
+        "kv-cache-manager",
+        "glm",
+        "DSv4.1"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 7,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-55937",
+      "repository": "vllm-project/vllm",
+      "number": 55937,
+      "type": "pr",
+      "category": "NEW_SUPPORT",
+      "categoryValid": true,
+      "ruleCategory": "NEW_SUPPORT",
+      "classificationConsistent": true,
+      "title": "[vllm-bench, feature] Added support for Mooncake-style, timed-traces replay.",
+      "bodyExcerpt": "## Summary\r\n\r\nPort `vllm bench serve`'s timed-trace replay to the Rust `vllm-bench` client: the `timed_trace` dataset (Mooncake-style JSONL: `{timestamp, input_length, output_length, hash_ids}`) and `--self-timed` scheduling, so recorded request-arrival schedules can be replayed faithfully from Rust. These 8 flags were previously allowlisted as `PYTHON_ONLY` in `rust/src/bench/tests/cli_parity.rs`; per that file's contract, this PR removes them.\r\n\r\n## Example\r\n\r\n```bash\r\nvllm-bench \\\r\n  --backend vllm \\\r\n  --base-url http://localhost:8000 \\\r\n  --model glm-5.2-fp8 --tokenizer <tokenizer path> \\\r\n  --dataset-name timed_trace \\\r\n  --dataset-path trace.jsonl \\\r\n  --self-timed \\\r\n  --timed-trace-chunk-hash-size 16 \\\r\n  --timed-trace-sec-multiplier 0.001 \\\r\n  --num-prompts 1422\r\n```\r\n\r\n## Scope\r\n\r\nReplays the shape of the traffic, not its content: arrival schedule, ISL/OSL, and prefix-sharing structure are preserved; prompt tokens are synthetic. Completions endpoint only. Complementary to #51104, which covers multi-turn HF datasets and intentionally excludes trace replay.\r\n\r\n## Duplicate-work check\r\n\r\nSearched open PRs for `timed_trace`, `self-timed`, and Rust bench trace replay: no open PR implements this.\r\n\r\n## Test Plan\r\n\r\n- `cargo fmt --check`\r\n- `cargo clippy -p vllm-bench --all-targets -- -D warnings`\r\n- `cargo test -p vllm-bench`\r\n- Local schedule-fidelity check against a mock SSE server: 3-request trace with recorded offsets 0/2/4 s, with and without `--self-timed`.\r\n- Live A/B against the Python client: same deployment, same 1,422-request agentic SWE trace (3,862 s recorded span), same nodes; only the benchmark client differs.\r\n\r\n## Test Result\r\n\r\n- `cargo test -p vllm-bench`: 170 passed, 0 failed (12 ignored: network). fmt and clippy clean.\r\n- Mock-server fidelity: arrivals at 0 / 2.002 / 4.004 s with `--self-timed`; single burst with `--no-self-timed` (negative control).\r\n- Live A/B:\r\n\r\n| check | trace | Rust vllm-bench | Python `vllm bench serve` |\r\n|---|---:|",
+      "labels": [
+        "ready",
+        "rust",
+        "agents",
+        "mooncake"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-56983",
+      "repository": "vllm-project/vllm",
+      "number": 56983,
+      "type": "pr",
+      "category": "NEW_SUPPORT",
+      "categoryValid": true,
+      "ruleCategory": "NEW_SUPPORT",
+      "classificationConsistent": true,
+      "title": "[Spec Decode][Model] Support DFlash2 draft models with GLM-5.3-Flash",
+      "bodyExcerpt": "## Summary\r\n\r\n`incoai/GLM-5.3-Flash-DFlash2` is the block-diffusion (DFlash2) drafter published for `zai-org/GLM-5.3-Flash`. On current `main` the pair cannot be served: `vllm serve zai-org/GLM-5.3-Flash --speculative-config '{\"method\":\"dflash\",\"model\":\"incoai/GLM-5.3-Flash-DFlash2\",...}'` fails during startup, and fixing one failure exposes the next. This PR makes the combination start and serve on NVIDIA (8x H100, TP8 + EP), adds unit coverage for the two non-model changes, and reports a throughput sweep against the existing MTP path. No kernels, defaults, or MTP behaviour are changed.\r\n\r\nThe three blockers on `main` (9d4d9aa5bc), in the order they surface:\r\n\r\n| # | Stage | Error on `main` | Root cause |\r\n|---|---|---|---|\r\n| 1 | draft model load | `RuntimeError: Model does not support EAGLE3 interface` | `Glm5NextForCausalLM` / `Glm5NextForConditionalGeneration` (the architecture the DFlash2 checkpoint targets) do not declare `SupportsEagle3`, and `Glm5NextModel` is not an `EagleModelMixin`, so the DFlash speculator cannot register its aux hidden-state layers (`target_layer_ids + 1 = [6, 15, 25, 34, 43]`). |\r\n| 2 | KV cache init | `NotImplementedError: Layer language_model.model.layers.3.self_attn.indexer.k_cache: page size is not divisible by the maximum page size and cannot be padded. Padding is only supported for non-MLA attention layers.` | `_get_kv_cache_groups_glm5_next` bails out as soon as a non-MLA attention layer (the draft's sliding-window GQA layers) is present, so the generic page unifier runs on a spec set it cannot unify (MLA 655,360 B, indexer 21,120 B and draft 163,840 B pages at block_size 640). |\r\n| 3 | config | `ValueError: Number of experts in the model must be greater than 0 when expert parallelism is enabled` | `create_draft_parallel_config` copies `enable_expert_parallel` from the MoE target onto the dense drafter (introduced by #55914 for the DeepSeek-V4 MegaMoE drafter). |\r\n\r\n### Changes\r\n\r\n- **`vllm/models/glm5next/nvidia/model.py` (aux",
+      "labels": [
+        "speculative-decoding",
+        "mrv2",
+        "dflash",
+        "kv-cache-manager",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 7,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-57134",
+      "repository": "vllm-project/vllm",
+      "number": 57134,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[ROCm][Bugfix] Support FP8 KV cache for NoPE sparse MLA",
+      "bodyExcerpt": "## Summary\n\n- route rope-free sparse MLA to the ROCm Triton implementation for every KV-cache dtype\n- dequantize FP8 KV rows in the Triton ragged-prefill kernel using the layer KV scale while keeping Q in model dtype\n- use 64-bit query-row offsets so wide, long-context prefills cannot overflow 32-bit pointer arithmetic\n- preserve custom MLA geometry and FP8 cache dtype in the attention benchmark harness\n\n## Problem\n\nAITER precompiled sparse MLA kernels assume the DeepSeek cache-row geometry: 512 latent elements plus 64 RoPE elements. GLM-5.3-Flash is rope-free and stores a 512-element row. FP8 NoPE requests currently reach the AITER path, whose 576-element assumption can read past the cache row and cause a ROCm GPU memory fault.\n\nThe existing Triton ragged path already handles the NoPE geometry. This change makes its routing geometry-based instead of BF16-only, adds scaled FP8 KV dequantization, and avoids FP8-quantizing Q for that path.\n\n## Duplicate-work check\n\nNo open PR found addresses ROCm NoPE FP8 sparse-attention KV rows. #39168 overlaps the ROCm ops file but changes the separate FP8 indexer-cache MQA path; the open GLM-5.3 NoPE FP8 PRs target NVIDIA backends. The previously bundled SharedTopkIndicesBuffer no-op was dropped because #57252 already landed ROCMAiterMLASparseImpl.record_logical_topk_ready().\n\n## Validation\n\nRebased onto main@63d9ad0a. Head: ae5cad3d.\n\nHardware validation used a full ROCm wheel from the previous head (73860da5) on the GLM-5.3-specific ROCm base image. The rebase kept the same kernel/backend/benchmark hunks and only resolved a header-constant conflict with the new upstream FP8_DTYPE plus dropped the now-redundant top-k no-op.\n\n- pytest -q tests/v1/attention/test_rocm_glm5next_sparse.py: **23 passed** on the pre-rebase validated image\n- FP8 sparse MLA attention sweep: **24/24 shapes passed**\n- TP=4 GLM-5.3-Flash FP8 serving matrix: **20/20 points passed, 1,360/1,360 requests succeeded**\n- post-rebase: ruff check and ruff format --ch",
+      "labels": [
+        "bug",
+        "performance",
+        "rocm",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 6,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-57169",
+      "repository": "vllm-project/vllm",
+      "number": 57169,
+      "type": "pr",
+      "category": "OTHER",
+      "categoryValid": true,
+      "ruleCategory": "OTHER",
+      "classificationConsistent": true,
+      "title": "[KV Cache] GLM-5.3-Flash: use the generic packed KV layout; CircularBufferSpec tail with speculative ring slots",
+      "bodyExcerpt": "## Purpose\r\n\r\nPick #55219 to refactor the GLM-5.3-Flash KV layout.\r\n\r\nThis PR preserves @ivanium's original commits and adds three follow-ups:\r\n\r\n- Propagate physical block strides to sparse-MLA/indexer metadata builders \r\n  in the model runner, MRv2, and speculative proposer paths, ensuring packed \r\n  blocks use their physical stride.\r\n- Add regressions for packed kpool, sparse MLA, and DeepGEMM page addressing.\r\n- Use the existing `block_stride_alignment` allocator contract and remove the\r\n  duplicate `kernel_page_rows` plumbing and inference.\r\n\r\n## Validation\r\n\r\nEvaluated GLM-5.3-Flash on GB200 using the full 5-shot GSM8K dataset (1,319 questions, temperature 0).\r\n\r\n- TP4 baseline: 0.9121\r\n- NIXL P/D TP4 prefill + TP4 decode with CPU staging: 0.8916, 0.9121\r\n- Mooncake P/D, TP4 prefill + TP4 decode after the packed-Mamba payload fix: 0.9136,\r\n\r\nCo-Authored-By: Yifan Qiao <yifanqiao@inferact.ai>",
+      "labels": [
+        "rocm",
+        "speculative-decoding",
+        "ready",
+        "deepseek",
+        "kv-connector",
+        "nvidia",
+        "mrv2",
+        "dflash",
+        "kv-cache-manager",
+        "glm",
+        "DSv4.1",
+        "mooncake"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 8,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-57329",
+      "repository": "vllm-project/vllm",
+      "number": 57329,
+      "type": "pr",
+      "category": "NEW_SUPPORT",
+      "categoryValid": true,
+      "ruleCategory": "NEW_SUPPORT",
+      "classificationConsistent": true,
+      "title": "[Feat][Mamba2] Enable internal prefill checkpoints",
+      "bodyExcerpt": "> **Note from @ZJY0516:** I rewrote this description and made the code changes on this branch since the original revision:\n> - `ab289e9bc3`: Mamba2 gets its own checkpoint store kernel, and the shared-exporter refactor is dropped.\n> - `6ed5c4bce5`: drops tests that did not cover this change.\n> - `dac3aa469a`: the Granite4 tool parser test fix.\n\n## Purpose\n\nBring Kimi-K3's internal prefill checkpoints (#52789, #53614) to Mamba2 (NemotronH, Granite-4.0-H, Falcon-H1, Zamba2).\n\nIn `mamba_cache_mode=\"align\"`, the scheduler currently splits a prefill so one step ends on a block boundary, which costs an extra forward pass. With this PR, the whole prompt runs in one step and the boundary state is read out of the SSD scan's per-chunk states.\n\n## Changes\n\n- `_compute_chunk_metadata` splits a checkpointing request at the checkpoint, so a logical chunk ends exactly there, and returns that chunk's index.\n- Checkpoint positions come from the existing `MambaPrefillCheckpointBuilder`, so the scheduler, `MambaManager` and backends agree on which rows checkpoint. The only addition is an optional host copy of the offsets, which avoids a GPU→CPU sync when laying out chunks.\n- A small Triton kernel (`ops/ssd_checkpoint.py`) writes the conv window and the checkpoint SSM state into the paged cache in one launch. Rows that decline are masked off, so there is no sync. KDA/GLM code is untouched.\n- `Mamba2AttentionMetadataBuilder.update_block_table` re-gathers checkpoint blocks per KV cache group, as #59536 does for GDN. Both model runners reuse metadata across groups. Without this, every group wrote into the first group's block, and 20-shot GSM8K dropped to 0.02.\n- `test_granite4_tool_parser.py` now runs with `--no-enable-prefix-caching`. The test requires a non-streaming and a streaming greedy run of the same prompt to match bitwise.\n  - On main, both runs prefill the tail after the block boundary in a separate forward pass, so their numerics are identical.\n  - With this PR, the first run p",
+      "labels": [
+        "ready",
+        "kimi",
+        "k3"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-57990",
+      "repository": "vllm-project/vllm",
+      "number": 57990,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[Bugfix] [Frontend] Preserve prompt_logprobs in /v1/completions/derender",
+      "bodyExcerpt": "Fixes #57929\r\n\r\n**What/Why:** Non-streaming `/v1/completions/derender` returned `prompt_logprobs: null` — `OnlineDerenderer._derender_completion` built each choice without the field, discarding data the engine had already computed. The chat derender path and direct `/v1/completions` already pass it through.\r\n\r\n**How:** One line in `vllm/renderers/online_derenderer.py` — attach `gen.prompt_logprobs` to every choice of that response (per-prompt semantics identical to the direct endpoint), plus regression test `test_derender_completion_prompt_logprobs_passthrough` in `tests/entrypoints/scale_out/derender/test_derender.py` (fails on unfixed code, passes after).\r\n\r\n**Tests:** `pytest tests/entrypoints/scale_out/derender/test_derender.py` → 37/37 passed locally; pre-commit clean; GPU parity suite left to CI. Not model-affecting (frontend response assembly only).\r\n\r\n**AI Assistance** \r\nCo-Authored-By: ZCode GLM 5.3",
+      "labels": [
+        "bug",
+        "frontend"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-58260",
+      "repository": "vllm-project/vllm",
+      "number": 58260,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[Bugfix][MLA] Prevent SM90 sparse MLA planner work-list overflow",
+      "bodyExcerpt": "## Overview\n\nPrevent large SM90 sparse MLA steps from overflowing FlashInfer's planner work list by planning and running independent row chunks. Rebased on main with #58684 and #55222.\n\n## Claims\n\n- Bound query tiles by head count, leaving headroom for split-KV work.\n- Apply each chunk's global row offset to the async KV-length clamp.\n- Share one 128 MiB float workspace and write chunks into one output tensor.\n\n## Validation\n\nH20, FlashInfer 0.7.0.post1, base `6fa67afed999`:\n\n```bash\n.venv/bin/python -m pytest tests/v1/attention/test_flashinfer_mla_sparse_sm90.py -v --tb=short\n```\n\n**33 passed, no skips.** Real-wrapper tests cover 16,600 rows, nonuniform contexts, FP8/NoPE, BF16/RoPE, and CUDA Graph replay with refreshed lengths and indices. Outputs match exact-planned references (`atol=rtol=1e-2`). Omitting the row offset makes both numerical cases fail. Planner-capacity tests also cover 64/65/128/384 heads and partial plans.\n\nGLM-5.3-Flash FP8, H20 x8, TP8, FP8 KV, async scheduling, forced MQA, eager execution, and `max_num_batched_tokens=32768`: a 28,201-token prompt completed with finite logprobs; all eight ranks exercised four chunks. This smoke test used the preceding revision; the head-aware cap preserves its TP8 path. The final revision passed the complete suite above. This is not a task-accuracy or throughput benchmark.\n\nPre-commit passed. The existing H100 V1 Attention CI job collects this suite.\n\n## Details\n\n`MLAPlan` still has an unchecked 16,384-work allocation in FlashInfer 0.7.0.post1; the 65,536 limit is for another planner. The upstream fix is [flashinfer#5170](https://github.com/flashinfer-ai/flashinfer/pull/5170), still absent from the pinned release.\n\nRows are independent (`causal=False`). The cap is `8192 // ceil(num_heads / 64)`, using the smallest query tile; GLM TP8 retains 8192-row chunks. Each chunk keeps its own integer plan and index buffers, so additional chunks still cost memory.\n\nThis fixes planner overflow, separate from the merged as",
+      "labels": [
+        "bug",
+        "nvidia"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 3,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-58584",
+      "repository": "vllm-project/vllm",
+      "number": 58584,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[ROCm][Perf][GLM-5.3-Flash] BF16 splitk kernel for sparse MLA decode",
+      "bodyExcerpt": "\r\n\r\n\r\n## Purpose\r\n\r\nDecode rows in the bf16 sparse MLA path go through the ragged **prefill** kernel, whose grid is `(q_len, heads_blocks)`. GLM-5.3-Flash at TP8 has one head block, so during decode with concurrency 4 launches only 4 workgroups on 256 CUs. Clearly underutilized.\r\n\r\nThis new kernel instead uses splitK+reduce over the context dim, i.e. with a grid `(q_len, num_kv_splits, heads_blocks)`. DSv4 has a similar one.\r\n\r\nEnabled if topk>=512, as microbenchmarks suggest (GLM uses topk=2048).\r\n\r\n**Perf: e2e -5-15% ITL. Microbenchmarks: 6x speedup on topk=2048**\r\n\r\n## Test Result\r\n\r\nTested on MI350 unless mentioned otherwise.\r\n\r\n```\r\nVLLM_ROCM_USE_AITER=1 \\\r\nVLLM_USE_BREAKABLE_CUDAGRAPH=1 \\\r\nvllm serve zai-org/GLM-5.3-Flash --tensor-parallel-size 8 --max-num-seqs 512 --gpu-memory-utilization 0.8 --attention-backend ROCM_AITER_MLA_SPARSE --max-num-batched-tokens 1638\r\n```\r\n\r\n### gsm8k \r\n\r\n#### MI350\r\n\r\nThis branch:\r\n|Tasks|Version|     Filter     |n-shot|  Metric   |   |Value |   |Stderr|\r\n|-----|------:|----------------|-----:|-----------|---|-----:|---|-----:|\r\n|gsm8k|      3|flexible-extract|     5|exact_match|↑  |0.9196|±  |0.0075|\r\n|     |       |strict-match    |     5|exact_match|↑  |0.9174|±  |0.0076|\r\n\r\nMain:\r\n|Tasks|Version|     Filter     |n-shot|  Metric   |   |Value |   |Stderr|\r\n|-----|------:|----------------|-----:|-----------|---|-----:|---|-----:|\r\n|gsm8k|      3|flexible-extract|     5|exact_match|↑  |0.9219|±  |0.0074|\r\n|     |       |strict-match    |     5|exact_match|↑  |0.9196|±  |0.0075|\r\n\r\n#### MI300\r\n\r\nThis branch:\r\n|Tasks|Version|     Filter     |n-shot|  Metric   |   |Value |   |Stderr|\r\n|-----|------:|----------------|-----:|-----------|---|-----:|---|-----:|\r\n|gsm8k|      3|flexible-extract|     5|exact_match|↑  |0.9181|±  |0.0076|\r\n|     |       |strict-match    |     5|exact_match|↑  |0.9174|±  |0.0076|\r\n\r\nMain:\r\n|Tasks|Version|     Filter     |n-shot|  Metric   |   |Value |   |Stderr|\r\n|-----|------:|----------------|-----:|-----",
+      "labels": [
+        "performance",
+        "rocm",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 7,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-58744",
+      "repository": "vllm-project/vllm",
+      "number": 58744,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[Bugfix][MLA] Gather nvfp4_ds_mla chunked-context KV with the NVFP4 kernel",
+      "bodyExcerpt": "## Rebase and review status (2026-10-06)\n\nRebased onto vLLM `main` at `2342343746` (head `30a13dbdee`); GitHub reports the PR mergeable. Review tightened the tests to cover a continuation chunk that also contains a fresh request, checking per-row block-table offsets. Local pre-commit hooks (including Ruff, mypy, and test-tethering), syntax compilation, and `git diff --check` pass. The GB200 unit and GLM-5.3 end-to-end results below were run before this rebase; they have **not** been rerun on the new head. This fix concerns the cached-context gather in dense prefill and is independent of native sparse decode in vLLM #59342.\n\n## Purpose\n\n`--kv-cache-dtype nvfp4_ds_mla` crashes in the MLA chunked-context prefill:\n\n```\nmla_attention.py  _compute_prefill_context\n_custom_ops.py    gather_and_maybe_dequant_cache\nRuntimeError: get_fp8_kv_cache_data_type, csrc/attention/dtype_fp8.cuh:34,\n              Unsupported fp8 kv cache data type: nvfp4_ds_mla\n```\n\n`MLACommonBaseImpl._compute_prefill_context` gathers each chunk's cached context KV into a BF16 workspace. It has a branch for `fp8_ds_mla`; every other dtype goes to `gather_and_maybe_dequant_cache`, which only knows the fp8 variants. The NVFP4 upconvert kernel added with the `nvfp4_ds_mla` format, `cp_gather_and_upconvert_nvfp4_kv_cache`, is never called here.\n\nSparse MLA reaches this path through its dense-MHA prefill: a prefill whose total length is `<= index_topk` and that has cached context. In practice:\n\n- **speculative-decoding warm-up**: the dummy batch takes this path, so an engine with `nvfp4_ds_mla` KV and a DFlash draft never finishes starting;\n- **chunked prefill splitting a short prompt**: the continuation step has context;\n- **prefix-cache hits** on short prompts.\n\nLonger prefills use the sparse FlashMLA kernels, which already handle `nvfp4_ds_mla`.\n\n**Fix** (`mla_attention.py` only):\n\n- Route `nvfp4_ds_mla` to `cp_gather_and_upconvert_nvfp4_kv_cache`.\n- That kernel has no `seq_starts` and always reads from a",
+      "labels": [
+        "bug"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-59221",
+      "repository": "vllm-project/vllm",
+      "number": 59221,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[ROCm][Perf][GLM-5.3-Flash] Enable AITER fused shared experts on gfx950",
+      "bodyExcerpt": "## Purpose\r\n\r\n`VLLM_ROCM_USE_AITER_FUSION_SHARED_EXPERTS=1` is silently ignored for GLM-5.3-Flash (`glm5_next`): `Glm5NextMoE` builds `FusedMoE` with `n_shared_experts=None`, so each of the 42 MoE layers still runs the shared expert as a separate MLP (two FP8 block-scale GEMMs, a clamped SiLU and a quant) and adds it to the routed output.\r\n\r\nThis PR wires the flag up the way `DeepseekV2MoE` does:\r\n\r\n- **MoE:** when `resolve_layer_fused_shared_expert()` allows it, `Glm5NextMoE` drops the separate MLP and passes `n_shared_experts` / `fuse_shared_experts` to `FusedMoE`, so the shared expert runs as one more expert inside the AITER fused MoE (`E=289, topk=9`). The routed weights keep `routed_scaling_factor` and the shared slot gets 1.0, so the output is the same `shared + routed` sum as before.\r\n- **Loading:** in both the target and the MTP draft model, the checkpoint's `mlp.shared_experts.*` tensors (FP8 scales included) load into expert slot `n_routed_experts`. `is_model_fused_shared_expert_compatible()` keeps fusion all-or-nothing, and more than one shared expert raises.\r\n- **Gate:** AITER has tuned configs for the fused shape only on gfx950 at TP4 and TP8 (ROCm/aiter#5735, shipped in AITER v0.1.23, already in vLLM's ROCm image since #58867). Like DeepSeek-V4's shared-expert gate, `_fused_shared_experts_tuned()` allows fusion only there, and only without data, prefill context or expert parallelism, which change the per-rank shape. Anywhere else the flag logs a one-time warning with the reason, and the shared experts stay a separate MLP.\r\n\r\nNothing changes unless the flag is set on gfx950 at TP4 or TP8: it defaults to off, and `resolve_layer_fused_shared_expert()` returns False on non-ROCm platforms. gfx942 will follow in a separate PR once its rows (ROCm/aiter#5953) ship; without them the fused MoE would run untuned kernels (4289 µs vs 3033 µs for one 16K-token MoE call on MI325X).\r\n\r\n## Test Plan\r\n\r\ngfx950 (MI350X), `zai-org/GLM-5.3-Flash` FP8, on the stock ROCm nig",
+      "labels": [
+        "rocm",
+        "ready",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 6,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-59234",
+      "repository": "vllm-project/vllm",
+      "number": 59234,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[Bugfix][Parser] Keep text after tool calls in non-streaming engine parsing",
+      "bodyExcerpt": "## Purpose\n\nFixes #59218.\n\n`ParserEngine` defers text that follows a tool call to the next streaming delta, so a delta never mixes content and tool calls. `_single_pass_parse` never flushed it, so non-streaming responses lost text after and between tool calls (qwen3_coder, qwen3_xml, glm45, minimax_m2, ...), while streaming returned it.\n\nThis flushes it at the end of `_single_pass_parse` and removes the Inkling override that did the same thing for Inkling only.\n\nIn #59218 I also asked whether some models should drop that text instead (Rust minimax_m2 does). This PR keeps it, like streaming and Inkling already do. Parsers that drop it on purpose, like DeepSeek V4 (`test_trailing_content_dropped_consistently`), are not affected. Happy to change direction if you prefer.\n\n## Test Plan\n\n```\npytest tests/parser tests/tool_parsers --ignore=tests/parser/cohere\n```\n\n(`tests/parser/cohere` needs `cohere_melody`, not installed here.)\n\nNew `TestContentAroundToolCalls` in `tests/parser/engine/test_qwen3.py` checks that `parse()` keeps text after and between tool calls and matches streaming.\n\n## Test Result\n\nThe 2 new tests fail on main and pass with this PR. The rest of the suite is unchanged: same failures before and after (gated tokenizers and similar, unrelated), 6715 passed. pre-commit clean.\n\nAlso checked against a real server (`vllm serve Qwen/Qwen3-0.6B --enable-auto-tool-choice --tool-call-parser qwen3_coder`, output forced with `structured_outputs`): the repro from the issue now returns `'Done.'` in non-streaming, same as streaming.\n\nWritten with help from Claude Code; I reviewed it and ran the tests.\n\n---\n<details>\n<summary> Essential Elements of an Effective PR Description Checklist </summary>\n\n- [x] The purpose of the PR, such as \"Fix some issue (link existing issues this PR will resolve)\".\n- [x] The test plan, such as providing test command.\n- [x] The test results, such as pasting the results comparison before and after, or e2e results\n- [ ] (Optional) The necessary",
+      "labels": [
+        "bug",
+        "tool-calling",
+        "qwen"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 5,
+      "matchedTerms": [
+        "GLM",
+        "GLM4"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-59280",
+      "repository": "vllm-project/vllm",
+      "number": 59280,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[ROCm][Perf] gfx950: use FlyDSL fp8 MQA logits kernel for the sparse indexer prefill",
+      "bodyExcerpt": "## Purpose\r\n\r\nExtends #49544 to gfx950: the sparse indexer's prefill MQA logits use the AITER FlyDSL kernel on gfx950 as well as gfx942 whenever AITER is enabled, instead of the Triton/Gluon kernel. \r\n\r\nNeeds ROCm/aiter#4538, which is in AITER v0.1.23 (the version vLLM main pins).\r\n\r\n## Test Plan\r\n\r\n- `pytest tests/v1/attention/test_rocm_flydsl_mqa_logits_dispatch.py`: gfx942 and gfx950 use FlyDSL when AITER is enabled; other archs use Triton/Gluon; AITER disabled uses the torch fallback. 4/4 pass on MI355X.\r\n- End to end A/B on GLM-5.2-MXFP4: throughput sweep, GPQA Diamond and RULER niah_single_2.\r\n\r\n## Test Result\r\n\r\n\r\nGLM-5.2-MXFP4, TP4, MI355X. Same build for both runs; the only difference is the prefill MQA-logits kernel (Gluon before, FlyDSL with this change).\r\n\r\n### Accuracy\r\n\r\n| Eval | Gluon | FlyDSL |\r\n|---|---|---|\r\n| GPQA Diamond | 0.899 | 0.884 |\r\n| RULER niah_single_2, 64k | 1.00 | 1.00 |\r\n| RULER niah_single_2, 128k | 1.00 | 1.00 |\r\n\r\nGPQA is a single run of 198 questions (stderr about 0.02).\r\n\r\n### ISL 60000 / OSL 600\r\n\r\n| Conc | Tput/GPU Gluon | Tput/GPU FlyDSL | Δ | TTFT Gluon (ms) | TTFT FlyDSL (ms) | Δ |\r\n|---:|---:|---:|---:|---:|---:|---:|\r\n| 4 | 3372.9 | 3419.9 | +1.4% | 2866.7 | 2708.7 | −5.5% |\r\n| 8 | 4250.0 | 4297.1 | +1.1% | 3589.9 | 3559.9 | −0.8% |\r\n| 16 | 4890.4 | 4964.6 | +1.5% | 5697.8 | 5505.0 | −3.4% |\r\n| 32 | 5315.0 | 5399.4 | +1.6% | 13285.8 | 12848.0 | −3.3% |\r\n\r\n### ISL 8192 / OSL 1024 and ISL 1024 / OSL 1024 (tput/GPU)\r\n\r\n| Conc | 8k Gluon | 8k FlyDSL | Δ | 1k Gluon | 1k FlyDSL | Δ |\r\n|---:|---:|---:|---:|---:|---:|---:|\r\n| 4 | 645.1 | 646.2 | +0.2% | 156.6 | 155.5 | −0.7% |\r\n| 8 | 1058.7 | 1053.9 | −0.4% | 270.4 | 267.4 | −1.1% |\r\n| 16 | 1593.2 | 1586.5 | −0.4% | 436.9 | 434.1 | −0.6% |\r\n| 32 | 2248.1 | 2232.8 | −0.7% | 679.3 | 674.7 | −0.7% |\r\n| 64 | 3118.3 | 3106.5 | −0.4% | 1060.7 | 1051.9 | −0.8% |\r\n| 128 | 4060.3 | 4042.8 | −0.4% | 1637.7 | 1624.8 | −0.8% |\r\n| 256 | 4925.5 | 4907.5 | −0.4% | 2424.7 | 2414.3 | −0.4% |\r\n\r\nGe",
+      "labels": [
+        "rocm",
+        "ready"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 3,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-59342",
+      "repository": "vllm-project/vllm",
+      "number": 59342,
+      "type": "pr",
+      "category": "NEW_SUPPORT",
+      "categoryValid": true,
+      "ruleCategory": "NEW_SUPPORT",
+      "classificationConsistent": true,
+      "title": "[Attention][MLA] Support nvfp4_ds_mla on FLASHINFER_MLA_SPARSE, with native NVFP4 decode",
+      "bodyExcerpt": "\n## Rebase status (2026-10-06)\n\nRebased onto vLLM `main` at `703c29179c` (current head `40287a490e`). FlashInfer's NVFP4 sparse MLA API, including the original hand-written CUDA kernel, is now on upstream `main` through merged [flashinfer-ai/flashinfer#5970](https://github.com/flashinfer-ai/flashinfer/pull/5970). This PR retains the tested `cuda` kernel; the new `cake` backend is not enabled here.\n\nOn the rebased head, local pre-commit hooks (including Ruff, formatting, mypy, and repository checks), `git diff --check`, and Python syntax parsing passed. CUDA tests and the GLM-5.3 model eval below are historical results from the pre-rebase head and **must be rerun** before marking this PR ready. Upstream CI's pre-run gate currently skips tests while this draft lacks a human-applied readiness/verification label.\n\n## Purpose\n\n`FLASHINFER_MLA_SPARSE` (the TRTLLM-gen sparse MLA backend on SM10x) now accepts `--kv-cache-dtype nvfp4_ds_mla`, which only `FLASHMLA_SPARSE` accepted. The NVFP4 cache holds 1.6x the tokens of an FP8 one (352 vs 576 bytes per token).\n\nFour commits:\n\n1. **FP8 staging**, based on Chi McIsaac's work (`Co-authored-by` in the commit). The TRTLLM-gen kernel reads FP8 rows only, so each layer stages the rows it attends to as FP8 (`dequant / k_scale`): decode and spec-decode tokens gather their top-k rows, prefill tokens share one context gather per request and chunk (Triton kernels in `nvfp4_ds_mla_fp8_gather.py`). The staging workspace is reserved up front so the memory profile accounts for it. The dtype needs `kv_lora_rank` 512 and `qk_rope_head_dim` 64 and is rejected with context parallelism and with HiSparse. The rebase preserves the current TRTLLM builder's `UNIFORM_BATCH` CUDA-graph support and varlen decode limit; host-planned staged prefill does not widen graph capture. The impl and builder retain class-level defaults for tests that build them with `object.__new__`.\n2. **Native decode.** When FlashInfer provides `flashinfer.mla.nvfp4_sparse_mla_",
+      "labels": [
+        "nvidia"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "TRAINING"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-59408",
+      "repository": "vllm-project/vllm",
+      "number": 59408,
+      "type": "pr",
+      "category": "OTHER",
+      "categoryValid": true,
+      "ruleCategory": "OTHER",
+      "classificationConsistent": true,
+      "title": "[Rust Frontend] Share `SchemaRoot` between argument coercion and grammars",
+      "bodyExcerpt": "## Purpose\n\nRust tool parsers coerce raw parameter text by the tool's JSON schema (`tool/parameters.rs`), and argument grammars (#59395) constrain the same parameters by it, but each interpreted the schema on its own. Coercion ignored `$ref`: a parameter whose schema is `{\"$ref\": \"#/$defs/Place\"}` came back as the JSON text string `\"{\\\"city\\\": \\\"Paris\\\"}\"` instead of an object. Pydantic v2 `model_json_schema()`, which most SDKs use to build tool schemas, emits exactly this for nested models, enums, and `Optional[Model]`:\n\n```json\n{\"$defs\": {\"Place\": {...}, \"Unit\": {\"enum\": [\"celsius\", \"fahrenheit\"], \"type\": \"string\"}},\n \"properties\": {\"place\": {\"$ref\": \"#/$defs/Place\"},\n                \"unit\": {\"$ref\": \"#/$defs/Unit\", \"default\": \"celsius\"},\n                \"backup\": {\"anyOf\": [{\"$ref\": \"#/$defs/Place\"}, {\"type\": \"null\"}], \"default\": null}}}\n```\n\nThis affects every schema-coercing parser: Qwen Coder and MiMo, GLM, MiniMax M2/M3, Hy. DeepSeek DSML and Kimi K3 decode by their `string=`/`type=` labels instead. Coercion and grammars also disagreed on `nullable`, `const`, single-schema `allOf`, and type-name aliases such as `\"int\"`, so a grammar could admit a value that the parser then decodes as another type.\n\nThe open-PR search found #50933, which resolves `$ref`/`$defs` for the Python Qwen3-Coder path; there is no Rust counterpart. Python parity is not a goal here. #59190 (the Kimi K3 full-output grammar) is stacked on this PR.\n\n- New `schema::SchemaRoot`, the tool's parameters schema that references resolve against, owns how a parameter's schema is read:\n  - `resolved` returns the root after following local `$ref` chains and single-schema `allOf`; unresolvable, cyclic, and remote references accept any value and are never fetched;\n  - `options` expands each reference target at most once per value, as the argument grammar walker from #59395 already did, so shared definitions cannot blow up exponentially;\n  - `options` splits a value schema into typed options: `const`/`e",
+      "labels": [
+        "rust",
+        "kimi",
+        "k3"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 3,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-59412",
+      "repository": "vllm-project/vllm",
+      "number": 59412,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[Bugfix][ROCm] Select page-aligned kernel blocks for pooled indexers so the block table addresses storage pages (GLM-5.3-Flash)",
+      "bodyExcerpt": "## Purpose\r\n\r\nFixes #58858\r\n\r\nGLM-5.3-Flash serving on ROCm silently corrupts its DSA index cache. Root cause: `DeepseekV32IndexerBackend.get_supported_kernel_block_sizes` returned `[1, MultipleOf(16)]` on ROCm for every deployment, so `select_common_block_size` keeps the hybrid KV manager block (640/1152/2176/4352 for TP8..TP1) as the kernel block size, while `prepare_kernel_block_sizes` drops the spec's `storage_block_size` which every other consumer (cache views, metadata builders, hisparse) already uses as the kernel block. `Glm5NextIndexerCache` with `index_kpool = 4`, however, stores index-cache entries in pool pages of `page * index_kpool` = 128/256 tokens, and both the writer (`get_compressed_slot_mapping`) and the gather address the block table as `column = pos // storage_block_size`. A manager-granular table therefore skips the builder's conversion branch (`storage % kernel != 0`), indexes far outside the request's row (TP2 @32K: raw table 16 columns wide, 256 needed -> page 0 aliased everywhere), and at TP4 writes past the row buffer entirely.\r\n\r\nThis is also the root cause behind these issues, #55280, #54359 and #56380.\r\n\r\n## Changes\r\n\r\n* `vllm/v1/worker/utils.py` - `prepare_kernel_block_sizes` is the point where the cache group's spec (`kv_cache_group.kv_cache_spec`) and the group's backends are both in hand, but `storage_block_size` was dropped before dispatch. It now takes `MLAAttentionSpec.storage_block_size` as the kernel block size if the group's backends support it, otherwise falls back to `select_common_block_size` unchanged. On CUDA the indexer declares an exact `[64]`, so the storage block fails validation there and the conversion path keeps working the same way as today. The support check is the existing `block_size_is_supported` logic moved out of `select_common_block_size` to module level, so both call sites use the same check (exact `==` for `int`, multiple-of for `MultipleOf`).\r\n\r\n## Test Plan\r\n\r\nSample command gsm8k + bench:\r\n\r\n```\r\nVLLM_",
+      "labels": [
+        "bug",
+        "rocm",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 6,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-59420",
+      "repository": "vllm-project/vllm",
+      "number": 59420,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[ROCm][Bugfix] Pass per-sequence context lengths to the AITER paged MQA-logits kernels",
+      "bodyExcerpt": "## Error\r\n\r\nMTP with native DSA-indexer decode above `next_n=2` crashes during warm-up on MI355X (seen at `next_n=3` and `next_n=6`). GLM-5.2-MXFP4, TP4, `num_speculative_tokens=5` (`next_n=6`), Gluon paged MQA logits:\r\n\r\n```\r\nMemory access fault by GPU node-4 (Agent handle: 0x20465ea0) on address 0x792dc0bf1000. Reason: Unknown.\r\n```\r\n\r\nWhere it does not crash, the indexer silently uses wrong causal bounds: in a direct call at `next_n=3`, the 8192-token sequence loses its last 2 valid positions in every row (9/12 rows correct).\r\n\r\n## Cause\r\n\r\nWith native decode (`next_n > 1`), `rocm_fp8_paged_mqa_logits` receives a `(B, next_n)` table of per-row context lengths, `[b, j] = L_b - next_n + j + 1`, built in [`indexer.py#L1136-L1152`](https://github.com/vllm-project/vllm/blob/2df122e65e87dc12870ce5f0180b49f012e7a53b/vllm/v1/attention/backends/mla/indexer.py#L1136-L1152). The AITER Gluon `deepgemm_fp8_paged_mqa_logits` and `deepgemm_fp8_paged_mqa_logits_stage1` kernels read the table as a flat `[B]` array and some sequences get another row's length.\r\n\r\nExample: 4 requests, `next_n=3`, context lengths 8192 / 1500 / 3000 / 700:\r\n\r\n| `b` | `j=0` | `j=1` | `j=2` | `L_b` |\r\n|---|---|---|---|---|\r\n| 0 | 8190 | 8191 | **8192** | 8192 |\r\n| 1 | 1498 | 1499 | **1500** | 1500 |\r\n| 2 | 2998 | 2999 | **3000** | 3000 |\r\n| 3 | 698 | 699 | **700** | 700 |\r\n\r\nThe kernel expects `[8192, 1500, 3000, 700]` and computes each row's bound itself. Reading the `(4, 3)` table as `[4]`, it gets the first four values in memory, `[8190, 8191, 8192, 1498]`: request 0 loses its last 2 positions in every row, and requests 1 to 3 get lengths past their own KV pages, the likely source of the fault. Column `j = next_n - 1` equals `L_b`, which is what the kernel needs.\r\n\r\n## Fix\r\n\r\nPass the kernels the last column, which is the per-sequence length. `[B]` and `(B, 1)` inputs, the C4A Triton path and the torch fallback are unchanged.\r\n\r\nOn ROCm native decode is used for `next_n` 1 and 2 today, so MTP with on",
+      "labels": [
+        "bug",
+        "rocm",
+        "verified"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 3,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-59421",
+      "repository": "vllm-project/vllm",
+      "number": 59421,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[ROCm][Perf] Allow DSA indexer native decode above next_n=2",
+      "bodyExcerpt": "## Purpose\n\nOn ROCm, `_supports_native_decode` is `next_n in (1, 2)`, so MTP with 2+ speculative tokens is flattened to one row per draft token and each row re-reads its sequence's KV. The AITER paged kernels have no such limit. This adds `VLLM_ROCM_INDEXER_NATIVE_DECODE_MAX_NEXT_N` (default 2, today's behaviour) to raise the cap.\n\n**Needs #59420** above `next_n = 2` (otherwise `Memory access fault` in warm-up).\n\n## Test Plan\n\nGLM-5.3, TP4, MI355X, `deepseek_mtp`, cap = 8, Gluon decode, #59420 applied, CUDA graphs on. Throughput sweep, GPQA Diamond, RULER niah_single_2 (64k).\n\n## Test Result\n\n| next_n (spec tokens) | GPQA | NIAH | Geomean tok/s/GPU |\n|---|---|---|---|\n| no MTP | 0.879 | 1.00 | 2435.5 |\n| 3 (2) | 0.889 | 1.00 | 3309.1 |\n| 5 (4) | 0.904 | 1.00 | 3607.8 |\n\nThroughput per GPU:\n\n| Conc | 8k/1k no MTP | 8k/1k n=3 | 8k/1k n=5 | 60k/600 no MTP | 60k/600 n=3 | 60k/600 n=5 |\n|---:|---:|---:|---:|---:|---:|---:|\n| 4 | 544.4 | 1105.3 | 1337.0 | 2925.1 | 4067.3 | 4422.3 |\n| 8 | 897.5 | 1650.6 | 2015.3 | 3889.2 | 4658.8 | 4408.6 |\n| 16 | 1415.4 | 2177.6 | 2648.5 | 4550.6 | 4948.6 | 5050.4 |\n| 32 | 2058.7 | 3061.8 | 3638.4 | 4938.2 | 5175.0 | 5303.4 |\n| 64 | 2853.3 | 4013.9 | 4447.8 | | | |\n| 128 | 3741.3 | 4715.5 | 4291.3 | | | |\n| 256 | 4603.2 | 4663.6 | 5208.6 | | | |\n\nThe no-MTP run is the same setup without speculative decoding (decode paged MQA logits on the FlyDSL kernel instead of Gluon).\n",
+      "labels": [
+        "rocm",
+        "needs-rebase"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 3,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-59628",
+      "repository": "vllm-project/vllm",
+      "number": 59628,
+      "type": "pr",
+      "category": "NEW_SUPPORT",
+      "categoryValid": true,
+      "ruleCategory": "NEW_SUPPORT",
+      "classificationConsistent": true,
+      "title": "[ROCm] Enable DeepSeek-V3.2 / GLM-5.3 sparse MLA on gfx11",
+      "bodyExcerpt": "## Purpose\n\nDeepSeek-V3.2 and GLM-5.3 don't start on gfx11. Every worker dies with:\n\n```\nRuntimeError: Worker failed with error ''_OpNamespace' 'vllm' object has no\nattribute 'rocm_aiter_mla_decode_fwd'', please check the stack trace above for\nthe root cause\n```\n\nFor sparse MLA, `ROCM_AITER_MLA_SPARSE` is the only backend on offer, and it\nneeds AITER's MLA assembly kernels, which have no gfx11 build. The Triton\nsparse path in the same file already handles the 512 + 64 RoPE layout, but\n`_use_rocm_sparse_triton()` only picks it when `head_size == kv_lora_rank`.\n\nThis PR lets gfx11 take that path too. Same idea as #47017, which unblocked\nDeepSeek-V4 on gfx11. fp8 KV cache still goes to AITER.\n\nTests: one new routing test for the gfx11 case, and the existing routing test\nnow pins `on_gfx11` to `False` so it also passes on gfx11 hardware.\n\n## Duplicate-work check\n\nSearched open PRs and issues for `rocm_aiter_mla_decode_fwd`, GLM-5.3 and\nDeepSeek-V3.2 on gfx11, and sparse MLA fallback on ROCm. No duplicate. One\nopen PR is adjacent but distinct:\n\n- #52970 (`officially supporting aiter Triton kernels+dsv4 on RDNA3`) is about\n  DeepSeek-V4 and AITER's Triton kernels. It does not touch\n  `_use_rocm_sparse_triton`.\n\n## Test Result\n\nTested on 4x Strix Halo / Radeon 8060S / gfx1151 with `TP=4`, ROCm 7.14.\n\n```\nvllm serve Tech2wild/GLM-5.3-Int4-Int8Mix \\\n    --tensor-parallel-size 4 \\\n    --distributed-executor-backend ray \\\n    --max-model-len 32768 \\\n    --max-num-batched-tokens 512 \\\n    --enforce-eager\n```\n\nBefore: startup fails with the error above.\nAfter: `Application startup complete`, and the model answers correctly:\n\n```\n$ curl -s localhost:8000/v1/chat/completions -d '{\"model\": \"...\",\n    \"messages\": [{\"role\": \"user\", \"content\": \"What is 17 times 23?\"}]}'\n17 × 23 = 17 × 20 + 17 × 3 = 340 + 51 = 391\n```\n\n```\npytest tests/v1/attention/test_rocm_glm5next_sparse.py\n  23 passed\n```\n\n## AI assistance\n\nAI assistance was used for this change. The submitting human has reviewed e",
+      "labels": [
+        "rocm",
+        "deepseek",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 8,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "TRAINING",
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-59739",
+      "repository": "vllm-project/vllm",
+      "number": 59739,
+      "type": "pr",
+      "category": "OTHER",
+      "categoryValid": true,
+      "ruleCategory": "OTHER",
+      "classificationConsistent": true,
+      "title": "[ROCm][Attention] MXFP4 KV cache with native FP8 x FP4 sparse MLA attention for GLM-5.3-Flash",
+      "bodyExcerpt": "\n\n## Overview\n\nAdds an `mxfp4_mla` KV cache dtype for the ROCm AITER sparse MLA backend on rope-free (NoPE) latents such as GLM-5.3-Flash. It covers both the read/write path and low-precision attention arithmetic. Each 512-wide latent is stored as 256 bytes of E2M1 codes plus 16 inline E8M0 scales (one per 32 values): 272 bytes per token against 1024 for bf16, or 3.76× more tokens per GiB of KV cache. On gfx950, an opt-in native kernel computes attention directly on the packed cache with FP8 × FP4 scaled MFMA.\n\n## Claims\n\n- **KV capacity:** 3.76× more tokens per GiB than bf16 (272 vs 1024 bytes per token).\n- **Throughput:** +6.1% to +8.5% output tokens/s over bf16 on upstream main, on MI355X at TP=4 from 16k to 130k context, using the native path.\n- **Accuracy matches bf16:** GSM8K 97.42% vs 96.97%. GPQA-Diamond 90.40 / 90.40 / 91.41% over three seeds vs 89.90% for bf16 (see the note on the indexer fix below).\n- **No change for other KV dtypes,** apart from two small decode-overhead trims that apply to every dtype. bf16 throughput on this branch tracks upstream main.\n\n## Validation\n\n**Unit tests** (MI355X / gfx950, with this branch's Python tree):\n\n```\npytest tests/v1/attention/test_mxfp4_mla*.py \\\n       tests/v1/attention/test_rocm_sparse_host_decode_indptr.py \\\n       tests/v1/attention/test_rocm_glm5next_sparse.py \\\n       tests/v1/attention/test_rocm_aiter_triton_sparse_mla.py \\\n       tests/v1/attention/test_rocm_aiter_mla_fp8_decode_routing.py \\\n       tests/v1/attention/test_sparse_mla_kv_cache_layout.py\n# 616 passed, 18 skipped (the skips are the CUDA-only layout tests)\n```\n\nThe new tests cover:\n- the format math, checked bit-for-bit against AITER's `per_1x32_f4_quant`;\n- the store kernel, including slot offsets past 2^31 bytes;\n- the Triton read path, checked against a dequantize-then-attend reference;\n- the native HIP kernel and its Triton port, checked against a reference that mirrors their chunking and P rounding;\n- the startup plumbing (hybrid block si",
+      "labels": [
+        "rocm",
+        "needs-rebase",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 8,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-59759",
+      "repository": "vllm-project/vllm",
+      "number": 59759,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[Bugfix][Core] Retire stale Mamba spec blocks in prefill checkpoint steps",
+      "bodyExcerpt": "\n\n\n## Overview\n\nWith MTP and prefix caching on, hybrid models such as GLM-5.3-Flash can return garbage when a request reuses a cached prompt prefix. Some prefill steps save a checkpoint of the linear-attention state in the middle of a chunk. In those steps the scheduler leaves an unused MTP scratch block in the slot that belongs to the checkpoint. That block is never written, yet it is registered in the prefix cache ahead of the real checkpoint, so later requests resume from it. This change moves the scratch block out of the way in those steps too, as already happens in every other step.\n\nThe skip was added together with internal checkpoints in #53614. GLM-5.3-Flash reaches this path since #56960. The branch is based on current main (58b3298457). No open PR changes speculative-block relocation; #57128 changes the Mamba lookup and does not touch this path.\n\n## Claims\n\n- Fixes persistent garbage output after prefix-cache hits for hybrid models with internal prefill checkpoints and MTP, for example GLM-5.3-Flash with `--speculative-config '{\"method\":\"mtp\",\"num_speculative_tokens\":1}'`.\n- No behavior change without speculative decoding, for `mamba_cache_mode` other than `align`, or for steps without an internal checkpoint.\n\n## Validation\n\nSetup: RedHatAI/GLM-5.3-Flash-NVFP4 on 2 H200 GPUs, served with default settings plus MTP:\n\n```\nvllm serve RedHatAI/GLM-5.3-Flash-NVFP4 --tensor-parallel-size 2 \\\n    --speculative-config '{\"method\": \"mtp\", \"num_speculative_tokens\": 1}'\n```\n\nReproducer (script below): send a long prompt while another long prompt is still being processed, then send the exact same prompt again. The second request reuses the cached start of the prompt.\n\n- Before the fix, the second answer was garbage in 3 of 3 trials, for example `File: /home/erdos/2024/4/4  # File: /home/erdos/2024/4/4 ...`, while the first answer was a normal list of function names.\n- With the fix, both answers were normal in 3 of 3 trials.\n\nOther checks:\n- A single long prompt sent twi",
+      "labels": [
+        "bug",
+        "ready",
+        "kv-cache-manager"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-59822",
+      "repository": "vllm-project/vllm",
+      "number": 59822,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "perf: route GLM-5.2 fused-QKV-A GEMM through dsv3_fused_a_gemm on SM10x",
+      "bodyExcerpt": "## Summary\r\n\r\nThis PR routes the GLM-5.2 (GlmMoeDsaForCausalLM) fused QKV-A projection\r\nthrough the existing `min_latency_fused_qkv_a_proj` custom op backed by\r\n`dsv3_fused_a_gemm`, eliminating the cuBLASLt split-K + splitKreduce kernel pair\r\nat decode batch size 1. The `dsv3_fused_a_gemm` C++ kernel already supports the\r\nGLM-5.2 fused-QKV-A shape with a warp-specialized fused-A kernel that folds the\r\nsplit-K reduction inside the CTA -- the same kernel SGLang uses for this projection.\r\nThe custom op has a registered `fake_impl`, making it torch.compile-safe and CUDA-graph\r\ncapture-safe.\r\n\r\nThe core change widens `_can_use_min_latency_fused_qkv_a_gemm` to accept the\r\nGLM-5.2 fused-QKV-A weight shape alongside the existing DeepSeek-V3 shape. This\r\ncollapses two kernel launches per layer (splitK GEMM + splitKreduce) into a single\r\n`fused_a_gemm_kernel` launch. PDL (Programmatic Dependent Launch) is also enabled on\r\nSM90+ for additional latency reduction at low token counts.\r\n\r\nBecause the fused-QKV-A custom-op path is frozen into the CUDA graph at capture time,\r\nthe GLM-5.2 branch is gated on the `VLLM_DISABLE_GLM52_LOW_LATENCY_GEMM`\r\nkill switch so the feature-toggle A/B comparison captures the full benefit of this path\r\n(the DeepSeek-V3 shape stays always-on). Without this gate the toggle only disabled the\r\nsecondary CuTe-DSL projections and the A/B delta collapsed to noise.\r\n\r\nThe GLM-5.2 low-latency GEMM module is also updated: the device capability gate is\r\nwidened from SM103-only to the full SM10x family (covering B200/SM100), the dead\r\n`GLM52_Q_B_PROJECTION` spec is replaced with `GLM52_DENSE_GATE_UP_PROJECTION`\r\nfor the dense MLP layers, and an environment variable kill-switch is added for safe A/B\r\ntesting.\r\n\r\n## Performance Results\r\n\r\nMeasured on nvidia/GLM-5.2-NVFP4 with 4x B200 (SM100, TP=4), bs=1,\r\nISL=4, OSL=2048, decode-only, feature ON vs OFF\r\n(`VLLM_DISABLE_GLM52_LOW_LATENCY_GEMM=1`):\r\n\r\n| Metric | Baseline (OFF) | Patched (ON) | Delta |\r\n|---|---|---|",
+      "labels": [
+        "deepseek",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 6,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-59902",
+      "repository": "vllm-project/vllm",
+      "number": 59902,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[Bugfix][KV Connector] Mooncake: transfer GLM-5.3-Flash's kpool indexer pages and tail like NIXL",
+      "bodyExcerpt": "\n\n## Overview\n\nGLM-5.3-Flash P/D over Mooncake fails: its kpool indexer stores several kernel blocks in one tensor row and keeps its kpool tail inside the same allocation, which #53906 taught NIXL but not Mooncake. This PR gives Mooncake the same handling, sharing NIXL's helpers.\n\n## Claims\n\n- GLM-5.3-Flash prefill/decode over Mooncake works: chat GSM8K 0.970 (0.974 with MTP), against 0.972 for a single server, with no failed transfers. Before this PR most transfers failed and requests errored.\n- Other models keep their registration: the change only applies to a compressed cache whose rows hold several kernel blocks, the same predicate NIXL uses.\n\n## Validation\n\nGLM-5.3-Flash-NVFP4, TP4 prefill -> TP4 decode on one host (4+4 RTX PRO 6000 Blackwell, two NUMA halves), Mooncake over RDMA, `--kv-cache-dtype fp8 --max-model-len 65536 --max-num-seqs 32 --max-num-batched-tokens 8192`, one run each:\n\n| | Before | After |\n|---|---|---|\n| Mooncake transfers (prefill, per 5 s window) | ~4 succeeded, ~300 failed | ~200 succeeded, 0 failed |\n| Descriptors per transfer | 837 | 65 |\n| Chat GSM8K (1,319, flexible-extract, 32 in flight) | requests failed | 0.970 |\n| Same, with `{\"method\":\"mtp\",\"num_speculative_tokens\":1}` | — | 0.974 (94-95% draft acceptance) |\n\nBefore the fix, the prefill logged `Memory region not registered by any active device(s)` and `Failed to get segment descriptor ... 0x...6c00--0x...7000` (1 KiB, the kpool tail's half page).\n\nDeepSeek-V4.1-Flash, same topology, as a regression check of another compressed-cache model: its caches do not match the predicate (the same 18 packed layer regions are registered), chat GSM8K 0.944 against 0.947 without this PR, no failed transfers.\n\nTests:\n\n```bash\npytest tests/v1/kv_connector/unit/test_mooncake_connector.py \\\n  tests/v1/kv_connector/unit/test_mooncake_connector_hybrid_mamba.py \\\n  tests/v1/kv_connector/unit/test_nixl_desc_geometry.py   # 345 passed\npytest tests/v1/kv_connector/unit/test_nixl_connector_hma.py  # 96 pa",
+      "labels": [
+        "bug",
+        "kv-connector",
+        "glm",
+        "mooncake"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 7,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-59916",
+      "repository": "vllm-project/vllm",
+      "number": 59916,
+      "type": "pr",
+      "category": "NEW_SUPPORT",
+      "categoryValid": true,
+      "ruleCategory": "NEW_SUPPORT",
+      "classificationConsistent": true,
+      "title": "[Feature][DCP] --dcp-gather: gather-based DCP for MLA attention without native DCP (+ DSv4)",
+      "bodyExcerpt": "<!-- markdownlint-disable -->\n\n## Overview\n\n`--dcp-gather` runs decode context parallelism (DCP) for MLA models whose attention backends can't run DCP natively.\n- The KV cache keeps native DCP's block-sharded layout, so capacity scales with the DCP size as usual.\n- Before each layer's attention, every rank pulls the batch's pages from the other ranks into a scratch cache, and attention runs as if DCP were off. Attention backends are unmodified.\n- The pull runs on a side stream through symmetric memory, overlapped with the previous layer's output projection and MoE.\n- DeepSeek-V4, which has no native DCP, always uses it.\n\nIt is an alternative to layer-sharded KV (KVPP, #59059).\n\nRelated fixes, split out:\n- #59951: native DCP group rank order when the group spans TP × PCP (needed for the native-DCP baseline below).\n- #59961: DSv3.2 top-k across PP stages (needed for correct PP results).\n\n## Results\n\nAll numbers are from 2026-10-06 on 4x B300, Inferact/GLM-5.3-NVFP4, 32 GiB/GPU KV budget.\n\n- **KV capacity.** Gather-DCP holds 2.40M tokens at TP1×PCP4 and TP4. Native DCP holds 2.54M, KVPP 2.18M, and no DCP 637K.\n- **Working set fits (TP1×PCP4, 24 prefixes).**\n  - Gather-DCP runs at 146.0K tok/s, against 144.1K for native DCP and 142.7K for KVPP.\n  - That is 2.85x no DCP (51.5K), whose 637K-token cache can't hold the 1.44M-token working set.\n- **Working set near capacity (36 prefixes, 2.16M tokens).** Gather-DCP runs at 122.3K tok/s, against 127.6K for native DCP and 98.3K for KVPP.\n- **Where native DCP is slow or missing.**\n  - TP4: 62.2K tok/s, 1.57x native DCP (39.7K) and level with KVPP (62.2K).\n  - PP2×TP2: 102.0K tok/s, 1.73x no DCP (59.0K) and level with KVPP (102.1K).\n  - DeepSeek-V4 gets DCP with no attention-backend changes.\n- **Overhead.** On a working set that even the replicated cache holds, gather-DCP is about 1% slower than no DCP. On an interleaved A/B it is about 2% faster than KVPP.\n- **Accuracy.** GSM8K matches the baselines on GLM-5.3, DeepSeek-V4-Flas",
+      "labels": [
+        "needs-rebase",
+        "deepseek",
+        "mrv2",
+        "DSv4"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-59951",
+      "repository": "vllm-project/vllm",
+      "number": 59951,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[Bugfix][DCP] Sort DCP group ranks so rank_in_group matches collective order",
+      "bodyExcerpt": "\n\n## Overview\n\nFix garbage output when a DCP group spans TP × PCP (e.g. TP2 × PCP2 × DCP4): sort each DCP group's ranks so `rank_in_group` agrees with the order collectives return shards in.\n\n## Claims\n\n- TP2 × PCP2 × DCP4 on GLM-5.3-NVFP4 goes from GSM8K 0.000 to 0.905.\n- No change for DCP groups that were already ascending (DCP within TP, or DCP == PCP), which covers every previously validated configuration.\n\n## Validation\n\nGSM8K (5-shot) on 4x B300, MRV2, GLM-5.3-NVFP4, `-tp 2 -pcp 2 -dcp 4 --kv-cache-dtype fp8_ds_mla -cc.cudagraph_mode=NONE`:\n\n| | GSM8K |\n|---|---:|\n| main | 0.000 |\n| this PR | 0.905 |\n\n```bash\npytest tests/distributed/test_dcp_a2a.py -k test_dcp_group_ranks_match_collective_order  # 5 passed\n```\n\n## Details\n\n**Root cause.** With PCP, `initialize_model_parallel` builds a DCP group that spans TP × PCP PCP-first (`all_ranks.transpose(-1, -2)`), giving member lists like `[0, 2, 1, 3]`.\n- `torch.distributed.new_group` sorts its ranks, so all-gathers return shards in global-rank order.\n- `GroupCoordinator.rank_in_group` is `ranks.index(rank)` on the unsorted list.\n- The DCP LSE merge (`correct_attn_out`) uses `rank_in_group` to pick this rank's LSE from the gathered LSEs. So DCP ranks 1 and 2 rescaled their partial outputs with each other's LSE.\n\nThe new unit test checks that DCP groups are ascending for TP-only, PCP-only and TP × PCP layouts.\n\n**Duplicate check.** No open PR touches DCP group rank order (searched \"dcp rank order\", \"DCP group ranks\").\n\n---\n\n<details>\n<summary> Pull Request Checklist </summary>\n\n- [x] I used vLLM's `/pr-checklist` skill. (Mandatory for agents, optional for humans).\n- [x] AI assistance was used during the creation of this PR.\n\n- [x] **Design Fit:** Minimizes impact on core components, reuses existing functionality, and justifies added complexity.\n- [x] **Testing and Validation:** Validates the change and ensures any added tests are meaningful and reliable, with CI coverage or documented CI resource constraints and vali",
+      "labels": [
+        "bug"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 3,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-60029",
+      "repository": "vllm-project/vllm",
+      "number": 60029,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "Pad to 64 not 128 Q heads in flashMLA sparse",
+      "bodyExcerpt": "\r\n## Overview\r\n\r\nRun FlashMLA's native 64-head SM100 kernel for sparse-MLA BF16 prefill instead of padding the query to 128 heads.\r\nFlashMLA added the 64-head SM100 sparse prefill kernel in deepseek-ai/FlashMLA#150.\r\n\r\n\r\n  ## Test Result\r\n\r\n  GSM8K, 1319 questions, 5-shot, TP1+PCP4+DCP4, `FULL_AND_PIECEWISE`.\r\n\r\n  | Run | Accuracy | Invalid |\r\n  |---|---|---|\r\n  | main | 0.944 | 0.000 |\r\n  | this PR | 0.942 | 0.000 |\r\n\r\n  ## Benchmarks\r\n  \r\n  Isolated, `benchmarks/attention_benchmarks` at GLM-5.3 dims, `FLASHMLA_SPARSE`:\r\n\r\n  | Local heads | Batch | main | this PR | Speedup |\r\n  |---|---|---|---|---|\r\n  | 64 | q4k | 2.096 | 1.082 | 1.94x |\r\n  | 64 | q8k | 4.156 | 2.330 | 1.78x |\r\n  | 64 | q32k | 16.766 | 9.227 | 1.82x |\r\n  | 64 | q8ks32k | 4.223 | 2.333 | 1.81x |\r\n  | 64 | q32ks128k | 20.150 | 9.988 | 2.02x |\r\n  | 32 | q8k | 3.719 | 2.730 | 1.36x |\r\n  | 32 | q32ks128k | 18.396 | 11.563 | 1.59x |\r\n\r\n  E2E, GLM-5.2-FP8, TP1+PCP4+DCP4:\r\n\r\n  Prefill:\r\n\r\n  | Workload | Run | TTFT ms | P99 TTFT ms | vs main |\r\n  |---|---|---|---|---|\r\n  | 32768 in / 1 out, c=1 | main | 1227.7 | 1250.2 | 1.00x |\r\n  | 32768 in / 1 out, c=1 | this PR | 1062.5 | 1078.0 | 1.16x |\r\n  | 32768 in / 1 out, c=4 | main | 4115.2 | 4397.1 | 1.00x |\r\n  | 32768 in / 1 out, c=4 | this PR | 3488.7 | 3745.5 | 1.18x |\r\n  | 61440 in / 1 out, c=1 | main | 2317.1 | 2341.8 | 1.00x |\r\n  | 61440 in / 1 out, c=1 | this PR | 1999.7 | 2017.1 | 1.16x |\r\n  ",
+      "labels": [
+        "performance",
+        "deepseek",
+        "nvidia",
+        "verified",
+        "glm"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-60032",
+      "repository": "vllm-project/vllm",
+      "number": 60032,
+      "type": "pr",
+      "category": "OTHER",
+      "categoryValid": true,
+      "ruleCategory": "OTHER",
+      "classificationConsistent": true,
+      "title": "[Model][GLM-5.3-Flash] Warm up the DCP top-k merge kernels for the kpool indexer",
+      "bodyExcerpt": "## Purpose\r\n\r\nFollow-up to #59211 (now merged; this branch is rebased on main).\r\n\r\nUnder DCP, the GLM-5.x kpool indexer merges the per-rank top-k with `_merge_dcp_topk_global`, which runs `PackDCPTopkCandidatesKernel` and `StableTopKFromGatheredCandidatesKernel`. Only `SparseAttnIndexer.__init__` registers these kernels for JIT warmup, so with the kpool indexer they were compiled on the first long-context request:\r\n\r\n```\r\nWARNING [jit_monitor.py:140] Triton kernel JIT compilation during inference: PackDCPTopkCandidatesKernel.kernel. This causes a latency spike; consider extending warmup to cover this shape/config.\r\n```\r\n\r\nThis PR registers them from `SparseAttnIndexerKpool.__init__` under the same conditions: DCP > 1, JIT warmup enabled, CUDA, and CuteDSL available. #59211 already makes the warmup keys use pool-level top-k and interleave for kpool models.\r\n\r\n## Test Plan\r\n\r\n`zai-org/GLM-5.3-Flash` on 8×H100 with `vllm serve`, bf16 KV cache, no MTP. TP8 + DCP8 with `--cp-kv-cache-interleave-size 4`, compared with TP8. GSM8K (1319 questions) at 5, 25, 50 and 100 shots, i.e. prompts from about 650 to about 17k tokens. Checked the server log for JIT monitor warnings.\r\n\r\n## Test Result\r\n\r\n`PackDCPTopkCandidatesKernel` no longer compiles during inference under DCP8. Without this change, it compiled during inference in the same setup. The other JIT warnings in the log (`fused_moe_kernel`, kpool compress kernels) also appear without DCP and are unrelated.\r\n\r\n| Shots | TP8 | TP8 + DCP8 |\r\n|---|---|---|\r\n| 5 | 0.918 | 0.920 |\r\n| 25 | 0.914 | 0.917 |\r\n| 50 | 0.911 | 0.911 |\r\n| 100 | 0.917 | 0.921 |\r\n\r\nThe E2E runs used the same local SM90 FlashMLA bf16 DCP change as #59211, which Hopper needs for DCP at head_dim 512.\r\n\r\n## Duplicate check\r\n\r\nI searched open PRs for kpool / `SparseAttnIndexerKpool` / `PackDCPTopkCandidates` warmup and found none. #54345 deals with prefill metadata JIT, not the DCP top-k merge kernels.\r\n\r\n## AI assistance\r\n\r\nThis PR was written with AI assistanc",
+      "labels": [
+        "deepseek",
+        "kv-cache-manager",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 7,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-60083",
+      "repository": "vllm-project/vllm",
+      "number": 60083,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[Perf][HiSparse] Cache per-request residency instead of rescanning every page each step",
+      "bodyExcerpt": "## Purpose\n\nHiSparse decode is CPU-bound on main because of one scheduler-side scan. Every step, `HiSparseCoordinator.all_context_pages_resident` walks every page of every scheduled request in every resident group (one group per layer), only to decide whether prefill can skip host staging. That is O(requests × context pages × layers) Python per step, even for pure-decode batches.\n\nThe scan arrived in c4b9b7deac (\"bypass host resolution for resident decode\"), after the GLM-5.3 results in #53781 were measured, and shipped with 3/N. This PR caches the requests whose resident pages are all non-null. A request is scanned once. Pages become null only at admission or host import, before the first scan, or when the pool reuses an unpinned page (`_lose_page`), so those paths plus `free` drop the cache entry. The per-step check is O(requests).\n\nHiSparse-only change (`vllm/v1/hisparse/coordinator.py`). Not a duplicate: no open PR touches this scan.\n\n## Results\n\nGLM-5.3-NVFP4 on B200, fp8 KV, block 64, random prompts, 1k output tokens. Each point is one run, main vs. this PR back to back on the same node and config. The gain tracks how much resident context the scan walks per step relative to GPU step time: it's largest when every page is GPU-resident and contexts are long. It disappears at low concurrency, and in the host-offload regime, where the old scan already exited at the first host page.\n\n| TP | input | concurrency | peak KV | main tok/s | this PR tok/s | Δ | mean TPOT main → PR |\n|---|---|---|---|---|---|---|---|\n| 8 | 16k | 64 | 61% | 764 | 1209 | **+58%** | 73.3 → 42.0 ms |\n| 4 | 16k | 40 | 76% | 809 | 906 | **+12.0%** | 40.9 → 35.7 ms |\n| 4 | 4k | 160 | 89% | 2470 | 2583 | +4.6% | 57.7 → 54.8 ms |\n| 4 | 4k | 128 | 70% | 2777 | 2882 | +3.8% | 40.1 → 38.3 ms |\n| 4 | 8k | 64 | 64% | 1510 | 1551 | +2.7% | 35.8 → 34.7 ms |\n| 4 | 16k | 24 | 46% | 744 | 760 | +2.2% | 26.5 → 25.8 ms |\n\nFor reference, the TP8 16k c=64 config without HiSparse gives 1302 tok/s and 39.2 ms TPOT",
+      "labels": [],
+      "filterDisposition": "review",
+      "relevanceScore": 3,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-60117",
+      "repository": "vllm-project/vllm",
+      "number": 60117,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[Bugfix][HiSparse] Carry adopted prefix pages in the new request's row",
+      "bodyExcerpt": "## Purpose\n\nFixes #60109: HiSparse servers crash with an illegal memory access when a new request hits a prefix whose published host pages still have GPU copies.\n\nThe coordinator adopts those copies after the scheduler has already built the request's `NewRequestData`, so the adopted row went out as a `block_table_updates` entry. For a new request, model runner V2 then stages two full-row writes for the same row in one step (`add_requests`, then `update_requests`), and the staged-write kernel applies them in parallel with no ordering. A rank that kept the pre-adoption row saw null resident pages, while the scheduler reported every context page resident. The resident-prefill shortcut then sent the prefill rows through the decode residency resolver, whose host union overflowed `max_union_rows` and faulted.\n\nThe fix puts the adopted row in the new request's `block_ids`; `block_table_updates` stays for running requests. HiSparse-only (`hisparse/connector.py`).\n\nNote: MRv2's staged block-table writer doesn't order overlapping writes to the same row. This PR stops HiSparse from producing them; changing that in core is a separate discussion.\n\n## Reproduction on main\n\nGLM-5.3-NVFP4 on B200, either TP8 or TP4 (`host_pool_gib` 128 or 64):\n\n```bash\nvllm serve RedHatAI/GLM-5.3-NVFP4 -tp 4 --kv-cache-dtype fp8 --block-size 64 \\\n  --max-model-len 22528 --max-num-seqs 256 \\\n  --kv-transfer-config '{\"kv_connector\":\"HiSparseConnector\",\"kv_role\":\"kv_both\",\"kv_connector_extra_config\":{\"host_pool_gib\":64}}'\nvllm bench serve --model RedHatAI/GLM-5.3-NVFP4 --dataset-name random --random-input-len 20480 \\\n  --random-output-len 1024 --ignore-eos --seed 42 --max-concurrency 1 --num-prompts 4\nvllm bench serve --model RedHatAI/GLM-5.3-NVFP4 --dataset-name random --random-input-len 20480 \\\n  --random-output-len 1024 --ignore-eos --seed 42 --max-concurrency 4 --num-prompts 8\n```\n\nBecause of the fixed seed, the second wave repeats the first wave's prompts, so its requests hit the published prefix",
+      "labels": [
+        "bug",
+        "ready",
+        "kv-connector"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-60123",
+      "repository": "vllm-project/vllm",
+      "number": 60123,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[Bugfix][MRV2] Write a new request's block-table update once",
+      "bodyExcerpt": "## Purpose\n\nFixes #60109 (HiSparse servers crash with an illegal memory access on prefix hits).\n\nA `block_table_updates` row supersedes a request's normal block-table write, and `update_requests` already skips `new_block_ids` for running requests that have one. New requests lacked that guard. `add_requests` staged the `NewRequestData` row, `update_requests` staged the update, both for the same row in the same step, and `_apply_write_kernel` applies staged writes as unordered programs. Ranks could keep either row. With HiSparse prefix-copy adoption, ranks that kept the stale row read null resident pages, and the decode residency resolver overflowed.\n\nFix: `add_requests` skips the `NewRequestData` row when a table update exists, and `update_requests` writes the update as before.\n\n## Why this instead of #60117\n\n- **It fixes the race where it happens.** MRv2 accepts two unordered writes to one row; #60117 only stops today's single producer (HiSparse) from sending them.\n- **It's smaller and symmetric.** Five lines extend the guard `update_requests` already has. #60117 instead has the HiSparse connector rewrite an already-built `NewRequestData`, which also changes what every other reader of that field sees.\n- **It costs nothing for other users.** A dict lookup per new request, and one fewer GPU row write when an update exists.\n\nTradeoff: this touches `gpu/model_runner.py`, while #60117 is HiSparse-only.\n\n## Test plan\n\nGLM-5.3-NVFP4 repro from #60109 (TP4, c=1 then c=4 with repeated prompts), 4×B300, same box:\n\n| | c=1 | c=4 waves |\n|---|---|---|\n| main `8bd7737a03` | 4/4 | 0/8, illegal memory access |\n| this PR (`cba1d1ef72`) | 4/4 | 8/8 ×3, 0 CUDA errors |\n\nMain also crashed in 7/7 runs on B200 (TP4 and TP8).\n\n- `pytest tests/v1/worker/test_gpu_model_runner_v2.py`: 9 passed on head `2d774bf397`. The new `test_new_request_table_update_is_written_once` fails on main.\n- `pytest tests/v1/e2e/general/test_hisparse.py`: 4 passed (B300, `cba1d1ef72`).\n\nThe head differs from `cb",
+      "labels": [
+        "bug",
+        "ready",
+        "mrv2"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-60131",
+      "repository": "vllm-project/vllm",
+      "number": 60131,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[Bugfix][LoRA] Map GLM-5.3-Flash forget-gate LoRA names to the checkpoint layout",
+      "bodyExcerpt": "\r\n\r\n## Overview\r\n\r\nGLM-5.3-Flash LoRA adapters trained with transformers + PEFT name the KDA forget-gate projections `self_attn.forget_gate.f_a_proj` / `f_b_proj`. vLLM's module paths and the checkpoint keep them flat (`self_attn.f_a_proj` / `f_b_proj`), so those LoRA weights match no module and are dropped without a warning. This PR maps the name back in `Glm5NextForConditionalGeneration.hf_to_vllm_mapper`, the mapper LoRA loading already applies to adapter keys.\r\n\r\nComplements #56327 (packed mappings for the fused projections, which is needed for `f_a_proj`). Related: #53906 (model), #56718 (MLA `kv_b_proj` prefill).\r\n\r\n## Claims\r\n\r\n- An adapter on `f_b_proj` now takes effect. On `main` it is dropped silently: the adapter loads, no warning is logged, and outputs match the base model.\r\n- With #56327 applied, an adapter on `f_a_proj` (fused into `in_proj_qkvbfg_a`) also takes effect. Without this PR it is still dropped there.\r\n- Behavior is unchanged for everything else. The rename only matches `.forget_gate.`, which no GLM-5.3-Flash checkpoint key or quantization ignore list contains. Base-model log-probs are unchanged: 0.0747 from HF's in both builds.\r\n\r\n## Validation\r\n\r\nModel `zai-org/GLM-5.3-Flash-BF16` on 4×B200, TP=4, BF16, `max_model_len=8192`. Built from `main` at c32495d58f with `VLLM_USE_PRECOMPILED=1`.\r\n\r\n**Method.**\r\n- **Inputs:** 12 real chat prompts (387–2,676 tokens), each followed by a 2,039-token gold answer.\r\n- **Score:** the log-prob of every gold-answer token (`prompt_logprobs=0`), with and without each adapter.\r\n- **Reference:** the same token IDs scored by HF transformers 5.17 + PEFT 0.21.2, with the same weights.\r\n- **Adapters:** LoRA r=16 trained on this model with transformers + PEFT, restricted to one module each. LoRA B is scaled ×64 so each module's effect stands clear of noise.\r\n\r\nA cell reads `applied / dropped`:\r\n- `applied`: mean |log p_vLLM(adapter) − log p_HF(adapter)| per answer token.\r\n- `dropped`: the same against vLLM's base mod",
+      "labels": [
+        "bug",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 8,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "TRAINING"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-60140",
+      "repository": "vllm-project/vllm",
+      "number": 60140,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[GLM5.3 Perf] Switch to fp8 kv cache by default for GLM, 2.3%~5.5% E2E Throughput Improvement",
+      "bodyExcerpt": "## Overview\r\n\r\nSwitch to fp8 kv cache by default for GLM\r\n\r\n## Validation\r\n\r\n```bash\r\nvllm serve zai-org/GLM-5.3 \\\r\n    --trust-remote-code \\\r\n    -tp 4 \\\r\n    --load-format fastsafetensors \\\r\n    --gpu-memory-utilization 0.88 \\\r\n    --enable-prefix-caching \\\r\n    --host 0.0.0.0 \\\r\n    --port 9256 \\\r\n    --max-model-len auto \\\r\n    --max-num-seqs 48 \\\r\n    --speculative-config '{\"method\":\"mtp\",\"num_speculative_tokens\":5,\"draft_sample_method\":\"greedy\",\"rejection_sample_method\":\"standard\"}'  <!-- pp 2 --> \r\n\r\n\r\nguidellm run \\\r\n  --backend '{\"kind\":\"openai_http\",\"target\":\"http://127.0.0.1:9256\",\"model\":\"zai-org/GLM-5.3\",\"request_format\":\"/v1/chat/completions\",\"timeout\":100000,\"extras\":{\"body\":{\"temperature\":1.0,\"top_p\":0.95}}}' \\\r\n  --tokenizer '{\"kind\":\"huggingface_auto\",\"model\":\"zai-org/GLM-5.3\",\"load_kwargs\":{\"trust_remote_code\":true}}' \\\r\n  --data 'kind=synthetic_text,prompt_tokens=8000,output_tokens=1000' \\\r\n  --profile 'kind=concurrent,warmup=0.1,cooldown=0.1' \\\r\n  --override profile.streams '1,4,16' \\\r\n  --constraint 'kind=max_duration,seconds=150' \\\r\n  --constraint 'kind=max_errors,count=10' \\\r\n  --seed 'kind=static,value=42' \\\r\n  --metrics 'kind=generative,sample_size=20' \\\r\n  --output 'kind=json,path=/home/yewentao256/guidellm-results/output_vllm_glm53_8k1k_now.json'\r\n```\r\n\r\nAnd we can get\r\n\r\n\r\nConcurrency | Latency p50（Base） | Current Latency p50 | Throughput p50（Base） | Current Throughput p50 | TTFT p50（Base） | Current TTFT p50\r\n-- | -- | -- | -- | -- | -- | --\r\n1 | 5.90 s | 5.65 s（−4.3%） 🚀 | 178.5 tok/s | 186.1 tok/s（+4.2%） 🚀 | 332.6 ms | 369.6 ms（+11.1%）\r\n4 | 9.90 s | 9.28 s（−6.3%） 🚀 | 328.3 tok/s | 346.4 tok/s（+5.5%） 🚀 | 356.4 ms | 392.3 ms（+10.1%）\r\n16 | 19.36 s | 18.76 s（−3.1%） 🚀 | 631.8 tok/s | 646.5 tok/s（+2.3%） 🚀 | 399.1 ms | 426.5 ms（+6.9%）\r\n\r\nThough we have TTFT perf regression, it is worthwhile for the overal performance, memory saved as well, **eg. 458,880 token budget, KV cache from 40.13 GiB to 20.69 GiB per rank**\r\n\r\n\r\nI will take a furt",
+      "labels": [
+        "ready",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 8,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-60216",
+      "repository": "vllm-project/vllm",
+      "number": 60216,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[ROCm][Perf][GLM-5] Fused sparse-layer decode via AITER MonoKernel",
+      "bodyExcerpt": "\n\n## Overview\n\nOpt-in decode path for GLM-5 (`glm_moe_dsa`) on ROCm gfx950. With `VLLM_ROCM_GLM_MONO_DECODE=1`, each sparse MoE layer of a pure decode step runs as one AITER MonoKernel launch per GPU. That launch includes the sparse indexer and both tensor-parallel all-reduces.\n\n**Depends on ROCm/aiter#6173**, which adds the kernel (`aiter.ops.flydsl.glm5_mono`). The kernel comes from ROCm/FlyDSL#1204 and ROCm/ATOM#2435. The structure follows the MiniMax-M3 fused decode in #59653.\n\n## Claims\n\n- 8x MI355X, GLM-5.3 MXFP4, TP8, fp8 KV, serving benchmark:\n  - TPOT -40.9% at concurrency 4 and -27.4% at 8 (8K input / 1K output).\n  - TPOT -18.4% at concurrency 4 and -8.1% at 8 (60K input / 600 output).\n- 4x MI355X, TP4: TPOT 1.41x faster at concurrency 1 (8K input / 256 output).\n- Accuracy matches the regular path: NIAH 1.000 vs 1.000, GPQA Diamond 0.899 vs 0.879, GSM8K within run-to-run noise.\n- Default off. When it is on, steps the kernel does not cover (prefill, mixed, more than 8 tokens) keep the regular layers and their CUDA graphs.\n\n## Validation\n\n**Base used for these runs.** All measurements were taken on `ac68c308` plus #50535, #51309, #51314, #59280, #59420, #59421 and #59422. AITER was `5b2f7d1d` plus ROCm/aiter#6173 (and `7bfe279d` for the baseline). This branch is the same 4 files rebased onto current `main`:\n- No conflicts.\n- No upstream change under `vllm/models/deepseek_v32/amd/`.\n- Every API the path uses is unchanged.\n- The rebased branch has not been re-run on GPU yet; that will be done before marking ready.\n\n**Serving, TP8.** `vllm bench serve`-style random dataset, `random-range-ratio` 0.8. 8192/1024 swept at concurrency 4 to 256, 60000/600 at 4 to 32. Baseline is the same stack with the flag off.\n\n| ISL/OSL | Concurrency | TPOT off | TPOT on | Change | Output tok/s/GPU off | on | Change |\n|---|---|---|---|---|---|---|---|\n| 8192/1024 | 4 | 13.10 ms | 7.74 ms | -40.9% | 36.67 | 61.02 | +66.4% |\n| 8192/1024 | 8 | 15.05 ms | 10.92 ms | -27.4% | 62.31 | 8",
+      "labels": [
+        "rocm",
+        "deepseek",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 7,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-60220",
+      "repository": "vllm-project/vllm",
+      "number": 60220,
+      "type": "pr",
+      "category": "OTHER",
+      "categoryValid": true,
+      "ruleCategory": "OTHER",
+      "classificationConsistent": true,
+      "title": "[Attention] FlashMLA sparse: stage fp8 mixed-batch q/out in the workspace",
+      "bodyExcerpt": "\n\n## Overview\n\nThe FlashMLA sparse `fp8_ds_mla` mixed-batch path now writes the head-padded query and the kernel output into the workspace buffers that `FlashMLASparseImpl` already reserves for `max_num_batched_tokens`, so it no longer allocates them on every call. This removes about 4.25 GiB of per-call allocation at 32K tokens per step. That allocation isn't counted by the startup memory profile, so it can cause runtime OOMs.\n\nRelated: #59305, #57878. Complements vllm-project/FlashMLA#29, which removes the kernel-internal fp32 split-KV `o_accum` buffer (the other 8 GiB at T=32K). This PR only covers the wrapper side.\n\n## Claims\n\n- On the fp8 mixed-batch path, the padded q (`T x 64 x 576` bf16) and the output (`T x 64 x 512` bf16) are written into the reserved workspace, and the output buffer is passed to the kernel via `out=`. At T=32768 this saves 4.25 GiB per call, measured. The workspace was already reserved, so KV cache capacity does not change.\n- Outputs and LSE are bit-identical to the allocating path.\n- GLM-5.3-Flash FP8 on 8xH100 (TP8, `max_num_batched_tokens=32768`, `gpu_memory_utilization=0.85`) previously hit a runtime OOM in `flash_mla_with_kvcache` during warmup. With this change it serves the same workload without errors, and GSM8K accuracy matches.\n\n## Validation\n\n**Per-call peak allocation.** Single H100. GLM-5.3-Flash TP8 shapes: 8 heads/rank padded to 64, topk 2048, `s_q = T`. Measured through `FlashMLASparseImpl._fp8_flash_mla_kernel`:\n\n| T | before (allocating path) | after (workspace path) | saved | outputs equal |\n|---|---|---|---|---|\n| 1024 | 0.384 GiB | 0.251 GiB | 0.133 GiB | yes |\n| 8192 | 3.068 GiB | 2.006 GiB | 1.063 GiB | yes |\n| 16384 | 6.137 GiB | 4.012 GiB | 2.125 GiB | yes |\n| 32768 | 12.273 GiB | 8.023 GiB | 4.250 GiB | yes |\n\nThe remaining ~8 GiB at T=32768 is the kernel's `o_accum`, which is addressed by vllm-project/FlashMLA#29.\n\n**End-to-end, previously crashing config.** GLM-5.3-Flash FP8, 8xH100, `--tensor-parallel-size 8 -",
+      "labels": [],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-60229",
+      "repository": "vllm-project/vllm",
+      "number": 60229,
+      "type": "pr",
+      "category": "NEW_SUPPORT",
+      "categoryValid": true,
+      "ruleCategory": "NEW_SUPPORT",
+      "classificationConsistent": true,
+      "title": "[Spec Decode][GLM-5.3-Flash] Support adaptive verification",
+      "bodyExcerpt": "## Motivation\r\n\r\nAdaptive verification chooses on the GPU how many draft tokens to verify for each request. During full CUDA graph replay, the physical token buffer and captured control flow remain fixed, while the live request boundaries can change. GLM-5.3-Flash previously made two assumptions that were incompatible with this behavior:\r\n\r\n- GDN captured the ordinary one-token decode path, even though replay could group those token rows into fewer requests with multiple verification tokens.\r\n- The k-pool scatter path assumed every physical token row belonged to a live request, but a replayed graph can contain additional padding rows.\r\n\r\nThis PR updates both paths to handle GPU-selected request lengths and graph padding.\r\n\r\n## Changes\r\n\r\n- Allow the GDN backend to replay CUDA graphs whose per-request query lengths are chosen on the GPU.\r\n- Capture GDN’s speculative path and the k-pool indexer at the maximum configured verification width.\r\n- Update the k-pool scatter path to safely discard CUDA graph padding without synchronizing lengths back to the CPU.\r\n- Add tests for variable verification lengths, graph padding, and sparse-indexer alignment.\r\n\r\n## Testing\r\n\r\nAdded and ran focused tests covering:\r\n\r\n- Mixed per-request GDN verification lengths\r\n- CUDA graph padding in the k-pool scatter path\r\n- Sparse-indexer sequence-length alignment\r\n- Capture-time and replay-time request partition differences\r\n\r\n## Throughput results\r\n\r\nI benchmarked GLM-5.3-Flash with MTP on four B300 GPUs (TEP4). The sweep covered:\r\n\r\n- Speculative depths `kmax = 1...5`\r\n- 18 batch sizes from `B = 1` through `B = 256`\r\n- Prefix lengths `S = 512, 8192, 32768`\r\n\r\nThe table reports decode throughput for adaptive verification relative to fixed verification at the same maximum depth. Each value is the unweighted mean over the `(B, S)` at that speculative depth.\r\n\r\n| Maximum depth | Adaptive / fixed at same depth |\r\n|---:|---:|\r\n| 1 | 0.965× |\r\n| 2 | 0.958× |\r\n| 3 | 0.965× |\r\n| 4 | 1.065× |\r\n| 5 | ",
+      "labels": [
+        "deepseek",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 6,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-60231",
+      "repository": "vllm-project/vllm",
+      "number": 60231,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[Bugfix][Frontend] Accept deprecated reasoning_content on input messages",
+      "bodyExcerpt": "## Purpose\n\n`_parse_chat_message_content` reads past-turn reasoning only from `reasoning`. Assistant messages that carry it in the deprecated `reasoning_content` field have it silently dropped before the chat template runs.\n\nThis shows up behind OpenAI-compatible proxies. LiteLLM, for example, renames vLLM's `reasoning` to `reasoning_content` in responses, both streaming and non-streaming. Clients then send the history back with `reasoning_content`, and templates that render prior thinking never see it. `ConversationMessage` already declares `reasoning_content` as a deprecated alias, and the output side still sets it \"for compatibility\". This PR makes the input side accept the alias too, with `reasoning` taking precedence.\n\n## Test Plan\n\n`pytest tests/entrypoints/unit_tests/test_chat_utils.py -k assistant_reasoning_field`. It is a new test, parametrized over both field names.\n\n## Test Result\n\n- With the fix: 2 passed.\n- Without the fix: the `reasoning_content` case fails.\n- Also checked end to end on a GLM-5.3-Flash deployment: `/tokenize` on a conversation with `reasoning_content` on a prior assistant turn now renders the `<think>…</think>` block.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+      "labels": [
+        "bug",
+        "frontend"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 3,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-60243",
+      "repository": "vllm-project/vllm",
+      "number": 60243,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[Misc] Log enabled fusion passes only under VLLM_COMPILE",
+      "bodyExcerpt": "\n\n## Overview\n\n`VllmConfig` ends post-init by logging `Enabled custom fusions: ...`, but the passes only run under `CompilationMode.VLLM_COMPILE`. For the architectures that default to breakable CUDA graphs the mode is forced to `NONE` after the optimization-level defaults turned fusions on, so startup reports passes that never run. The log is now emitted only under `VLLM_COMPILE`.\n\n## Claims\n\n- No `Enabled custom fusions` log when compilation is off (for example DeepSeek V3.2/V4, GLM-5, Kimi K3, MiniMax M3 and Qwen4Exp with their default breakable CUDA graphs).\n- Unchanged under `VLLM_COMPILE`; the pass config itself is not touched, so nothing else changes.\n\n## Validation\n\nOn main (`6ad2e06c4a`) with and without this commit, building the engine config on CPU with `EngineArgs(...).create_engine_config()` and counting the log line:\n\n| Model | Mode | fuse_norm_quant / fuse_act_quant | Log before | Log after |\n|---|---|---|---|---|\n| Qwen4Exp (breakable default) | NONE | True / True | yes | no |\n| Qwen4Exp, `VLLM_USE_BREAKABLE_CUDAGRAPH=0` | VLLM_COMPILE | True / True | yes | yes |\n| gpt-oss-20b | VLLM_COMPILE | False / False | no | no |\n\nThe mode and pass config are identical before and after in every row.\n\n## Details\n\nThe custom passes run inside `VllmBackend`, which only `CompilationMode.VLLM_COMPILE` uses; under `NONE` the model is never compiled. The log came with #35538. #50750 dropped the \"Inductor compilation was disabled ... will be ignored\" warning for breakable CUDA graphs, so with breakable graphs nothing else says the listed passes are inactive. Gating the call on the mode reuses the check `_normalize_piecewise_cudagraph_mode` already makes.\n\nNo open PR addresses this: searches for the log line and for `log_enabled_passes` return nothing related.\n\n---\n\n<details>\n<summary> Pull Request Checklist </summary>\n\n- [x] I used vLLM's `/pr-checklist` skill. (Mandatory for agents, optional for humans).\n- [x] AI assistance was used during the creation of this PR.\n\n- ",
+      "labels": [],
+      "filterDisposition": "review",
+      "relevanceScore": 4,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-60278",
+      "repository": "vllm-project/vllm",
+      "number": 60278,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[Bug] Fix GLM 5.3 sm100 FP8 kv cache dspark issue",
+      "bodyExcerpt": "## Overview\r\n\r\n Fix GLM 5.3 sm100 FP8 kv cache dspark issue\r\n\r\nThanks @mgoin for the context, we should limit fp8 kv cache only to SM100.\r\n\r\nAs dspark on SM100 hasn't been tested yet, so this PR makes it banned currently as well.\r\n",
+      "labels": [
+        "bug",
+        "ready",
+        "dflash",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 8,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-60281",
+      "repository": "vllm-project/vllm",
+      "number": 60281,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "[Bugfix] Limit GlmMoeDsaForCausalLM fp8 KV cache default to SM100",
+      "bodyExcerpt": "\n\n## Overview\n\nNarrow the fp8 KV cache default that #60140 added for `GlmMoeDsaForCausalLM` to NVIDIA SM100, and stop it from leaking into separate draft models.\n\n## Claims\n\n- The default is applied only when `--kv-cache-dtype` is `auto`, the platform is `is_cuda()`, and `is_device_capability_family(100)` holds.\n- All other platforms (SM90, SM120, ROCm, XPU, CPU) keep `auto`, as before #60140. The XPU branch and the `auto` -> `bfloat16` rewrite are removed.\n- A separate draft model (anything other than `mtp`) keeps `auto` unless the user sets `kv_cache_dtype` in the speculative config. MTP still follows the target.\n- The default is logged once at startup.\n\n## Validation\n\n- `pre-commit` hooks pass on the changed file.\n- **Not run end-to-end.** No GLM server was started with this change, on any hardware. In particular the fp8 target + bf16 draft combination that this makes the SM100 default for non-MTP drafts has not been exercised; it goes through the existing explicit `speculative_config.kv_cache_dtype` override path.\n- No test added. A config-level test would only mirror the hook's own conditions with mocked platform checks.\n- SM100 + MTP behaviour is unchanged from #60140, so its benchmark and gsm8k results still apply to that configuration.\n\n## Details\n\nProblems with the #60140 hook that this addresses:\n\n- `is_cuda_alike()` includes ROCm, where the capability major comes from the GCN arch string, so `capability.major >= 10` selected fp8 on gfx11xx/gfx12xx and explicit `bfloat16` on MI3xx by accident.\n- `>= 10` also covered SM110/SM120, which the PR did not report measurements for.\n- Rewriting `auto` to explicit `bfloat16` (including on XPU) has no benefit, since `auto` already resolves to the model dtype, and it drops the \"user did not choose\" signal. The `DeepseekV32ForCausalLM` hook just above maps `bfloat16` back to `auto`.\n- `cache_config` is shared with the draft, which only gets its own dtype when `speculative_config.kv_cache_dtype` is set. A model-level de",
+      "labels": [
+        "bug",
+        "glm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 8,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-60294",
+      "repository": "vllm-project/vllm",
+      "number": 60294,
+      "type": "pr",
+      "category": "PERFORMANCE",
+      "categoryValid": true,
+      "ruleCategory": "PERFORMANCE",
+      "classificationConsistent": true,
+      "title": "[ROCm][Perf] gfx950: use aiter.mqa_logits for the sparse indexer prefill",
+      "bodyExcerpt": "## Purpose\n\nOn gfx950, the sparse indexer prefill calls the Triton/Gluon `fp8_mqa_logits` directly, and moving it to another kernel takes a vLLM change each time (#59280 did this for FlyDSL). This calls `aiter.mqa_logits` (ROCm/aiter#6185) instead: AITER picks the backend and FlyDSL kernel variant per shape from its tuned table.\n\n- gfx950 with AITER enabled: `aiter.mqa_logits`, when the installed AITER has it.\n- Older AITER without `aiter.mqa_logits`: the existing Triton/Gluon path, unchanged.\n- gfx942 keeps the FlyDSL path from #49544; other archs and AITER disabled are unchanged.\n\nNeeds ROCm/aiter#6185. Until the AITER that vLLM pins includes it, the import fails and gfx950 keeps the Triton/Gluon path, so this is safe to merge first.\n\n## Test Plan\n\n- `pytest tests/v1/attention/test_rocm_aiter_mqa_logits_dispatch.py`: gfx942 uses FlyDSL; gfx950 uses `aiter.mqa_logits`, or Triton/Gluon when AITER lacks it; other archs use Triton/Gluon; AITER disabled uses the torch fallback.\n- A real call of `rocm_fp8_mqa_logits` on gfx950 (seq_len 2048, seq_len_kv 16384, H=32, D=128), compared with `fp8_mqa_logits_torch`.\n\n## Test Result\n\nMI355X (gfx950), a vLLM 0.30.1rc1 dev build with this change applied to `rocm_aiter_mla_sparse.py`, AITER from ROCm/aiter#6185, Triton 3.8.0, FlyDSL 0.3.4.1.\n\n- Dispatch test: 5/5 pass.\n- Real call: dispatched to `aiter.mqa_logits`, which used the tuned GLM-5 row (FlyDSL `mfma32x32x64_bkv128_r2_w4_lds3`). Same `-inf` mask as the torch fallback, `calc_diff` 1.4e-6.\n- Kernel time on the 24 tuned GLM-5 prefill shapes (from ROCm/aiter#6185): -36.6% geomean against Triton/Gluon (-16.6% to -74.5%), -5.8% against the FlyDSL variant #59280 would pick (-15.4% to +3.3%).\n- Not measured end to end yet.\n",
+      "labels": [
+        "rocm"
+      ],
+      "filterDisposition": "review",
+      "relevanceScore": 3,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": [
+        "relevance-review"
+      ]
+    },
+    {
+      "id": "vllm-pr-60321",
+      "repository": "vllm-project/vllm",
+      "number": 60321,
+      "type": "pr",
+      "category": "NEW_SUPPORT",
+      "categoryValid": true,
+      "ruleCategory": "NEW_SUPPORT",
+      "classificationConsistent": true,
+      "title": "[ROCm][Attention] Add an mxfp4_mla KV cache for rope-free sparse MLA (read/write path)",
+      "bodyExcerpt": "## Overview\n\nAdds an `mxfp4_mla` KV cache dtype for the ROCm AITER sparse MLA backend on rope-free (NoPE) latents such as GLM-5.3-Flash. Each 512-wide latent is stored as 256 bytes of E2M1 codes plus 16 inline E8M0 scales (one per 32 values): 272 bytes per token against 1024 for bf16, or 3.76× more tokens per GiB of KV cache.\n\nThis is the first of the smaller PRs split out of #59739, as requested there. It contains only the cache format, the write path and a Triton read path. Everything is Triton or Python: no HIP or C++ sources, and no new environment variables.\n\n## Claims\n\n- **KV capacity:** 3.76× more tokens per GiB than bf16 (272 vs 1024 bytes per token).\n- **Correctness:** attention over the packed cache is bit-identical to attention over the same dequantized values stored as bf16.\n- **No change for other KV dtypes.** The only shared-kernel change is a `KV_IS_MXFP4` constexpr branch, so the bf16 and FP8 specializations compile to the same code as before.\n- **No speed claim.** The Triton read path unpacks to bf16 before both dots, so it doesn't make attention faster: at 16k tokens it takes about 1.13× as long as bf16 per layer. The gain is capacity. Faster arithmetic over this cache comes in a follow-up.\n\n## Validation\n\n**Unit tests** (MI355X / gfx950):\n\n```\npytest tests/v1/attention/test_mxfp4_mla*.py tests/v1/attention/test_rocm_glm5next_sparse.py\n# 99 passed\n```\n\nThe new tests cover:\n- the format math, checked bit-for-bit against AITER's `per_1x32_f4_quant`;\n- the store kernel, including padding slots and launches past 2^31 source elements;\n- the Triton read path, checked against a dequantize-then-attend reference, with both the hardware and software unpack;\n- the startup plumbing (KV spec bytes, hybrid block sizing, config validation);\n- the routing, and the guard that stops the DeepSeek-V4 decode kernels from misreading a packed cache.\n\n**Accuracy** (GLM-5.3-Flash, TP=4 on MI355X, seed 42; bf16 and MXFP4 served from the same image):\n\n| Benchmark | bf16 | `m",
+      "labels": [
+        "rocm"
+      ],
+      "filterDisposition": "eligible",
+      "relevanceScore": 5,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    },
+    {
+      "id": "vllm-pr-60334",
+      "repository": "vllm-project/vllm",
+      "number": 60334,
+      "type": "pr",
+      "category": "FIX",
+      "categoryValid": true,
+      "ruleCategory": "FIX",
+      "classificationConsistent": true,
+      "title": "Fix fp8 KV cache scale loading in MiMoV2MTP",
+      "bodyExcerpt": "## Purpose\n\n`MiMoV2MTP.load_weights` is a hand-written loader that drops the FP8 KV cache scales carried in checkpoints (llm-compressor fused naming, ModelOpt per-projection naming, and the deprecated `.kv_scale`), so `process_weights_after_loading` silently falls back to `k_scale = v_scale = 1.0`. Mechanism, measured matrix, and reproduction in #60333. #43167 centralized this handling in `quant_config.get_cache_scale_mapper()` applied by `AutoWeightsLoader`, and this loader never went through that migration because it never carried the per-model boilerplate to remove.\n\nThis PR makes two changes.\n\n1. `MiMoV2MTP.__init__` stores `self.quant_config = vllm_config.quant_config`.\n2. `load_weights` applies the cache-scale mapper before its own loop, the same hand application `GlmOcrMTP` and `HYV3MTP` already use.\n\nWith the mapper applied first, per-projection names are normalized before the stacked rewrite and the fused name before the fused-projection branch. `MiMoV2OmniMTP` inherits the loader and is covered by the same change. The mapper leaves non-scale names untouched, and checkpoints without KV scales keep their loading behavior through the `quant_config is None` guard.\n\n## Test Plan\n\nNew unit test `tests/model_executor/test_mimo_v2_mtp_kv_scale.py` covers the three naming families plus the `quant_config=None` guard. It runs the real loader with the real `Fp8Config` mapper and stubs only the heavy submodules with the checkpoint-side parameter names.\n\n```\npytest tests/model_executor/test_mimo_v2_mtp_kv_scale.py\n```\n\n## Test Result\n\nAll 4 tests pass with this PR. On main the three scale cases fail because the scales are dropped (`k_scale` stays at the -1.0 sentinel, which `process_weights_after_loading` resets to 1.0), and the `None`-guard case passes on both sides, keeping the unquantized behavior unchanged.\n\nControl weights (the fused `qkv_proj.weight` through the non-fp8 chunk path and `embed_tokens`) load normally in every combination, and the deprecated single `k",
+      "labels": [],
+      "filterDisposition": "eligible",
+      "relevanceScore": 5,
+      "matchedTerms": [
+        "GLM"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "sourceMatch": true,
+      "sourceMismatchFields": [],
+      "warnings": []
+    }
+  ]
+}

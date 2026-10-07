@@ -1,5 +1,129 @@
 [
   {
+    "id": "vllm-pr-51314",
+    "nodeId": "PR_kwDOI7xefs77xdSz",
+    "repository": "vllm-project/vllm",
+    "number": 51314,
+    "type": "pr",
+    "title": "[ROCm][Perf] Skip cleaning sparse prefill MQA logits",
+    "bodyExcerpt": "## Summary\n\nThe sparse prefill path creates the MQA-logits buffer with `torch.full(..., -inf)`.\nThis launches an FP32 fill before every logits kernel.\n\nThis PR passes `clean_logits=False` to AITER, so the buffer uses `torch.empty`\nand the fill is removed.\n\n## Safety\n\nThe only consumer is `top_k_per_row_prefill`. It reads each row only inside\n`[cu_seqlen_ks, cu_seqlen_ke)`. Its vectorized path also guards the final partial\nload, so padding values are never read. The top-k result is unchanged.\n\n## Results\n\nMI355X, TP=4, rank 0, comparable before/after captures:\n\n| metric | before | after |\n|---|---:|---:|\n| FP32 fill launches | 18,162 | **0** |\n| FP32 fill GPU time | 1,250.2 ms | **0 ms** |\n| MQA-logits launches | 18,108 | 17,930 |\n\nThe removed fill was **0.89% of total GPU kernel time**. In the sample below it\ntakes 74.6 µs and is fully serialized before the logits kernel.\n\n![Before: FP32 fill before MQA logits](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr4_before.png)\n\n![After: fill removed](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr4_after.png)\n\n## Model-level e2e results\n\n### Test conditions\n\n| | |\n|---|---|\n| Hardware | MI355X (gfx950), TP=4 |\n| Model | `amd/GLM-5.2-MXFP4`, fp8 KV cache |\n| Stack | vLLM `69715823`, AITER `4a1cc77`, flydsl `0.3.0` |\n| Server | `--async-scheduling --max-num-seqs 256 --max-num-batched-tokens 16384 --block-size 64 --no-enable-prefix-caching`, `index_topk_freq=4` |\n| Env | `VLLM_ROCM_USE_AITER=1`, `VLLM_ROCM_USE_AITER_SPARSE_INDEXER=1`, `AITER_USE_FLYDSL_MOE_SORTING=1`, `VLLM_ROCM_QUICK_REDUCE_QUANTIZATION=INT4` |\n| Perf | `vllm bench serve`, random dataset, `--ignore-eos --request-rate inf`, ISL 1024 and 8192, OSL 1024, concurrency 1-256 (16 points) |\n| Accuracy | `lm_eval` gsm8k 5-shot chat template with thinking enabled, `max_gen_toks=8192`; RULER `niah_single_2` at 16k |\n| Sampling | checkpoint default (tempe",
+    "author": "amd-sriram",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "ready"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/51314",
+    "createdAt": "2026-08-06T21:41:17.000Z",
+    "updatedAt": "2026-10-07T04:59:11.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T07:14:16.853Z",
+    "contentHash": "sha256:b1064648c52da4ffcb99c0dae966922d724597b8486b7fa70ad4443218618c85",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "ROCm跳过稀疏预填充MQA logits清理",
+      "summaryZh": "优化 AITER 稀疏预填充路径，传入 `clean_logits=False`，使用 `torch.empty` 创建 MQA-logits 缓冲区，移除每次 logits kernel 前的 FP32 填充；在 MI355X、TP=4 测试中，FP32 填充启动次数从 18,162 降至 0，GPU 时间从 1,250.2 ms 降至 0；top-k 结果不变",
+      "models": [
+        "amd/GLM-5.2-MXFP4"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "面向 ROCm/AITER 稀疏预填充推理路径，测试硬件为 MI355X（gfx950）。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[ROCm][Perf] Skip cleaning sparse prefill MQA logits",
+        "【正文】This PR passes `clean_logits=False` to AITER, so the buffer uses `torch.empty` and the fill is removed."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-51309",
+    "nodeId": "PR_kwDOI7xefs77w-6a",
+    "repository": "vllm-project/vllm",
+    "number": 51309,
+    "type": "pr",
+    "title": "[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
+    "bodyExcerpt": "## Summary\r\n\r\nWith cross-layer index sharing, only some attention layers update the shared top-k buffer.\r\nThe old path still remapped that buffer on every layer.\r\n\r\nThis PR runs the remap only when the layer owns an indexer. For GLM-5.2 with\r\n`index_topk_freq = 4`, this reduces remaps from 78 to 21 per forward pass.\r\n\r\n## Safety\r\n\r\n- Layer 0 always owns an indexer, so the shared output is initialized before reuse.\r\n- Non-indexer layers do not change the inputs to the remap.\r\n- The default `index_topk_freq = 1` path is unchanged.\r\n- Speculative decoding still remaps on every layer.\r\n\r\n## Update: indexer and non-indexer layers are two KV cache groups\r\n\r\nhttps://github.com/vllm-project/vllm/pull/53781  added the is_index_group_leader field to MLAAttentionSpec: `is_index_group_leader=self.indexer is not None,`. Layers can only share a KV cache group if they agree on is_index_group_leader, so once the flag is set per layer, indexer and non-indexer layers land in different groups and therefore get different metadata instances with separate paged_kv_indices\r\n\r\n```\r\nindex_group_leader_set = {spec.is_index_group_leader for spec in specs}\r\nassert (\r\n    ...\r\n    and len(index_group_leader_set) == 1\r\n    ...\r\n), (\r\n    \"All attention layers in the same KV cache group must use the same \"\r\n    \"... index-sharing role, ...\"\r\n)\r\n```\r\n\r\nSo, remap should run for all indexer layers and the first non-indexer layer. The two non-indexer layer following the first non-indexer layer doesn't need a remap.\r\n\r\nThe following table shows how the remap condition changed between the commits and how it is implemented by `index_epoch` and  `remapped_epoch`. index_epoch is fixed per layer at construction: it counts indexer writes up to and including that layer - which selection is this layer entitled to read. remapped_epoch lives on the metadata and moves during the pass: it records which selection is currently sitting in that group's paged_kv_indices. A mismatch means the group is holding an older ",
+    "author": "amd-sriram",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "ready",
+      "mrv1-only"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/51309",
+    "createdAt": "2026-08-06T21:10:14.000Z",
+    "updatedAt": "2026-10-07T04:59:10.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T07:14:16.853Z",
+    "contentHash": "sha256:64de013633327fa0fbc93ca0719bdf2715356fd89c692283034cd6c89e64417e",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "ROCm跳过非索引层冗余稀疏索引重映射",
+      "summaryZh": "优化仅由拥有 indexer 的层执行稀疏索引 remap；非索引层直接进入 MLA kernel，解决跨层索引共享时，旧路径在每一层都重映射共享 top-k 缓冲区，导致非索引层执行冗余 remap；在 MI355X、TP=4、GLM-5.2-MXFP4、index_topk_freq=4 条件下，每次前向 remap 从 78 次降至 21 次；remap kernel 启动次数减少 73.3%，GPU 时间减少 73.0%。默认 index_topk_freq=1 路径及推测解码路径保持不变",
+      "models": [
+        "GLM-5.2-MXFP4"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "面向 ROCm 稀疏索引器和跨层索引共享场景，实测硬件为 MI355X。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
+        "【正文】This PR runs the remap only when the layer owns an indexer. For GLM-5.2 with index_topk_freq = 4, this reduces remaps من"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-54074",
+    "nodeId": "PR_kwDOI7xefs8AAAABBPA7LQ",
+    "repository": "vllm-project/vllm",
+    "number": 54074,
+    "type": "pr",
+    "title": "[ROCm][Perf] Use the fused clamped SwiGLU kernel on ROCm",
+    "bodyExcerpt": "## Purpose\n\n`SiluAndMulWithClamp` routes ROCm to `forward_native`, which evaluates the activation as six eager kernels — two clamps, a sigmoid, two multiplies and an add. The fused op it skips, `torch.ops._C.silu_and_mul_with_clamp`, carries no HIP-specific guard in `csrc/libtorch_stable/activation_kernels.cu` and is built and numerically correct on gfx950. `SiluAndMul`, a few classes up in the same file, already takes the `is_cuda_alike()` path on ROCm — this exclusion looks like an oversight rather than a guard.\n\n```diff\n- if current_platform.is_rocm() or current_platform.is_xpu():\n+ if current_platform.is_xpu():\n      self._forward_method = self.forward_native\n  elif current_platform.is_cuda_alike():\n      self.op = torch.ops._C.silu_and_mul_with_clamp\n```\n\nXPU keeps its existing native path.\n\n## Test Plan\n\nMeasured on 8× MI355X (gfx950), ROCm 7.2.3, with GLM-5.3-Flash — a 320B/18B multimodal MoE that clamps the SwiGLU gate in both its dense and MoE MLPs (`swiglu_limit=10.0`). TP8, 1M context, bf16 KV cache.\n\n1. **Numerical check** — fused output vs `forward_native` over the model's shapes.\n2. **Isolated kernel timing** — both arms interleaved inside a single process, so the board's shared power budget (which drifts an unchanged kernel by up to ~13% between processes here) cannot bias one arm against the other.\n3. **End to end** — `vllm bench serve`, each arm on a freshly started server so prefix-cache state matches.\n\n## Test Result\n\nNumerics: fused matches `forward_native` within bf16 rounding (max abs diff 3.1e-02 at values up to the clamp limit of 10).\n\nIsolated kernel, interleaved:\n\n| shape | tokens | native | fused | speedup |\n|---|---|---|---|---|\n| dense MLP d=1536 | 64 | 54.67 µs | 23.95 µs | 2.28× |\n| MoE d=256 | 64 | 55.06 µs | 23.89 µs | 2.31× |\n| dense MLP d=1536 | 512 | 57.75 µs | 24.58 µs | 2.35× |\n| MoE d=256 | 512 | 54.01 µs | 23.55 µs | 2.29× |\n\nA decode-phase torch profile attributed 1.94 ms per step to the six eager kernels across 45 layers — e",
+    "author": "JohnQinAMD",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "needs-rebase",
+      "verified"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/54074",
+    "createdAt": "2026-08-27T16:44:06.000Z",
+    "updatedAt": "2026-10-06T19:20:44.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-28T11:38:19.166Z",
+    "contentHash": "sha256:05c4d313df34a3260aff9f696341e04f9b7748490b772c514775dc324beecb13",
+    "category": "PERFORMANCE",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-issue-53963",
     "nodeId": "I_kwDOI7xefs8AAAABOafIGQ",
     "repository": "vllm-project/vllm",
@@ -15,11 +139,37 @@
     ],
     "url": "https://github.com/vllm-project/vllm/issues/53963",
     "createdAt": "2026-08-26T23:19:33.000Z",
-    "updatedAt": "2026-10-06T04:04:13.000Z",
+    "updatedAt": "2026-10-06T15:26:00.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-27T10:07:19.897Z",
-    "contentHash": "sha256:c3792c8e75cae04ab7ebcc4610d6a8980696a7c7623370a5eac615d35b4af78b",
+    "contentHash": "sha256:b944a09d3e27e4e4997d86ce57fe25fed8e7aa8796be77927b7e72b195ae65d5",
     "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-53953",
+    "nodeId": "PR_kwDOI7xefs8AAAABBIYQ_g",
+    "repository": "vllm-project/vllm",
+    "number": 53953,
+    "type": "pr",
+    "title": "[ROCm][Model][AMD][Performance]: Added AITER fusion on top of the existing TRITON fusion path for GLM-5.2-MXFP4 through deepseek_v32",
+    "bodyExcerpt": "## Purpose\r\n\r\nAdds an AITER-backed fusion path for the ROCm `deepseek_v32` (DeepSeek Sparse\r\nAttention) forward, used by both DeepSeek-V3.2 and GLM-5.2. The existing\r\nshared-Triton fusion path is untouched and remains the default; the AITER path\r\nis selected at runtime per fusion via opt-in env flags, so behaviour on ROCm is\r\nunchanged unless a flag is set.\r\n\r\nThis PR is stacked on top of: https://github.com/vllm-project/vllm/pull/51915, so needs enablement to land first before this fusion add-on.\r\n\r\n### Fusions added\r\n\r\n**1. MLA dual RMSNorm** \r\nFuses the q and kv-a RMSNorms into one AITER call\r\n(`fused_mla_dual_rms_norm_out`). An out-variant was added so the norms write\r\nmodel-owned buffers rather than allocating per layer, which lets the call be\r\nhoisted out of the eager region and captured by cudagraph. Also wires the\r\nper-token-quant variant for the quantized case.\r\n\r\n**2. Fused QK RoPE + concat + MLA cache write** \r\n`rocm_aiter_fused_qk_rope_concat_and_cache_mla` replaces the separate RoPE,\r\nconcat and KV-cache-write steps on the MLA path. The uint8 KV cache allocated by\r\n`--kv-cache-dtype fp8` is viewed as `float8_e4m3fn` before the call, since the\r\nAITER op rejects the raw uint8 buffer.\r\n\r\n**3. Fused indexer QK RoPE + fp8 quant + cache write**\r\n`rocm_aiter_indexer_qk_rope_quant_and_cache` fuses the lightning-indexer key\r\nLayerNorm, RoPE, fp8 quantization, and cache write into one call for the 21\r\nindexer layers.\r\n\r\n**4. Fused all-reduce + RMSNorm**\r\nUses AITER's custom all-reduce with an in-kernel RMSNorm. Gated on custom-AR\r\neligibility (`should_custom_ar`) because the op asserts the kernel ran, and\r\noversized batches must fall back to the standard path — this is the check the\r\ntorch.compile pass performs at compile time and which an inline call has to do\r\nitself.\r\n\r\n**5. `VLLM_ROCM_USE_AITER_CUSTOM_AR`** exposes AITER's custom all-reduce\r\nindependently of the fused variant.\r\n\r\n## Test Plan\r\n\r\nTo switch between the two fusion paths, use the env var below:\r\n",
+    "author": "jhu960213",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "deepseek",
+      "verified",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/53953",
+    "createdAt": "2026-08-26T21:23:27.000Z",
+    "updatedAt": "2026-10-06T15:17:45.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-27T10:07:19.897Z",
+    "contentHash": "sha256:f4392f906f32b84d5a3656e1ed0e7f444ebb732b3f0947c9f54e67258d4b2b82",
+    "category": "PERFORMANCE",
     "categorySource": "rules",
     "summary": null
   },
@@ -106,32 +256,6 @@
     "summary": null
   },
   {
-    "id": "vllm-pr-53953",
-    "nodeId": "PR_kwDOI7xefs8AAAABBIYQ_g",
-    "repository": "vllm-project/vllm",
-    "number": 53953,
-    "type": "pr",
-    "title": "[ROCm][Model][AMD][Performance]: Added AITER fusion on top of the existing TRITON fusion path for GLM-5.2-MXFP4 through deepseek_v32",
-    "bodyExcerpt": "## Purpose\r\n\r\nAdds an AITER-backed fusion path for the ROCm `deepseek_v32` (DeepSeek Sparse\r\nAttention) forward, used by both DeepSeek-V3.2 and GLM-5.2. The existing\r\nshared-Triton fusion path is untouched and remains the default; the AITER path\r\nis selected at runtime per fusion via opt-in env flags, so behaviour on ROCm is\r\nunchanged unless a flag is set.\r\n\r\nThis PR is stacked on top of: https://github.com/vllm-project/vllm/pull/51915, so needs enablement to land first before this fusion add-on.\r\n\r\n### Fusions added\r\n\r\n**1. MLA dual RMSNorm** \r\nFuses the q and kv-a RMSNorms into one AITER call\r\n(`fused_mla_dual_rms_norm_out`). An out-variant was added so the norms write\r\nmodel-owned buffers rather than allocating per layer, which lets the call be\r\nhoisted out of the eager region and captured by cudagraph. Also wires the\r\nper-token-quant variant for the quantized case.\r\n\r\n**2. Fused QK RoPE + concat + MLA cache write** \r\n`rocm_aiter_fused_qk_rope_concat_and_cache_mla` replaces the separate RoPE,\r\nconcat and KV-cache-write steps on the MLA path. The uint8 KV cache allocated by\r\n`--kv-cache-dtype fp8` is viewed as `float8_e4m3fn` before the call, since the\r\nAITER op rejects the raw uint8 buffer.\r\n\r\n**3. Fused indexer QK RoPE + fp8 quant + cache write**\r\n`rocm_aiter_indexer_qk_rope_quant_and_cache` fuses the lightning-indexer key\r\nLayerNorm, RoPE, fp8 quantization, and cache write into one call for the 21\r\nindexer layers.\r\n\r\n**4. Fused all-reduce + RMSNorm**\r\nUses AITER's custom all-reduce with an in-kernel RMSNorm. Gated on custom-AR\r\neligibility (`should_custom_ar`) because the op asserts the kernel ran, and\r\noversized batches must fall back to the standard path — this is the check the\r\ntorch.compile pass performs at compile time and which an inline call has to do\r\nitself.\r\n\r\n**5. `VLLM_ROCM_USE_AITER_CUSTOM_AR`** exposes AITER's custom all-reduce\r\nindependently of the fused variant.\r\n\r\n## Test Plan\r\n\r\nTo switch between the two fusion paths, use the env var below:\r\n",
-    "author": "jhu960213",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "deepseek",
-      "verified",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/53953",
-    "createdAt": "2026-08-26T21:23:27.000Z",
-    "updatedAt": "2026-10-05T21:10:37.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-27T10:07:19.897Z",
-    "contentHash": "sha256:4e192418d93fd0ebbb73794f09c917a0167dca5ffe8c2363788e246925515278",
-    "category": "PERFORMANCE",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
     "id": "vllm-pr-53739",
     "nodeId": "PR_kwDOI7xefs8AAAABA8tfqQ",
     "repository": "vllm-project/vllm",
@@ -156,105 +280,6 @@
     "category": "FIX",
     "categorySource": "rules",
     "summary": null
-  },
-  {
-    "id": "vllm-pr-51314",
-    "nodeId": "PR_kwDOI7xefs77xdSz",
-    "repository": "vllm-project/vllm",
-    "number": 51314,
-    "type": "pr",
-    "title": "[ROCm][Perf] Skip cleaning sparse prefill MQA logits",
-    "bodyExcerpt": "## Summary\n\nThe sparse prefill path creates the MQA-logits buffer with `torch.full(..., -inf)`.\nThis launches an FP32 fill before every logits kernel.\n\nThis PR passes `clean_logits=False` to AITER, so the buffer uses `torch.empty`\nand the fill is removed.\n\n## Safety\n\nThe only consumer is `top_k_per_row_prefill`. It reads each row only inside\n`[cu_seqlen_ks, cu_seqlen_ke)`. Its vectorized path also guards the final partial\nload, so padding values are never read. The top-k result is unchanged.\n\n## Results\n\nMI355X, TP=4, rank 0, comparable before/after captures:\n\n| metric | before | after |\n|---|---:|---:|\n| FP32 fill launches | 18,162 | **0** |\n| FP32 fill GPU time | 1,250.2 ms | **0 ms** |\n| MQA-logits launches | 18,108 | 17,930 |\n\nThe removed fill was **0.89% of total GPU kernel time**. In the sample below it\ntakes 74.6 µs and is fully serialized before the logits kernel.\n\n![Before: FP32 fill before MQA logits](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr4_before.png)\n\n![After: fill removed](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr4_after.png)\n\n## Model-level e2e results\n\n### Test conditions\n\n| | |\n|---|---|\n| Hardware | MI355X (gfx950), TP=4 |\n| Model | `amd/GLM-5.2-MXFP4`, fp8 KV cache |\n| Stack | vLLM `69715823`, AITER `4a1cc77`, flydsl `0.3.0` |\n| Server | `--async-scheduling --max-num-seqs 256 --max-num-batched-tokens 16384 --block-size 64 --no-enable-prefix-caching`, `index_topk_freq=4` |\n| Env | `VLLM_ROCM_USE_AITER=1`, `VLLM_ROCM_USE_AITER_SPARSE_INDEXER=1`, `AITER_USE_FLYDSL_MOE_SORTING=1`, `VLLM_ROCM_QUICK_REDUCE_QUANTIZATION=INT4` |\n| Perf | `vllm bench serve`, random dataset, `--ignore-eos --request-rate inf`, ISL 1024 and 8192, OSL 1024, concurrency 1-256 (16 points) |\n| Accuracy | `lm_eval` gsm8k 5-shot chat template with thinking enabled, `max_gen_toks=8192`; RULER `niah_single_2` at 16k |\n| Sampling | checkpoint default (tempe",
-    "author": "amd-sriram",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "ready"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/51314",
-    "createdAt": "2026-08-06T21:41:17.000Z",
-    "updatedAt": "2026-10-05T16:37:38.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T07:14:16.853Z",
-    "contentHash": "sha256:4736d4f2f4c5426ad372ac9215169d71d20b888f3b35a1e900aa223f2d3bfb51",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "ROCm跳过稀疏预填充MQA logits清理",
-      "summaryZh": "优化 AITER 稀疏预填充路径，传入 `clean_logits=False`，使用 `torch.empty` 创建 MQA-logits 缓冲区，移除每次 logits kernel 前的 FP32 填充；在 MI355X、TP=4 测试中，FP32 填充启动次数从 18,162 降至 0，GPU 时间从 1,250.2 ms 降至 0；top-k 结果不变",
-      "models": [
-        "amd/GLM-5.2-MXFP4"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "面向 ROCm/AITER 稀疏预填充推理路径，测试硬件为 MI355X（gfx950）。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[ROCm][Perf] Skip cleaning sparse prefill MQA logits",
-        "【正文】This PR passes `clean_logits=False` to AITER, so the buffer uses `torch.empty` and the fill is removed."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-51309",
-    "nodeId": "PR_kwDOI7xefs77w-6a",
-    "repository": "vllm-project/vllm",
-    "number": 51309,
-    "type": "pr",
-    "title": "[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
-    "bodyExcerpt": "## Summary\r\n\r\nWith cross-layer index sharing, only some attention layers update the shared top-k buffer.\r\nThe old path still remapped that buffer on every layer.\r\n\r\nThis PR runs the remap only when the layer owns an indexer. For GLM-5.2 with\r\n`index_topk_freq = 4`, this reduces remaps from 78 to 21 per forward pass.\r\n\r\n## Safety\r\n\r\n- Layer 0 always owns an indexer, so the shared output is initialized before reuse.\r\n- Non-indexer layers do not change the inputs to the remap.\r\n- The default `index_topk_freq = 1` path is unchanged.\r\n- Speculative decoding still remaps on every layer.\r\n\r\n## Update: indexer and non-indexer layers are two KV cache groups\r\n\r\nhttps://github.com/vllm-project/vllm/pull/53781  added the is_index_group_leader field to MLAAttentionSpec: `is_index_group_leader=self.indexer is not None,`. Layers can only share a KV cache group if they agree on is_index_group_leader, so once the flag is set per layer, indexer and non-indexer layers land in different groups and therefore get different metadata instances with separate paged_kv_indices\r\n\r\n```\r\nindex_group_leader_set = {spec.is_index_group_leader for spec in specs}\r\nassert (\r\n    ...\r\n    and len(index_group_leader_set) == 1\r\n    ...\r\n), (\r\n    \"All attention layers in the same KV cache group must use the same \"\r\n    \"... index-sharing role, ...\"\r\n)\r\n```\r\n\r\nSo, remap should run for all indexer layers and the first non-indexer layer. The two non-indexer layer following the first non-indexer layer doesn't need a remap.\r\n\r\nThe following table shows how the remap condition changed between the commits and how it is implemented by `index_epoch` and  `remapped_epoch`. index_epoch is fixed per layer at construction: it counts indexer writes up to and including that layer - which selection is this layer entitled to read. remapped_epoch lives on the metadata and moves during the pass: it records which selection is currently sitting in that group's paged_kv_indices. A mismatch means the group is holding an older ",
-    "author": "amd-sriram",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "ready",
-      "mrv1-only"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/51309",
-    "createdAt": "2026-08-06T21:10:14.000Z",
-    "updatedAt": "2026-10-05T16:37:05.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T07:14:16.853Z",
-    "contentHash": "sha256:d93c831fc5750eed6cc7615d0834f08bd968185f9e6872dae75f683025c39e9b",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "ROCm跳过非索引层冗余稀疏索引重映射",
-      "summaryZh": "优化仅由拥有 indexer 的层执行稀疏索引 remap；非索引层直接进入 MLA kernel，解决跨层索引共享时，旧路径在每一层都重映射共享 top-k 缓冲区，导致非索引层执行冗余 remap；在 MI355X、TP=4、GLM-5.2-MXFP4、index_topk_freq=4 条件下，每次前向 remap 从 78 次降至 21 次；remap kernel 启动次数减少 73.3%，GPU 时间减少 73.0%。默认 index_topk_freq=1 路径及推测解码路径保持不变",
-      "models": [
-        "GLM-5.2-MXFP4"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "面向 ROCm 稀疏索引器和跨层索引共享场景，实测硬件为 MI355X。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
-        "【正文】This PR runs the remap only when the layer owns an indexer. For GLM-5.2 with index_topk_freq = 4, this reduces remaps من"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
   },
   {
     "id": "vllm-issue-50821",
@@ -797,31 +822,6 @@
     "firstSeenAt": "2026-08-28T11:38:19.166Z",
     "contentHash": "sha256:da562d7a781dbcbfe2d5cbacba2b086687fcecb2b38c47a17f1c8d546ff81dba",
     "category": "BUG",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-54074",
-    "nodeId": "PR_kwDOI7xefs8AAAABBPA7LQ",
-    "repository": "vllm-project/vllm",
-    "number": 54074,
-    "type": "pr",
-    "title": "[ROCm][Perf] Use the fused clamped SwiGLU kernel on ROCm",
-    "bodyExcerpt": "## Purpose\n\n`SiluAndMulWithClamp` routes ROCm to `forward_native`, which evaluates the activation as six eager kernels — two clamps, a sigmoid, two multiplies and an add. The fused op it skips, `torch.ops._C.silu_and_mul_with_clamp`, carries no HIP-specific guard in `csrc/libtorch_stable/activation_kernels.cu` and is built and numerically correct on gfx950. `SiluAndMul`, a few classes up in the same file, already takes the `is_cuda_alike()` path on ROCm — this exclusion looks like an oversight rather than a guard.\n\n```diff\n- if current_platform.is_rocm() or current_platform.is_xpu():\n+ if current_platform.is_xpu():\n      self._forward_method = self.forward_native\n  elif current_platform.is_cuda_alike():\n      self.op = torch.ops._C.silu_and_mul_with_clamp\n```\n\nXPU keeps its existing native path.\n\n## Test Plan\n\nMeasured on 8× MI355X (gfx950), ROCm 7.2.3, with GLM-5.3-Flash — a 320B/18B multimodal MoE that clamps the SwiGLU gate in both its dense and MoE MLPs (`swiglu_limit=10.0`). TP8, 1M context, bf16 KV cache.\n\n1. **Numerical check** — fused output vs `forward_native` over the model's shapes.\n2. **Isolated kernel timing** — both arms interleaved inside a single process, so the board's shared power budget (which drifts an unchanged kernel by up to ~13% between processes here) cannot bias one arm against the other.\n3. **End to end** — `vllm bench serve`, each arm on a freshly started server so prefix-cache state matches.\n\n## Test Result\n\nNumerics: fused matches `forward_native` within bf16 rounding (max abs diff 3.1e-02 at values up to the clamp limit of 10).\n\nIsolated kernel, interleaved:\n\n| shape | tokens | native | fused | speedup |\n|---|---|---|---|---|\n| dense MLP d=1536 | 64 | 54.67 µs | 23.95 µs | 2.28× |\n| MoE d=256 | 64 | 55.06 µs | 23.89 µs | 2.31× |\n| dense MLP d=1536 | 512 | 57.75 µs | 24.58 µs | 2.35× |\n| MoE d=256 | 512 | 54.01 µs | 23.55 µs | 2.29× |\n\nA decode-phase torch profile attributed 1.94 ms per step to the six eager kernels across 45 layers — e",
-    "author": "JohnQinAMD",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "needs-rebase",
-      "verified"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/54074",
-    "createdAt": "2026-08-27T16:44:06.000Z",
-    "updatedAt": "2026-09-23T00:15:39.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-28T11:38:19.166Z",
-    "contentHash": "sha256:88259e83ab96573aa0108cfae4c444b6d3eebb5ebd49bfb6ad696c61a650af51",
-    "category": "PERFORMANCE",
     "categorySource": "rules",
     "summary": null
   },
