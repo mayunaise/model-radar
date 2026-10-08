@@ -1,5 +1,106 @@
 [
   {
+    "id": "vllm-pr-51309",
+    "nodeId": "PR_kwDOI7xefs77w-6a",
+    "repository": "vllm-project/vllm",
+    "number": 51309,
+    "type": "pr",
+    "title": "[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
+    "bodyExcerpt": "## Summary\r\n\r\nWith cross-layer index sharing, only some attention layers update the shared top-k buffer.\r\nThe old path still remapped that buffer on every layer.\r\n\r\nThis PR runs the remap only when the layer owns an indexer. For GLM-5.2 with\r\n`index_topk_freq = 4`, this reduces remaps from 78 to 21 per forward pass.\r\n\r\n## Safety\r\n\r\n- Layer 0 always owns an indexer, so the shared output is initialized before reuse.\r\n- Non-indexer layers do not change the inputs to the remap.\r\n- The default `index_topk_freq = 1` path is unchanged.\r\n- Speculative decoding still remaps on every layer.\r\n\r\n## Update: indexer and non-indexer layers are two KV cache groups\r\n\r\nhttps://github.com/vllm-project/vllm/pull/53781  added the is_index_group_leader field to MLAAttentionSpec: `is_index_group_leader=self.indexer is not None,`. Layers can only share a KV cache group if they agree on is_index_group_leader, so once the flag is set per layer, indexer and non-indexer layers land in different groups and therefore get different metadata instances with separate paged_kv_indices\r\n\r\n```\r\nindex_group_leader_set = {spec.is_index_group_leader for spec in specs}\r\nassert (\r\n    ...\r\n    and len(index_group_leader_set) == 1\r\n    ...\r\n), (\r\n    \"All attention layers in the same KV cache group must use the same \"\r\n    \"... index-sharing role, ...\"\r\n)\r\n```\r\n\r\nSo, remap should run for all indexer layers and the first non-indexer layer. The two non-indexer layer following the first non-indexer layer doesn't need a remap.\r\n\r\nThe following table shows how the remap condition changed between the commits and how it is implemented by `index_epoch` and  `remapped_epoch`. index_epoch is fixed per layer at construction: it counts indexer writes up to and including that layer - which selection is this layer entitled to read. remapped_epoch lives on the metadata and moves during the pass: it records which selection is currently sitting in that group's paged_kv_indices. A mismatch means the group is holding an older ",
+    "author": "amd-sriram",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "mrv1-only"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/51309",
+    "createdAt": "2026-08-06T21:10:14.000Z",
+    "updatedAt": "2026-10-08T00:09:01.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T07:14:16.853Z",
+    "contentHash": "sha256:1407721e67886428e414decd8130c8aa70b17b6f9089fca21aa4409ea1bd7ef2",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "ROCm跳过非索引层冗余稀疏索引重映射",
+      "summaryZh": "优化仅由拥有 indexer 的层执行稀疏索引 remap；非索引层直接进入 MLA kernel，解决跨层索引共享时，旧路径在每一层都重映射共享 top-k 缓冲区，导致非索引层执行冗余 remap；在 MI355X、TP=4、GLM-5.2-MXFP4、index_topk_freq=4 条件下，每次前向 remap 从 78 次降至 21 次；remap kernel 启动次数减少 73.3%，GPU 时间减少 73.0%。默认 index_topk_freq=1 路径及推测解码路径保持不变",
+      "models": [
+        "GLM-5.2-MXFP4"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "面向 ROCm 稀疏索引器和跨层索引共享场景，实测硬件为 MI355X。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
+        "【正文】This PR runs the remap only when the layer owns an indexer. For GLM-5.2 with index_topk_freq = 4, this reduces remaps من"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-53138",
+    "nodeId": "PR_kwDOI7xefs8AAAABAclCjA",
+    "repository": "vllm-project/vllm",
+    "number": 53138,
+    "type": "pr",
+    "title": "[Model] Default quantized GLM KV cache to FP8 on NVIDIA",
+    "bodyExcerpt": "## Summary\n\n- Default the KV cache to FP8 for `GlmMoeDsaForCausalLM` checkpoints using\n  `fp8` or `modelopt_fp4` quantization on NVIDIA GPUs.\n- Apply the default only when `--kv-cache-dtype` remains `auto`; explicit\n  cache dtype choices are preserved.\n- Keep non-NVIDIA platforms and unquantized GLM checkpoints unchanged.\n\nThis lets both GLM-5.2-FP8 and GLM-5.2-NVFP4 use the intended FP8 KV cache\nwithout requiring an extra launch flag.\n\n## Duplicate-work check\n\nI searched open PRs for `GLM 5.2 FP8 KV cache` and `GLM KV cache default`.\nNo open PR implements this default. In particular, #51915 targets ROCm\nGLM-5.2 MXFP4 model enablement/correctness, while #51724 targets W4A16 DSA;\nneither changes the NVIDIA KV-cache default.\n\n## Tests\n\n- `.venv/bin/python -m pytest tests/test_config.py -k glm52_defaults_to_fp8_kv_cache_on_nvidia -q`\n  - `5 passed, 201 deselected`\n- `.venv/bin/pre-commit run --files vllm/model_executor/models/config.py vllm/config/cache.py tests/test_config.py`\n  - all applicable hooks passed\n- `.venv/bin/python -m pytest tests/test_config.py -q`\n  - `204 passed`; one unrelated existing failure in\n    `test_draft_model_enables_async_scheduling_by_default` because MRV2 rejects\n    the `draft_model` speculative method\n\n## Model evaluations\n\nBoth evaluations omitted `--kv-cache-dtype`; startup resolved\n`kv_cache_dtype=fp8` from the new default. The completion requests included the\nrequired `model` field via an evaluation-only compatibility adjustment that is\nnot part of this PR.\n\n### GLM-5.2-NVFP4\n\nServer:\n\n```bash\nvllm serve nvidia/GLM-5.2-NVFP4 \\\n  --enforce-eager \\\n  --max-model-len 4096 \\\n  --max-num-batched-tokens 32768 \\\n  --safetensors-load-strategy prefetch \\\n  --moe-backend flashinfer_cutlass \\\n  --prefill-context-parallel-size 4 \\\n  --enable-expert-parallel \\\n  --trust-remote-code \\\n  --disable-uvicorn-access-log \\\n  --port 39985 \\\n  --seed 0\n```\n\nGSM8K 5-shot, 1,319 questions: accuracy `0.9371`, invalid rate `0.0010`,\nlatency `318.6s`, throughp",
+    "author": "WoosukKwon",
+    "state": "closed",
+    "labels": [
+      "needs-rebase",
+      "nvidia",
+      "quantization",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/53138",
+    "createdAt": "2026-08-20T16:58:08.000Z",
+    "updatedAt": "2026-10-07T20:36:28.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:68316cc8207445660e620e0aea1fdd7d3531d0626800f7e5b87191862760519e",
+    "category": "OTHER",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-53953",
+    "nodeId": "PR_kwDOI7xefs8AAAABBIYQ_g",
+    "repository": "vllm-project/vllm",
+    "number": 53953,
+    "type": "pr",
+    "title": "[ROCm][Model][AMD][Performance]: Added AITER fusion on top of the existing TRITON fusion path for GLM-5.2-MXFP4 through deepseek_v32",
+    "bodyExcerpt": "## Purpose\r\n\r\nAdds an AITER-backed fusion path for the ROCm `deepseek_v32` (DeepSeek Sparse\r\nAttention) forward, used by both DeepSeek-V3.2 and GLM-5.2. The existing\r\nshared-Triton fusion path is untouched and remains the default; the AITER path\r\nis selected at runtime per fusion via opt-in env flags, so behaviour on ROCm is\r\nunchanged unless a flag is set.\r\n\r\nThis PR is stacked on top of: https://github.com/vllm-project/vllm/pull/51915, so needs enablement to land first before this fusion add-on.\r\n\r\n### Fusions added\r\n\r\n**1. MLA dual RMSNorm** \r\nFuses the q and kv-a RMSNorms into one AITER call\r\n(`fused_mla_dual_rms_norm_out`). An out-variant was added so the norms write\r\nmodel-owned buffers rather than allocating per layer, which lets the call be\r\nhoisted out of the eager region and captured by cudagraph. Also wires the\r\nper-token-quant variant for the quantized case.\r\n\r\n**2. Fused QK RoPE + concat + MLA cache write** \r\n`rocm_aiter_fused_qk_rope_concat_and_cache_mla` replaces the separate RoPE,\r\nconcat and KV-cache-write steps on the MLA path. The uint8 KV cache allocated by\r\n`--kv-cache-dtype fp8` is viewed as `float8_e4m3fn` before the call, since the\r\nAITER op rejects the raw uint8 buffer.\r\n\r\n**3. Fused indexer QK RoPE + fp8 quant + cache write**\r\n`rocm_aiter_indexer_qk_rope_quant_and_cache` fuses the lightning-indexer key\r\nLayerNorm, RoPE, fp8 quantization, and cache write into one call for the 21\r\nindexer layers.\r\n\r\n**4. Fused all-reduce + RMSNorm**\r\nUses AITER's custom all-reduce with an in-kernel RMSNorm. Gated on custom-AR\r\neligibility (`should_custom_ar`) because the op asserts the kernel ran, and\r\noversized batches must fall back to the standard path — this is the check the\r\ntorch.compile pass performs at compile time and which an inline call has to do\r\nitself.\r\n\r\n**5. `VLLM_ROCM_USE_AITER_CUSTOM_AR`** exposes AITER's custom all-reduce\r\nindependently of the fused variant.\r\n\r\n## Test Plan\r\n\r\nTo switch between the two fusion paths, use the env var below:\r\n",
+    "author": "jhu960213",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "deepseek",
+      "verified",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/53953",
+    "createdAt": "2026-08-26T21:23:27.000Z",
+    "updatedAt": "2026-10-07T18:59:08.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-27T10:07:19.897Z",
+    "contentHash": "sha256:942ece0bea2bfcc93496907d5c914b0c1b03a149731ccd5c7894b3fe78ec08a1",
+    "category": "PERFORMANCE",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-51314",
     "nodeId": "PR_kwDOI7xefs77xdSz",
     "repository": "vllm-project/vllm",
@@ -15,10 +116,10 @@
     ],
     "url": "https://github.com/vllm-project/vllm/pull/51314",
     "createdAt": "2026-08-06T21:41:17.000Z",
-    "updatedAt": "2026-10-07T04:59:11.000Z",
+    "updatedAt": "2026-10-07T18:06:35.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-21T07:14:16.853Z",
-    "contentHash": "sha256:b1064648c52da4ffcb99c0dae966922d724597b8486b7fa70ad4443218618c85",
+    "contentHash": "sha256:b53aee6e557a22ca27e31c384f91f0db54bac88fb3d8bc511d389519609e9713",
     "category": "PERFORMANCE",
     "categorySource": "ai",
     "summary": {
@@ -49,54 +150,30 @@
     }
   },
   {
-    "id": "vllm-pr-51309",
-    "nodeId": "PR_kwDOI7xefs77w-6a",
+    "id": "vllm-pr-54029",
+    "nodeId": "PR_kwDOI7xefs8AAAABBL7N_g",
     "repository": "vllm-project/vllm",
-    "number": 51309,
+    "number": 54029,
     "type": "pr",
-    "title": "[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
-    "bodyExcerpt": "## Summary\r\n\r\nWith cross-layer index sharing, only some attention layers update the shared top-k buffer.\r\nThe old path still remapped that buffer on every layer.\r\n\r\nThis PR runs the remap only when the layer owns an indexer. For GLM-5.2 with\r\n`index_topk_freq = 4`, this reduces remaps from 78 to 21 per forward pass.\r\n\r\n## Safety\r\n\r\n- Layer 0 always owns an indexer, so the shared output is initialized before reuse.\r\n- Non-indexer layers do not change the inputs to the remap.\r\n- The default `index_topk_freq = 1` path is unchanged.\r\n- Speculative decoding still remaps on every layer.\r\n\r\n## Update: indexer and non-indexer layers are two KV cache groups\r\n\r\nhttps://github.com/vllm-project/vllm/pull/53781  added the is_index_group_leader field to MLAAttentionSpec: `is_index_group_leader=self.indexer is not None,`. Layers can only share a KV cache group if they agree on is_index_group_leader, so once the flag is set per layer, indexer and non-indexer layers land in different groups and therefore get different metadata instances with separate paged_kv_indices\r\n\r\n```\r\nindex_group_leader_set = {spec.is_index_group_leader for spec in specs}\r\nassert (\r\n    ...\r\n    and len(index_group_leader_set) == 1\r\n    ...\r\n), (\r\n    \"All attention layers in the same KV cache group must use the same \"\r\n    \"... index-sharing role, ...\"\r\n)\r\n```\r\n\r\nSo, remap should run for all indexer layers and the first non-indexer layer. The two non-indexer layer following the first non-indexer layer doesn't need a remap.\r\n\r\nThe following table shows how the remap condition changed between the commits and how it is implemented by `index_epoch` and  `remapped_epoch`. index_epoch is fixed per layer at construction: it counts indexer writes up to and including that layer - which selection is this layer entitled to read. remapped_epoch lives on the metadata and moves during the pass: it records which selection is currently sitting in that group's paged_kv_indices. A mismatch means the group is holding an older ",
-    "author": "amd-sriram",
+    "title": "[Bugfix][CPU] Allow dense attention fallback for GLM DSA",
+    "bodyExcerpt": "## Purpose\n\nFixes #54018.\n\nGLM-Moe-DSA currently treats the presence of `index_topk` as enabling sparse MLA, so its typed config provides no CPU-compatible opt-out. This PR:\n\n- treats `index_topk=0` as an explicit dense-MLA opt-out on the generic GLM-Moe-DSA path;\n- leaves the default positive `index_topk` sparse path unchanged;\n- fails early on CPU with an actionable `--hf-overrides '{\"index_topk\": 0}'` message; and\n- adds typed `GlmMoeDsaConfig` regression coverage for both cases.\n\n### Duplicate check\n\nI searched open PRs by issue number and by the GLM/CPU/`index_topk` terms immediately before submission. No open PR references #54018. #51471 enables the CPU MLA backend but does not provide a GLM DSA sparse-attention opt-out; #41834 concerns NVIDIA model support and does not address this CPU path.\n\n### AI assistance\n\nOpenAI Codex assisted with issue triage, implementation, and test preparation. I reviewed the final diff and understand and approve every changed line.\n\n## Test Plan\n\n- Exercise `GlmMoeDsaConfig(index_topk=0)` on a mocked CPU platform and verify configuration succeeds with dense MLA.\n- Exercise the default positive `index_topk` on CPU and verify it fails early with the documented override.\n- Run the DSA-focused config tests and lint/type-check all changed Python files.\n\n## Test Result\n\nPassed:\n\n- `VLLM_TARGET_DEVICE=cpu pytest tests/test_config.py -k dsa -q`: `17 passed, 214 deselected` (run on Windows through the repository virtual environment with an in-memory `uvloop` compatibility shim).\n- `pre-commit run ruff-check --files vllm/model_executor/models/config.py vllm/model_executor/models/deepseek_v2.py tests/test_config.py`.\n- `pre-commit run ruff-format --files vllm/model_executor/models/config.py vllm/model_executor/models/deepseek_v2.py tests/test_config.py`.\n- `pre-commit run typos --files vllm/model_executor/models/config.py vllm/model_executor/models/deepseek_v2.py tests/test_config.py`.\n- `pre-commit run mypy-3.12 --hook-stage manual --files ",
+    "author": "libaojiang",
     "state": "open",
     "labels": [
-      "rocm",
-      "ready",
-      "mrv1-only"
+      "bug",
+      "needs-rebase",
+      "deepseek",
+      "glm"
     ],
-    "url": "https://github.com/vllm-project/vllm/pull/51309",
-    "createdAt": "2026-08-06T21:10:14.000Z",
-    "updatedAt": "2026-10-07T04:59:10.000Z",
+    "url": "https://github.com/vllm-project/vllm/pull/54029",
+    "createdAt": "2026-08-27T09:39:37.000Z",
+    "updatedAt": "2026-10-07T17:56:36.000Z",
     "mergedAt": null,
-    "firstSeenAt": "2026-08-21T07:14:16.853Z",
-    "contentHash": "sha256:64de013633327fa0fbc93ca0719bdf2715356fd89c692283034cd6c89e64417e",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "ROCm跳过非索引层冗余稀疏索引重映射",
-      "summaryZh": "优化仅由拥有 indexer 的层执行稀疏索引 remap；非索引层直接进入 MLA kernel，解决跨层索引共享时，旧路径在每一层都重映射共享 top-k 缓冲区，导致非索引层执行冗余 remap；在 MI355X、TP=4、GLM-5.2-MXFP4、index_topk_freq=4 条件下，每次前向 remap 从 78 次降至 21 次；remap kernel 启动次数减少 73.3%，GPU 时间减少 73.0%。默认 index_topk_freq=1 路径及推测解码路径保持不变",
-      "models": [
-        "GLM-5.2-MXFP4"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "面向 ROCm 稀疏索引器和跨层索引共享场景，实测硬件为 MI355X。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
-        "【正文】This PR runs the remap only when the layer owns an indexer. For GLM-5.2 with index_topk_freq = 4, this reduces remaps من"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
+    "firstSeenAt": "2026-08-27T10:07:19.897Z",
+    "contentHash": "sha256:252ec424a6e36cce2971408e87f07a2b79603a43d67daacaedf49fea3ee6a66e",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
   },
   {
     "id": "vllm-pr-54074",
@@ -144,32 +221,6 @@
     "firstSeenAt": "2026-08-27T10:07:19.897Z",
     "contentHash": "sha256:b944a09d3e27e4e4997d86ce57fe25fed8e7aa8796be77927b7e72b195ae65d5",
     "category": "BUG",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-53953",
-    "nodeId": "PR_kwDOI7xefs8AAAABBIYQ_g",
-    "repository": "vllm-project/vllm",
-    "number": 53953,
-    "type": "pr",
-    "title": "[ROCm][Model][AMD][Performance]: Added AITER fusion on top of the existing TRITON fusion path for GLM-5.2-MXFP4 through deepseek_v32",
-    "bodyExcerpt": "## Purpose\r\n\r\nAdds an AITER-backed fusion path for the ROCm `deepseek_v32` (DeepSeek Sparse\r\nAttention) forward, used by both DeepSeek-V3.2 and GLM-5.2. The existing\r\nshared-Triton fusion path is untouched and remains the default; the AITER path\r\nis selected at runtime per fusion via opt-in env flags, so behaviour on ROCm is\r\nunchanged unless a flag is set.\r\n\r\nThis PR is stacked on top of: https://github.com/vllm-project/vllm/pull/51915, so needs enablement to land first before this fusion add-on.\r\n\r\n### Fusions added\r\n\r\n**1. MLA dual RMSNorm** \r\nFuses the q and kv-a RMSNorms into one AITER call\r\n(`fused_mla_dual_rms_norm_out`). An out-variant was added so the norms write\r\nmodel-owned buffers rather than allocating per layer, which lets the call be\r\nhoisted out of the eager region and captured by cudagraph. Also wires the\r\nper-token-quant variant for the quantized case.\r\n\r\n**2. Fused QK RoPE + concat + MLA cache write** \r\n`rocm_aiter_fused_qk_rope_concat_and_cache_mla` replaces the separate RoPE,\r\nconcat and KV-cache-write steps on the MLA path. The uint8 KV cache allocated by\r\n`--kv-cache-dtype fp8` is viewed as `float8_e4m3fn` before the call, since the\r\nAITER op rejects the raw uint8 buffer.\r\n\r\n**3. Fused indexer QK RoPE + fp8 quant + cache write**\r\n`rocm_aiter_indexer_qk_rope_quant_and_cache` fuses the lightning-indexer key\r\nLayerNorm, RoPE, fp8 quantization, and cache write into one call for the 21\r\nindexer layers.\r\n\r\n**4. Fused all-reduce + RMSNorm**\r\nUses AITER's custom all-reduce with an in-kernel RMSNorm. Gated on custom-AR\r\neligibility (`should_custom_ar`) because the op asserts the kernel ran, and\r\noversized batches must fall back to the standard path — this is the check the\r\ntorch.compile pass performs at compile time and which an inline call has to do\r\nitself.\r\n\r\n**5. `VLLM_ROCM_USE_AITER_CUSTOM_AR`** exposes AITER's custom all-reduce\r\nindependently of the fused variant.\r\n\r\n## Test Plan\r\n\r\nTo switch between the two fusion paths, use the env var below:\r\n",
-    "author": "jhu960213",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "deepseek",
-      "verified",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/53953",
-    "createdAt": "2026-08-26T21:23:27.000Z",
-    "updatedAt": "2026-10-06T15:17:45.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-27T10:07:19.897Z",
-    "contentHash": "sha256:f4392f906f32b84d5a3656e1ed0e7f444ebb732b3f0947c9f54e67258d4b2b82",
-    "category": "PERFORMANCE",
     "categorySource": "rules",
     "summary": null
   },
@@ -3257,31 +3308,6 @@
     "summary": null
   },
   {
-    "id": "vllm-pr-54029",
-    "nodeId": "PR_kwDOI7xefs8AAAABBL7N_g",
-    "repository": "vllm-project/vllm",
-    "number": 54029,
-    "type": "pr",
-    "title": "[Bugfix][CPU] Allow dense attention fallback for GLM DSA",
-    "bodyExcerpt": "## Purpose\n\nFixes #54018.\n\nGLM-Moe-DSA currently treats the presence of `index_topk` as enabling sparse MLA, so its typed config provides no CPU-compatible opt-out. This PR:\n\n- treats `index_topk=0` as an explicit dense-MLA opt-out on the generic GLM-Moe-DSA path;\n- leaves the default positive `index_topk` sparse path unchanged;\n- fails early on CPU with an actionable `--hf-overrides '{\"index_topk\": 0}'` message; and\n- adds typed `GlmMoeDsaConfig` regression coverage for both cases.\n\n### Duplicate check\n\nI searched open PRs by issue number and by the GLM/CPU/`index_topk` terms immediately before submission. No open PR references #54018. #51471 enables the CPU MLA backend but does not provide a GLM DSA sparse-attention opt-out; #41834 concerns NVIDIA model support and does not address this CPU path.\n\n### AI assistance\n\nOpenAI Codex assisted with issue triage, implementation, and test preparation. I reviewed the final diff and understand and approve every changed line.\n\n## Test Plan\n\n- Exercise `GlmMoeDsaConfig(index_topk=0)` on a mocked CPU platform and verify configuration succeeds with dense MLA.\n- Exercise the default positive `index_topk` on CPU and verify it fails early with the documented override.\n- Run the DSA-focused config tests and lint/type-check all changed Python files.\n\n## Test Result\n\nPassed:\n\n- `VLLM_TARGET_DEVICE=cpu pytest tests/test_config.py -k dsa -q`: `17 passed, 214 deselected` (run on Windows through the repository virtual environment with an in-memory `uvloop` compatibility shim).\n- `pre-commit run ruff-check --files vllm/model_executor/models/config.py vllm/model_executor/models/deepseek_v2.py tests/test_config.py`.\n- `pre-commit run ruff-format --files vllm/model_executor/models/config.py vllm/model_executor/models/deepseek_v2.py tests/test_config.py`.\n- `pre-commit run typos --files vllm/model_executor/models/config.py vllm/model_executor/models/deepseek_v2.py tests/test_config.py`.\n- `pre-commit run mypy-3.12 --hook-stage manual --files ",
-    "author": "libaojiang",
-    "state": "open",
-    "labels": [
-      "bug",
-      "deepseek",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/54029",
-    "createdAt": "2026-08-27T09:39:37.000Z",
-    "updatedAt": "2026-08-27T09:42:49.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-27T10:07:19.897Z",
-    "contentHash": "sha256:58b144ca74f0c6dc633e35974420d24b55ce1afb1dfa146b4685a6fff05adc3c",
-    "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
     "id": "vllm-issue-54018",
     "nodeId": "I_kwDOI7xefs8AAAABOdbbtA",
     "repository": "vllm-project/vllm",
@@ -4204,60 +4230,6 @@
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-53138",
-    "nodeId": "PR_kwDOI7xefs8AAAABAclCjA",
-    "repository": "vllm-project/vllm",
-    "number": 53138,
-    "type": "pr",
-    "title": "[Model] Default quantized GLM KV cache to FP8 on NVIDIA",
-    "bodyExcerpt": "## Summary\n\n- Default the KV cache to FP8 for `GlmMoeDsaForCausalLM` checkpoints using\n  `fp8` or `modelopt_fp4` quantization on NVIDIA GPUs.\n- Apply the default only when `--kv-cache-dtype` remains `auto`; explicit\n  cache dtype choices are preserved.\n- Keep non-NVIDIA platforms and unquantized GLM checkpoints unchanged.\n\nThis lets both GLM-5.2-FP8 and GLM-5.2-NVFP4 use the intended FP8 KV cache\nwithout requiring an extra launch flag.\n\n## Duplicate-work check\n\nI searched open PRs for `GLM 5.2 FP8 KV cache` and `GLM KV cache default`.\nNo open PR implements this default. In particular, #51915 targets ROCm\nGLM-5.2 MXFP4 model enablement/correctness, while #51724 targets W4A16 DSA;\nneither changes the NVIDIA KV-cache default.\n\n## Tests\n\n- `.venv/bin/python -m pytest tests/test_config.py -k glm52_defaults_to_fp8_kv_cache_on_nvidia -q`\n  - `5 passed, 201 deselected`\n- `.venv/bin/pre-commit run --files vllm/model_executor/models/config.py vllm/config/cache.py tests/test_config.py`\n  - all applicable hooks passed\n- `.venv/bin/python -m pytest tests/test_config.py -q`\n  - `204 passed`; one unrelated existing failure in\n    `test_draft_model_enables_async_scheduling_by_default` because MRV2 rejects\n    the `draft_model` speculative method\n\n## Model evaluations\n\nBoth evaluations omitted `--kv-cache-dtype`; startup resolved\n`kv_cache_dtype=fp8` from the new default. The completion requests included the\nrequired `model` field via an evaluation-only compatibility adjustment that is\nnot part of this PR.\n\n### GLM-5.2-NVFP4\n\nServer:\n\n```bash\nvllm serve nvidia/GLM-5.2-NVFP4 \\\n  --enforce-eager \\\n  --max-model-len 4096 \\\n  --max-num-batched-tokens 32768 \\\n  --safetensors-load-strategy prefetch \\\n  --moe-backend flashinfer_cutlass \\\n  --prefill-context-parallel-size 4 \\\n  --enable-expert-parallel \\\n  --trust-remote-code \\\n  --disable-uvicorn-access-log \\\n  --port 39985 \\\n  --seed 0\n```\n\nGSM8K 5-shot, 1,319 questions: accuracy `0.9371`, invalid rate `0.0010`,\nlatency `318.6s`, throughp",
-    "author": "WoosukKwon",
-    "state": "open",
-    "labels": [
-      "needs-rebase",
-      "nvidia",
-      "quantization",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/53138",
-    "createdAt": "2026-08-20T16:58:08.000Z",
-    "updatedAt": "2026-08-21T18:16:29.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:8f0fd60a9d7d6d2e212faf865af6f95d316ada6e83fbffdb7e6555115478f178",
-    "category": "NEW_SUPPORT",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "NVIDIA 上 GLM KV 缓存默认使用 FP8",
-      "summaryZh": "新增对使用 fp8 或 modelopt_fp4 量化的 GlmMoeDsaForCausalLM 检查点，在 NVIDIA GPU 且 --kv-cache-dtype 为 auto 时默认采用 FP8 KV 缓存；显式缓存类型、非 NVIDIA 平台和未量化 GLM 检查点保持不变；GLM-5.2-FP8 和 GLM-5.2-NVFP4 无需额外启动参数即可使用预期的 FP8 KV 缓存",
-      "models": [
-        "GlmMoeDsaForCausalLM",
-        "GLM-5.2-FP8",
-        "GLM-5.2-NVFP4"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE",
-        "EVALUATION"
-      ],
-      "category": "NEW_SUPPORT",
-      "severity": "INFO",
-      "impactScopeZh": "影响 NVIDIA GPU 上符合指定量化条件且未显式设置 KV 缓存类型的 GLM 检查点。",
-      "attention": "ROUTINE",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【正文】Default the KV cache to FP8 for GlmMoeDsaForCausalLM checkpoints using fp8 or modelopt_fp4 quantization on NVIDIA GPUs.",
-        "【正文】Apply the default only when --kv-cache-dtype remains auto; explicit cache dtype choices are preserved."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T10:27:08.865Z"
     }
   },
   {
