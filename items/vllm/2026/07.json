@@ -1,5 +1,132 @@
 [
   {
+    "id": "vllm-issue-47846",
+    "nodeId": "I_kwDOI7xefs8AAAABH7XYdQ",
+    "repository": "vllm-project/vllm",
+    "number": 47846,
+    "type": "issue",
+    "title": "[Feature]: model runner v2 support prefill context parallelism & cp8+tp8=worldsize8",
+    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\n[Feature]: model runner v2 support prefill context parallelism & cp8+tp8=worldsize8 \n1.why request this \nbecause i find that  sglang with glm-5.2 and deepseek-v4 with follow\n--enable-nsa-prefill-context-parallel\n--nsa-prefill-cp-mode round-robin-split\n--attn-cp-size 8\nperformence is always more than vllm (ttft and e2el vllm will 20%+ more than sglang , and tps vllm will less 20% than sglang )\ncompare with vllm 0.24.0 and sglang 0.5.14   ,tested both 64KINPUT/3KINPUT 10request benchmark many times \n2. i feel the root cause :\n2.1cp is very useful for large number of enterpise inference service , but sglang can use tp8+cp8 in just one gpu server(worldsize=8)\n2.2 i try use vllm to act this feature but failed (deepseek-v4-pro-dspark)\nif i use  tp8+cp8 in one h20(8) , it says:\" Value error, World size (64) is larger than the number of available GPUs (8) in this node. If this is intentional and you are using\"\nif i use only cp8  in one h20(8) ,it says\"Value error, Model Runner V2 does not yet support: prefill context parallelism [type=value_error, input_value=ArgsKwargs((), {'model_co... 'shutdown_timeout': 0}), input_type=ArgsKwargs]\"\n\n3. what i think\nif vllm can support tp8+cp8+--enable-nsa-prefill-context-parallel+--nsa-prefill-cp-mode round-robin-split +dspark in one h20 or h200  ,if it can , i think our inference exp is more fine \n\nthanks~\n\n\n### Alternatives\n\n_No response_\n\n### Additional context\n\n_No response_\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "yiminghub2024",
+    "state": "open",
+    "labels": [
+      "feature request",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/47846",
+    "createdAt": "2026-07-07T09:08:31.000Z",
+    "updatedAt": "2026-10-09T01:58:04.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-10-09T06:29:16.754Z",
+    "contentHash": "sha256:22308aa7d19fc0c378ca4c53075dc19e94adc7b96e7c296c838224a7eb723079",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-48236",
+    "nodeId": "I_kwDOI7xefs8AAAABIU9gDA",
+    "repository": "vllm-project/vllm",
+    "number": 48236,
+    "type": "issue",
+    "title": "LMCache + vLLM: pipeline parallelism now works with MLA models (Kimi K2, GLM-4.6)",
+    "bodyExcerpt": "## LMCache + vLLM: pipeline parallelism now works with MLA models (Kimi K2, GLM-4.6)\n\nJust wanted to give a heads-up here because I've seen a few issues pop up about LMCache + PP not working, and I've put up a fix on the LMCache side that unblocks it.\n\n### What was broken\n\nIf you tried to run vLLM with LMCache in multi-server MP mode with `--pipeline-parallel-size > 1`, the connector would refuse to start with:\n\n```\nValueError: LMCacheMPConnector multi-server mode only supports\ntensor parallelism (TP), not pipeline parallelism (PP). Got pp_size=2.\n```\n\nThis hit especially hard for MLA models (Kimi K2, GLM-4.5/4.6) because those are exactly the workloads where you want both PP (to fit a large model across nodes) and LMCache (to cut TTFT on long-context agentic workloads).\n\n### Why it was blocked\n\nThe guard existed because of a subtle read-lock refcounting bug. `compute_extra_count` in LMCache inferred whether a model used MLA by checking `tp > world_size`. That heuristic is correct when PP=1 but breaks under PP>1 — PP inflates `world_size` to `tp × pp`, so the inference produces `extra_count = 0` when it should be `tp_size - 1`. Result: the server under-locks, multiple workers race on the same KV chunk, and you get premature eviction.\n\n### The fix\n\nI opened [LMCache PR #4082](https://github.com/LMCache/LMCache/pull/4082) that:\n\n1. Carries an explicit `use_mla` flag in the cache key (instead of inferring it) — backward-compatible on the wire\n2. Fixes `kv_tp_size` and `is_kv_writer` in `ParallelStrategy` to account for the fact that server blocks align with PP stages, not TP groups\n3. Propagates `use_mla` across all client adapters (vLLM, SGLang, TensorRT-LLM, SDK)\n\nNo vLLM-side changes are needed — vLLM's in-tree connector already imports from the `lmcache` package, so once the LMCache fix lands and users update, it picks up the fix automatically. I verified that `model_config.use_mla` is correctly set for both `kimi_linear` and `glm4_moe_lite` in vLLM's `is_deepseek_",
+    "author": "hamstergamerszhang-ops",
+    "state": "open",
+    "labels": [
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/48236",
+    "createdAt": "2026-07-10T09:33:14.000Z",
+    "updatedAt": "2026-10-09T01:57:42.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:309070551ae03d7a9cee8b5bbc4097e4dc96f0ffe2bc0707cf5f9e3a0ee59e11",
+    "category": "COMPATIBILITY",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "LMCache 修复 MLA 模型 PP 支持",
+      "summaryZh": "修复 LMCache 对 MLA 模型流水线并行的支持：在缓存键中显式传递 `use_mla`，调整 `ParallelStrategy` 的 `kv_tp_size` 和 `is_kv_writer`，并向各客户端适配器传播该标志，解决启用 `--pipeline-parallel-size > 1` 时，LMCache 多服务器连接器拒绝启动；其 MLA 推断和读锁计数错误会导致 KV chunk 竞争及提前淘汰；Kimi K2、GLM-4.5/4.6 等 MLA 模型可同时使用流水线并行和 LMCache；无需修改 vLLM，更新 LMCache 后即可自动获取修复",
+      "models": [
+        "Kimi K2",
+        "GLM-4.5",
+        "GLM-4.6"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "COMPATIBILITY",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 vLLM 与 LMCache 在多服务器 MP、PP 大于 1 的长上下文推理场景。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】pipeline parallelism now works with MLA models (Kimi K2, GLM-4.6)",
+        "【正文】LMCacheMPConnector multi-server mode only supports tensor parallelism (TP), not pipeline parallelism (PP). Got pp_size=2"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:45:44.531Z"
+    }
+  },
+  {
+    "id": "vllm-pr-49741",
+    "nodeId": "PR_kwDOI7xefs718jec",
+    "repository": "vllm-project/vllm",
+    "number": 49741,
+    "type": "pr",
+    "title": "[Kernel][Core][Shared-PCP][Capacity] Owner-shard KV history for up to 4x capacity",
+    "bodyExcerpt": "## Purpose\n\nPrefill context parallelism (PCP) requires every rank to attend over the complete historical Main KV and Indexer K state. Keeping that persistent history replicated on every PCP rank limits usable context length.\n\nThis change adds an opt-in owner-sharded history path for GLM-5.2 sparse attention. Each historical cache page has one physical owner, while CUDA VMM exposes a stable rank-major peer view to every PCP rank. The result is up to **4x persistent KV capacity on PCP4**, without a per-layer historical-KV collective or a persistent history replica. Pure prefill uses a bounded transient local working set.\n\nSet `VLLM_USE_PCP_OWNER_HISTORY=1` to enable the feature. Feature-off execution preserves the standard PCP path.\n\n## Shared-PCP positioning\n\nThis is one self-contained **Shared-PCP** optimization. Shared-PCP names a single-node PCP data model in which cross-rank tensors are exposed as explicitly placed shared GPU objects. An object may be replicated by direct peer stores, owner-sharded and peer-read, or compactly published to its consumers. The name describes data semantics rather than cache coherence or a required transport.\n\nThis PR applies that model to **owner-sharded persistent history**: each Main KV and Indexer K page has one physical owner, while stable peer mappings expose the complete logical history to every PCP rank. Peer virtual mappings do not create persistent replicas, and the bounded pure-prefill materialization workspace is transient.\n\n## Design\n\nFor logical page `p`:\n\n```text\nowner_rank = p % pcp_size\nlocal_page = p // pcp_size\n```\n\n- Allocate one owner-local Main KV and Indexer K shard per rank.\n- Exchange CUDA allocation handles during initialization and map all shards into stable rank-major peer views.\n- Fuse owner selection, FP8 quantization, local-slot translation, and persistent cache stores so each new row is written once to its owner.\n- Publish completed stores with a system-scope release/acquire fence. The fence orders mem",
+    "author": "foraxe",
+    "state": "open",
+    "labels": [
+      "documentation",
+      "needs-rebase",
+      "v1",
+      "deepseek",
+      "nvidia",
+      "mrv2"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49741",
+    "createdAt": "2026-07-24T16:35:46.000Z",
+    "updatedAt": "2026-10-08T12:15:16.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-10-09T06:29:16.754Z",
+    "contentHash": "sha256:40af880d13eba6f1fa438b147f80403e333d93df89d3c6439dc9259b44386967",
+    "category": "DOCS",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-49539",
+    "nodeId": "PR_kwDOI7xefs71PG3V",
+    "repository": "vllm-project/vllm",
+    "number": 49539,
+    "type": "pr",
+    "title": "[Bugfix][Quantization] Keep unquantized routed experts unquantized under AutoGPTQ",
+    "bodyExcerpt": "# Issue #49141 — Fused_moe dimension mismatch for Qwen MXFP4 model on ROCm\n\n## 1. Root cause\n\nThe issue has two reports. Both are the same underlying defect: **a MoE layer whose\nexpert weights are stored *unquantized* in the checkpoint is still given a\n*quantized* MoE method**, so the allocated parameters do not match the checkpoint\ntensors.\n\nThe trigger in both cases is the MTP (speculative-decoding drafter) layer. AMD's\nQuark and community GPTQ quantizations of `Qwen3.5-35B-A3B` quantize the 40\ntransformer layers but leave the MTP layer's experts in bf16. The main model\nloads fine; only the drafter fails.\n\n* **Original MXFP4/Quark report** (`RuntimeError: The size of tensor a (256) must\n  match the size of tensor b (512) at non-singleton dimension 1`, in\n  `routed_experts.py::_load_w2`).\n  `hidden_size=2048`, `moe_intermediate_size=512`. Quark MXFP4 allocates\n  `w2_weight` as `(E, hidden, intermediate // 2)` = `(E, 2048, 256)` (fp4 packs\n  two values per byte), while the checkpoint's MTP `down_proj.weight` is the\n  unquantized `(2048, 512)`. `amd/Qwen3.5-35B-A3B-MXFP4`'s\n  `quantization_config.exclude` lists `mtp.layers.0.mlp.experts.<i>.{gate,up,down}_proj`\n  for all 256 experts, but `should_ignore_layer()` only compared the *parent*\n  layer name `mtp.layers.0.mlp.experts` against those *child* entries.\n  **This half is already fixed on main** by the `check_children` argument added\n  to `quark/utils.py::should_ignore_layer` (the amd/GLM-5.2-MXFP4 fix), which is\n  why a commenter on the issue could not reproduce it on main. No change needed.\n\n* **Still-broken GPTQ report** (issue comments:\n  `AttributeError: 'RoutedExperts' object has no attribute 'w2_weight'. Did you\n  mean: 'w2_qweight'?`, same drafter-loading path).\n  `AutoGPTQConfig` tracks which modules the checkpoint actually quantized in\n  `modules_in_block_to_quantize` — auto-derived in `maybe_update_config()` from\n  the safetensors dtypes, so it contains only the quantized layers' per-expert\n  module name",
+    "author": "pjdurden",
+    "state": "open",
+    "labels": [
+      "bug",
+      "rocm",
+      "needs-rebase",
+      "qwen",
+      "quantization"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49539",
+    "createdAt": "2026-07-23T06:59:04.000Z",
+    "updatedAt": "2026-10-08T07:56:50.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-02T04:54:35.079Z",
+    "contentHash": "sha256:f16554f01391f39ff403b12c8bb503b6e48f99d60b25c619398068c2e887e31a",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-issue-48191",
     "nodeId": "I_kwDOI7xefs8AAAABIR21Mw",
     "repository": "vllm-project/vllm",
@@ -21,32 +148,6 @@
     "firstSeenAt": "2026-10-08T06:27:48.550Z",
     "contentHash": "sha256:f4f814a76e08c265d09902b0cdbf0df396911868441263fce192ae40964b1c3a",
     "category": "NEW_SUPPORT",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-49539",
-    "nodeId": "PR_kwDOI7xefs71PG3V",
-    "repository": "vllm-project/vllm",
-    "number": 49539,
-    "type": "pr",
-    "title": "[Bugfix][Quantization] Keep unquantized routed experts unquantized under AutoGPTQ",
-    "bodyExcerpt": "# Issue #49141 — Fused_moe dimension mismatch for Qwen MXFP4 model on ROCm\n\n## 1. Root cause\n\nThe issue has two reports. Both are the same underlying defect: **a MoE layer whose\nexpert weights are stored *unquantized* in the checkpoint is still given a\n*quantized* MoE method**, so the allocated parameters do not match the checkpoint\ntensors.\n\nThe trigger in both cases is the MTP (speculative-decoding drafter) layer. AMD's\nQuark and community GPTQ quantizations of `Qwen3.5-35B-A3B` quantize the 40\ntransformer layers but leave the MTP layer's experts in bf16. The main model\nloads fine; only the drafter fails.\n\n* **Original MXFP4/Quark report** (`RuntimeError: The size of tensor a (256) must\n  match the size of tensor b (512) at non-singleton dimension 1`, in\n  `routed_experts.py::_load_w2`).\n  `hidden_size=2048`, `moe_intermediate_size=512`. Quark MXFP4 allocates\n  `w2_weight` as `(E, hidden, intermediate // 2)` = `(E, 2048, 256)` (fp4 packs\n  two values per byte), while the checkpoint's MTP `down_proj.weight` is the\n  unquantized `(2048, 512)`. `amd/Qwen3.5-35B-A3B-MXFP4`'s\n  `quantization_config.exclude` lists `mtp.layers.0.mlp.experts.<i>.{gate,up,down}_proj`\n  for all 256 experts, but `should_ignore_layer()` only compared the *parent*\n  layer name `mtp.layers.0.mlp.experts` against those *child* entries.\n  **This half is already fixed on main** by the `check_children` argument added\n  to `quark/utils.py::should_ignore_layer` (the amd/GLM-5.2-MXFP4 fix), which is\n  why a commenter on the issue could not reproduce it on main. No change needed.\n\n* **Still-broken GPTQ report** (issue comments:\n  `AttributeError: 'RoutedExperts' object has no attribute 'w2_weight'. Did you\n  mean: 'w2_qweight'?`, same drafter-loading path).\n  `AutoGPTQConfig` tracks which modules the checkpoint actually quantized in\n  `modules_in_block_to_quantize` — auto-derived in `maybe_update_config()` from\n  the safetensors dtypes, so it contains only the quantized layers' per-expert\n  module name",
-    "author": "pjdurden",
-    "state": "open",
-    "labels": [
-      "bug",
-      "rocm",
-      "qwen",
-      "quantization"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/49539",
-    "createdAt": "2026-07-23T06:59:04.000Z",
-    "updatedAt": "2026-10-07T21:41:03.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-02T04:54:35.079Z",
-    "contentHash": "sha256:d9b14d01a1057d957e29e096dbe902bdf04b13189a21ba1e9b8fa4caba796e2f",
-    "category": "FIX",
     "categorySource": "rules",
     "summary": null
   },
@@ -3681,52 +3782,6 @@
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-48236",
-    "nodeId": "I_kwDOI7xefs8AAAABIU9gDA",
-    "repository": "vllm-project/vllm",
-    "number": 48236,
-    "type": "issue",
-    "title": "LMCache + vLLM: pipeline parallelism now works with MLA models (Kimi K2, GLM-4.6)",
-    "bodyExcerpt": "## LMCache + vLLM: pipeline parallelism now works with MLA models (Kimi K2, GLM-4.6)\n\nJust wanted to give a heads-up here because I've seen a few issues pop up about LMCache + PP not working, and I've put up a fix on the LMCache side that unblocks it.\n\n### What was broken\n\nIf you tried to run vLLM with LMCache in multi-server MP mode with `--pipeline-parallel-size > 1`, the connector would refuse to start with:\n\n```\nValueError: LMCacheMPConnector multi-server mode only supports\ntensor parallelism (TP), not pipeline parallelism (PP). Got pp_size=2.\n```\n\nThis hit especially hard for MLA models (Kimi K2, GLM-4.5/4.6) because those are exactly the workloads where you want both PP (to fit a large model across nodes) and LMCache (to cut TTFT on long-context agentic workloads).\n\n### Why it was blocked\n\nThe guard existed because of a subtle read-lock refcounting bug. `compute_extra_count` in LMCache inferred whether a model used MLA by checking `tp > world_size`. That heuristic is correct when PP=1 but breaks under PP>1 — PP inflates `world_size` to `tp × pp`, so the inference produces `extra_count = 0` when it should be `tp_size - 1`. Result: the server under-locks, multiple workers race on the same KV chunk, and you get premature eviction.\n\n### The fix\n\nI opened [LMCache PR #4082](https://github.com/LMCache/LMCache/pull/4082) that:\n\n1. Carries an explicit `use_mla` flag in the cache key (instead of inferring it) — backward-compatible on the wire\n2. Fixes `kv_tp_size` and `is_kv_writer` in `ParallelStrategy` to account for the fact that server blocks align with PP stages, not TP groups\n3. Propagates `use_mla` across all client adapters (vLLM, SGLang, TensorRT-LLM, SDK)\n\nNo vLLM-side changes are needed — vLLM's in-tree connector already imports from the `lmcache` package, so once the LMCache fix lands and users update, it picks up the fix automatically. I verified that `model_config.use_mla` is correctly set for both `kimi_linear` and `glm4_moe_lite` in vLLM's `is_deepseek_",
-    "author": "hamstergamerszhang-ops",
-    "state": "open",
-    "labels": [],
-    "url": "https://github.com/vllm-project/vllm/issues/48236",
-    "createdAt": "2026-07-10T09:33:14.000Z",
-    "updatedAt": "2026-07-10T09:33:14.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:8818d84040c5bf788d4474393ea7dbdba872feb50fdb242da059f9171ee12f77",
-    "category": "COMPATIBILITY",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "LMCache 修复 MLA 模型 PP 支持",
-      "summaryZh": "修复 LMCache 对 MLA 模型流水线并行的支持：在缓存键中显式传递 `use_mla`，调整 `ParallelStrategy` 的 `kv_tp_size` 和 `is_kv_writer`，并向各客户端适配器传播该标志，解决启用 `--pipeline-parallel-size > 1` 时，LMCache 多服务器连接器拒绝启动；其 MLA 推断和读锁计数错误会导致 KV chunk 竞争及提前淘汰；Kimi K2、GLM-4.5/4.6 等 MLA 模型可同时使用流水线并行和 LMCache；无需修改 vLLM，更新 LMCache 后即可自动获取修复",
-      "models": [
-        "Kimi K2",
-        "GLM-4.5",
-        "GLM-4.6"
-      ],
-      "hardware": [],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "COMPATIBILITY",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 vLLM 与 LMCache 在多服务器 MP、PP 大于 1 的长上下文推理场景。",
-      "attention": "WATCH",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】pipeline parallelism now works with MLA models (Kimi K2, GLM-4.6)",
-        "【正文】LMCacheMPConnector multi-server mode only supports tensor parallelism (TP), not pipeline parallelism (PP). Got pp_size=2"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:45:44.531Z"
     }
   },
   {

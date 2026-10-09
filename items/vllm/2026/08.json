@@ -1,5 +1,54 @@
 [
   {
+    "id": "vllm-pr-51314",
+    "nodeId": "PR_kwDOI7xefs77xdSz",
+    "repository": "vllm-project/vllm",
+    "number": 51314,
+    "type": "pr",
+    "title": "[ROCm][Perf] Skip cleaning sparse prefill MQA logits",
+    "bodyExcerpt": "## Summary\n\nThe sparse prefill path creates the MQA-logits buffer with `torch.full(..., -inf)`.\nThis launches an FP32 fill before every logits kernel.\n\nThis PR passes `clean_logits=False` to AITER, so the buffer uses `torch.empty`\nand the fill is removed.\n\n## Safety\n\nThe only consumer is `top_k_per_row_prefill`. It reads each row only inside\n`[cu_seqlen_ks, cu_seqlen_ke)`. Its vectorized path also guards the final partial\nload, so padding values are never read. The top-k result is unchanged.\n\n## Results\n\nMI355X, TP=4, rank 0, comparable before/after captures:\n\n| metric | before | after |\n|---|---:|---:|\n| FP32 fill launches | 18,162 | **0** |\n| FP32 fill GPU time | 1,250.2 ms | **0 ms** |\n| MQA-logits launches | 18,108 | 17,930 |\n\nThe removed fill was **0.89% of total GPU kernel time**. In the sample below it\ntakes 74.6 µs and is fully serialized before the logits kernel.\n\n![Before: FP32 fill before MQA logits](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr4_before.png)\n\n![After: fill removed](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr4_after.png)\n\n## Model-level e2e results\n\n### Test conditions\n\n| | |\n|---|---|\n| Hardware | MI355X (gfx950), TP=4 |\n| Model | `amd/GLM-5.2-MXFP4`, fp8 KV cache |\n| Stack | vLLM `69715823`, AITER `4a1cc77`, flydsl `0.3.0` |\n| Server | `--async-scheduling --max-num-seqs 256 --max-num-batched-tokens 16384 --block-size 64 --no-enable-prefix-caching`, `index_topk_freq=4` |\n| Env | `VLLM_ROCM_USE_AITER=1`, `VLLM_ROCM_USE_AITER_SPARSE_INDEXER=1`, `AITER_USE_FLYDSL_MOE_SORTING=1`, `VLLM_ROCM_QUICK_REDUCE_QUANTIZATION=INT4` |\n| Perf | `vllm bench serve`, random dataset, `--ignore-eos --request-rate inf`, ISL 1024 and 8192, OSL 1024, concurrency 1-256 (16 points) |\n| Accuracy | `lm_eval` gsm8k 5-shot chat template with thinking enabled, `max_gen_toks=8192`; RULER `niah_single_2` at 16k |\n| Sampling | checkpoint default (tempe",
+    "author": "amd-sriram",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "ready"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/51314",
+    "createdAt": "2026-08-06T21:41:17.000Z",
+    "updatedAt": "2026-10-09T06:27:48.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T07:14:16.853Z",
+    "contentHash": "sha256:2dc968b0b0d22fffbd1be8666b2509866df02902db4efb576d38ed93ceca5f30",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "ROCm跳过稀疏预填充MQA logits清理",
+      "summaryZh": "优化 AITER 稀疏预填充路径，传入 `clean_logits=False`，使用 `torch.empty` 创建 MQA-logits 缓冲区，移除每次 logits kernel 前的 FP32 填充；在 MI355X、TP=4 测试中，FP32 填充启动次数从 18,162 降至 0，GPU 时间从 1,250.2 ms 降至 0；top-k 结果不变",
+      "models": [
+        "amd/GLM-5.2-MXFP4"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "面向 ROCm/AITER 稀疏预填充推理路径，测试硬件为 MI355X（gfx950）。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[ROCm][Perf] Skip cleaning sparse prefill MQA logits",
+        "【正文】This PR passes `clean_logits=False` to AITER, so the buffer uses `torch.empty` and the fill is removed."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-pr-51309",
     "nodeId": "PR_kwDOI7xefs77w-6a",
     "repository": "vllm-project/vllm",
@@ -15,10 +64,10 @@
     ],
     "url": "https://github.com/vllm-project/vllm/pull/51309",
     "createdAt": "2026-08-06T21:10:14.000Z",
-    "updatedAt": "2026-10-08T00:09:01.000Z",
+    "updatedAt": "2026-10-09T06:27:42.000Z",
     "mergedAt": null,
     "firstSeenAt": "2026-08-21T07:14:16.853Z",
-    "contentHash": "sha256:1407721e67886428e414decd8130c8aa70b17b6f9089fca21aa4409ea1bd7ef2",
+    "contentHash": "sha256:86208307a0e0da51dce102e0605d25707b9cd509690d15d2143d23b0550218f2",
     "category": "PERFORMANCE",
     "categorySource": "ai",
     "summary": {
@@ -47,6 +96,130 @@
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:17:54.490Z"
     }
+  },
+  {
+    "id": "vllm-pr-53149",
+    "nodeId": "PR_kwDOI7xefs8AAAABAdKBaw",
+    "repository": "vllm-project/vllm",
+    "number": 53149,
+    "type": "pr",
+    "title": "[Model] Enable LoRA support for tower and connector in GLM-ASR",
+    "bodyExcerpt": "## Purpose\n\nPart of #31479 (LoRA for the tower and connector of more multimodal models).\n\nEnable tower/connector LoRA for GLM-ASR (`GlmAsrForConditionalGeneration`). The audio tower (`GlmAsrEncoder`) and projector (`GlmAsrMultiModalProjector`) are already vLLM-native linear layers and `get_mm_mapping` already maps them, so this PR sets `supports_tower_connector_lora = True` and overrides `get_mm_lora_token_counts`, which tells the LoRA machinery how many rows each audio item occupies in those layers:\n\n- Every 30 s chunk is padded to 3000 mel frames, which the conv stack downsamples to `audio_config.max_position_embeddings` (1500) tower rows; the projector runs on the 4x frame-merged output before the padded frames are trimmed, so it sees 375 rows per chunk (also the number of LM tokens a full chunk yields).\n- With `mm_kwargs`, the counts come from the item's `input_features` (chunks x padded length). `num_mm_embeds` alone is not invertible when the tail chunk is nearly empty (a 30.02 s audio yields 375 LM tokens but 2 chunks / 3000 tower rows).\n- Without `mm_kwargs` (sizing the punica wrappers at engine init), whole chunks are budgeted for the given LM-token budget.\n\nOn current `main` without this PR, `--enable-tower-connector-lora` is accepted but GLM-ASR is logged as not supporting it: no tower or projector layer is wrapped and tower/projector adapter weights have no effect (outputs bit-identical to no adapter).\n\nNot a duplicate: GLM-ASR is not on the done/WIP list of #31479 and no comment claims it (I claimed it on the issue before opening this PR); `gh pr list --state open --search \"31479 in:body\"` (LFM2-VL #51498, Intern-S1 #48129, Cosmos3-Edge #51949, Voxtral #45697, Qwen2-Audio #45944, Mistral3 #42228, Llama Nemotron VL #52749), `--search \"LoRA tower connector\"`, `--search \"get_num_mm_encoder_tokens\"` and `--search \"GLM-ASR\"` return nothing for this model. Related: #53092 (merged) replaced the `hasattr`-based support detection with the explicit `supports_towe",
+    "author": "JonSnow1807",
+    "state": "open",
+    "labels": [
+      "multi-modality",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/53149",
+    "createdAt": "2026-08-20T18:26:12.000Z",
+    "updatedAt": "2026-10-09T04:02:14.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:410becca6972560fbeea73769b4b845cc659da4d9823a275cb1efad1af596829",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "为 GLM-ASR 启用塔与连接器 LoRA",
+      "summaryZh": "新增 GLM-ASR 塔与连接器的 LoRA 令牌计数辅助函数，并根据 input_features 推导每个音频项的精确令牌数量，以支持多模态 LoRA 映射，解决启用 --enable-tower-connector-lora 启动 GLM-ASR 时，因令牌计数辅助函数返回 None，engine 初始化在 get_punica_wrapper 处报 TypeError；支持 GLM-ASR 的音频塔和投影器使用 LoRA；完整音频块每块产生 375 个语言模型令牌，尾部音频块可产生更少令牌",
+      "models": [
+        "GLM-ASR",
+        "GlmAsrForConditionalGeneration",
+        "GlmAsrEncoder",
+        "GlmAsrMultiModalProjector"
+      ],
+      "hardware": [],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "HIGH",
+      "impactScopeZh": "影响启用塔与连接器 LoRA 的 GLM-ASR 引擎初始化及推理场景。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】Enable LoRA support for tower and connector in GLM-ASR",
+        "【正文】Before this change, starting GLM-ASR with `--enable-tower-connector-lora` fails at engine init (`TypeError: empty(): ..."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T10:27:08.865Z"
+    }
+  },
+  {
+    "id": "vllm-pr-53875",
+    "nodeId": "PR_kwDOI7xefs8AAAABBER5GA",
+    "repository": "vllm-project/vllm",
+    "number": 53875,
+    "type": "pr",
+    "title": "[Kernel][Perf] Fuse clamped MoE activation and UE8M0 FP8 block quantization",
+    "bodyExcerpt": "## Purpose\r\n\r\nFuse the clamped MoE activation path into FP8 block-128 activation quantization:\r\n\r\n1. finite SwiGLU clamping;\r\n2. BF16 SiLU and gated multiplication;\r\n3. dynamic E4M3 block quantization, including Hopper DeepGEMM UE8M0 scales; and\r\n4. optional filtering of invalid or non-local expert rows.\r\n\r\nThe CUDA implementation extends the existing stable-ABI `silu_and_mul_per_block_quant` op and has two execution strategies:\r\n\r\n- a lightweight one-block-per-quant-group kernel for launch-bound TP decode shapes without an `expert_map`;\r\n- an occupancy-driven persistent kernel when EP filtering is present or the output has at least 1M elements.\r\n\r\nThe persistent variant uses vectorized BF16 loads/FP8 stores and half-warp reductions. Both clamped variants preserve the BF16 activation materialization point and are bit-exact with the original two-kernel UE8M0 path.\r\n\r\nThe Triton experts dispatch remains narrow: CUDA, gated SiLU with a finite clamp, int32 routing IDs, FP8 W8A8 block shape `[128, 128]`, and no LoRA activation consumer. Large unfiltered prefills fall back to the existing kernels at the measured crossover. The existing unclamped E8M0 path remains excluded because its activation semantics are not bit-exact. `VLLM_USE_DSV4_FUSED_ACT_QUANT=0` is the matched A/B fallback.\r\n\r\n## Trace evidence\r\n\r\nPyTorch profiler trace of `zai-org/GLM-5.3-Flash` on 4x H200, TP4, MTP=5, BF16 KV cache, CUDA graphs:\r\n\r\n| Rank-0 stable window | Calls | Total | Average |\r\n|---|---:|---:|---:|\r\n| Baseline clamp | 658 | 2042.672 us | 3.104 us |\r\n| Baseline per-token-group quant (all paths) | 1316 | 3297.808 us | 2.506 us |\r\n| Fused target kernel | 658 | 1389.724 us | 2.112 us |\r\n| Remaining non-target quant | 658 | 1762.810 us | 2.679 us |\r\n\r\nFor each target MoE layer, the relevant baseline route is one clamp plus one of the two quant launches: approximately 5.65 us to 2.11 us, or **2.68x**, while removing one launch. With 45 target MoE layers this saves about 159 us per target forwa",
+    "author": "zigzagcai",
+    "state": "closed",
+    "labels": [
+      "performance",
+      "needs-rebase",
+      "deepseek",
+      "quantization",
+      "DSv4",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/53875",
+    "createdAt": "2026-08-26T11:26:49.000Z",
+    "updatedAt": "2026-10-09T02:59:18.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-28T11:38:19.166Z",
+    "contentHash": "sha256:5b3a0d59ebd6bc01ed438fea251118584135971dbacab48c54dc3cb1e28d8459",
+    "category": "PERFORMANCE",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-51339",
+    "nodeId": "PR_kwDOI7xefs770auL",
+    "repository": "vllm-project/vllm",
+    "number": 51339,
+    "type": "pr",
+    "title": "[Model Loader][Perf] Auto-prefetch VirtioFS checkpoints",
+    "bodyExcerpt": "<!-- markdownlint-disable -->\n## Overview\n\nEnable the existing RAM-guarded safetensors auto-prefetch path for VirtioFS checkpoints. Explicit `lazy` remains an opt-out.\n\n## Claims\n\n- Automatic selection includes `virtiofs` alongside NFS, NFS4, and Lustre, only when the strategy is unset and checkpoint size is at most 90% of available RAM.\n- The change reuses the existing prefetch helper and renames the internal filesystem classification to cover host/guest shared filesystems.\n- A prior GLM-5.2 loading run demonstrated the benefit of that helper on one VirtioFS configuration; the measurements below are not a fresh benchmark of automatic selection.\n\n## Validation\n\nFresh validation on 2026-10-03 used upstream `1a001d584244bd21829a5e5bd4a376ea141c0ce3` plus this PR.\n\n```sh\nVLLM_TARGET_DEVICE=cpu CUDA_VISIBLE_DEVICES='' .venv/bin/python -m pytest tests/model_executor/model_loader/test_weight_utils.py tests/test_config.py -k 'auto_prefetch_selection or safetensors_load_strategy' -q\n.venv/bin/pre-commit run --hook-stage manual --files vllm/config/load.py vllm/model_executor/model_loader/weight_utils.py tests/model_executor/model_loader/test_weight_utils.py\n```\n\nThe five focused loader/config cases passed. Restoring current-upstream loader logic produced **1 failure and 4 passes**; the VirtioFS automatic-selection case fails before the fix. The tests mock filesystem/RAM detection and the prefetch helper, then load real safetensors values. All applicable scoped pre-commit hooks passed, including mypy for Python 3.10 through 3.13.\n\nHistorical GLM-5.2 loading measurement, with a 1403.19 GiB checkpoint fitting available RAM:\n\n| Configuration | Model loading |\n| --- | ---: |\n| Default path before this change, VirtioFS detected but prefetch disabled | 1596.999 s |\n| Explicit `prefetch`, application startup completed | 70.676 s |\n\nThese are individual original runs, not repeated measurements. No VirtioFS mount was available for this review. The new automatic branch selects the same",
+    "author": "bvolpato",
+    "state": "open",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/pull/51339",
+    "createdAt": "2026-08-07T01:02:07.000Z",
+    "updatedAt": "2026-10-08T23:55:12.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-30T05:39:24.275Z",
+    "contentHash": "sha256:d9071d48093c6158535892198661ecaeeb652ded03fbb503745436434aa65ccd",
+    "category": "PERFORMANCE",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-53578",
+    "nodeId": "PR_kwDOI7xefs8AAAABAzXJEA",
+    "repository": "vllm-project/vllm",
+    "number": 53578,
+    "type": "pr",
+    "title": "[Bugfix][ROCm][Disagg] Always run DP dummy on zero-token ranks (no stale sticky skip)",
+    "bodyExcerpt": "## Purpose\n\nWith `data_parallel_size > 1` and expert parallel enabled, only some DP ranks may hold tokens on a given engine step while others schedule zero tokens. Idle ranks must still run a dummy forward so per-layer EP collectives stay in lockstep; otherwise the busy rank deadlocks in all2all.\n\nToday `execute_model` only runs that dummy when `distributed_executor_backend == \"external_launcher\"`. Multiproc / MoRIIO WideEP disagg uses a different backend, so zero-token ranks skip the dummy and hang.\n\nHeadless / idle ranks may only enter via `Worker.execute_dummy_batch`. That path must also always `_dummy_run(1)` for `dp_size > 1`. Do **not** skip via a sticky latch set by `execute_model`: under dp_lockstep the latch can remain `True` across later engine steps when `execute_dummy_batch` was not paired with the call that set it. Skipping a needed dummy desyncs EP ranks (GLM-5.2 tip WideEP mid-gsm8k hang). Same-step double dummy is safe; a skipped dummy is not.\n\n## Changes\n\n* `vllm/v1/worker/gpu_model_runner.py` (`execute_model`):\n  * On zero-token steps, run `_dummy_run(1)` whenever `data_parallel_size > 1` (not only `external_launcher`).\n* `vllm/v1/worker/gpu_worker.py` (`execute_dummy_batch`):\n  * When `data_parallel_size > 1`, always `_dummy_run(1)` (no sticky early-return).\n\n## Test Plan\n\nMoRIIO **2P2D wide-EP** (DP16) disaggregated serving, image `vllm/vllm-openai-rocm:nightly`. Front-door: `ROUTER_TYPE=proxy` and `vllm-router`.\n\n### GLM-5.2-FP8 — 2P2D wide-EP DP16\n\n```bash\nexport VLLM_ROCM_USE_AITER=1\nexport VLLM_ROCM_USE_AITER_MLA=1\nexport VLLM_ROCM_USE_AITER_MOE=1\nexport VLLM_ROCM_USE_AITER_RMSNORM=1\nexport VLLM_ROCM_USE_AITER_FUSION_SHARED_EXPERTS=0\n# HT/LL path (unset ALL2ALL_BACKEND); P eager / D PIECEWISE\n\n# PREFILL — master (node0, DP ranks 0–7)\nvllm serve /data/models2/GLM-5.2-FP8 \\\n    --host $PREFILL_IP --port 20005 -tp 1 \\\n    --data-parallel-size 16 \\\n    --data-parallel-size-local 8 \\\n    --data-parallel-address $PREFILL_IP \\\n    --data-parallel-rp",
+    "author": "avininjamay8",
+    "state": "open",
+    "labels": [
+      "bug",
+      "rocm",
+      "mrv1-only"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/53578",
+    "createdAt": "2026-08-24T13:21:57.000Z",
+    "updatedAt": "2026-10-08T14:57:33.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-10-09T06:29:16.754Z",
+    "contentHash": "sha256:d008fd3469576f4ba9609405a837703e117db621664b90f58f5f8b6de03402d9",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
   },
   {
     "id": "vllm-pr-53138",
@@ -99,55 +272,6 @@
     "category": "PERFORMANCE",
     "categorySource": "rules",
     "summary": null
-  },
-  {
-    "id": "vllm-pr-51314",
-    "nodeId": "PR_kwDOI7xefs77xdSz",
-    "repository": "vllm-project/vllm",
-    "number": 51314,
-    "type": "pr",
-    "title": "[ROCm][Perf] Skip cleaning sparse prefill MQA logits",
-    "bodyExcerpt": "## Summary\n\nThe sparse prefill path creates the MQA-logits buffer with `torch.full(..., -inf)`.\nThis launches an FP32 fill before every logits kernel.\n\nThis PR passes `clean_logits=False` to AITER, so the buffer uses `torch.empty`\nand the fill is removed.\n\n## Safety\n\nThe only consumer is `top_k_per_row_prefill`. It reads each row only inside\n`[cu_seqlen_ks, cu_seqlen_ke)`. Its vectorized path also guards the final partial\nload, so padding values are never read. The top-k result is unchanged.\n\n## Results\n\nMI355X, TP=4, rank 0, comparable before/after captures:\n\n| metric | before | after |\n|---|---:|---:|\n| FP32 fill launches | 18,162 | **0** |\n| FP32 fill GPU time | 1,250.2 ms | **0 ms** |\n| MQA-logits launches | 18,108 | 17,930 |\n\nThe removed fill was **0.89% of total GPU kernel time**. In the sample below it\ntakes 74.6 µs and is fully serialized before the logits kernel.\n\n![Before: FP32 fill before MQA logits](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr4_before.png)\n\n![After: fill removed](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr4_after.png)\n\n## Model-level e2e results\n\n### Test conditions\n\n| | |\n|---|---|\n| Hardware | MI355X (gfx950), TP=4 |\n| Model | `amd/GLM-5.2-MXFP4`, fp8 KV cache |\n| Stack | vLLM `69715823`, AITER `4a1cc77`, flydsl `0.3.0` |\n| Server | `--async-scheduling --max-num-seqs 256 --max-num-batched-tokens 16384 --block-size 64 --no-enable-prefix-caching`, `index_topk_freq=4` |\n| Env | `VLLM_ROCM_USE_AITER=1`, `VLLM_ROCM_USE_AITER_SPARSE_INDEXER=1`, `AITER_USE_FLYDSL_MOE_SORTING=1`, `VLLM_ROCM_QUICK_REDUCE_QUANTIZATION=INT4` |\n| Perf | `vllm bench serve`, random dataset, `--ignore-eos --request-rate inf`, ISL 1024 and 8192, OSL 1024, concurrency 1-256 (16 points) |\n| Accuracy | `lm_eval` gsm8k 5-shot chat template with thinking enabled, `max_gen_toks=8192`; RULER `niah_single_2` at 16k |\n| Sampling | checkpoint default (tempe",
-    "author": "amd-sriram",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "ready"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/51314",
-    "createdAt": "2026-08-06T21:41:17.000Z",
-    "updatedAt": "2026-10-07T18:06:35.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T07:14:16.853Z",
-    "contentHash": "sha256:b53aee6e557a22ca27e31c384f91f0db54bac88fb3d8bc511d389519609e9713",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "ROCm跳过稀疏预填充MQA logits清理",
-      "summaryZh": "优化 AITER 稀疏预填充路径，传入 `clean_logits=False`，使用 `torch.empty` 创建 MQA-logits 缓冲区，移除每次 logits kernel 前的 FP32 填充；在 MI355X、TP=4 测试中，FP32 填充启动次数从 18,162 降至 0，GPU 时间从 1,250.2 ms 降至 0；top-k 结果不变",
-      "models": [
-        "amd/GLM-5.2-MXFP4"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "面向 ROCm/AITER 稀疏预填充推理路径，测试硬件为 MI355X（gfx950）。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[ROCm][Perf] Skip cleaning sparse prefill MQA logits",
-        "【正文】This PR passes `clean_logits=False` to AITER, so the buffer uses `torch.empty` and the fill is removed."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
   },
   {
     "id": "vllm-pr-54029",
@@ -356,27 +480,6 @@
     "summary": null
   },
   {
-    "id": "vllm-pr-51339",
-    "nodeId": "PR_kwDOI7xefs770auL",
-    "repository": "vllm-project/vllm",
-    "number": 51339,
-    "type": "pr",
-    "title": "[Model Loader][Perf] Auto-prefetch VirtioFS checkpoints",
-    "bodyExcerpt": "<!-- markdownlint-disable -->\n## Overview\n\nEnable the existing RAM-guarded safetensors auto-prefetch path for VirtioFS checkpoints. Explicit `lazy` remains an opt-out.\n\n## Claims\n\n- Automatic selection includes `virtiofs` alongside NFS, NFS4, and Lustre, only when the strategy is unset and checkpoint size is at most 90% of available RAM.\n- The change reuses the existing prefetch helper and renames the internal filesystem classification to cover host/guest shared filesystems.\n- A prior GLM-5.2 loading run demonstrated the benefit of that helper on one VirtioFS configuration; the measurements below are not a fresh benchmark of automatic selection.\n\n## Validation\n\nFresh validation on 2026-10-03 used upstream `1a001d584244bd21829a5e5bd4a376ea141c0ce3` plus this PR.\n\n```sh\nVLLM_TARGET_DEVICE=cpu CUDA_VISIBLE_DEVICES='' .venv/bin/python -m pytest tests/model_executor/model_loader/test_weight_utils.py tests/test_config.py -k 'auto_prefetch_selection or safetensors_load_strategy' -q\n.venv/bin/pre-commit run --hook-stage manual --files vllm/config/load.py vllm/model_executor/model_loader/weight_utils.py tests/model_executor/model_loader/test_weight_utils.py\n```\n\nThe five focused loader/config cases passed. Restoring current-upstream loader logic produced **1 failure and 4 passes**; the VirtioFS automatic-selection case fails before the fix. The tests mock filesystem/RAM detection and the prefetch helper, then load real safetensors values. All applicable scoped pre-commit hooks passed, including mypy for Python 3.10 through 3.13.\n\nHistorical GLM-5.2 loading measurement, with a 1403.19 GiB checkpoint fitting available RAM:\n\n| Configuration | Model loading |\n| --- | ---: |\n| Default path before this change, VirtioFS detected but prefetch disabled | 1596.999 s |\n| Explicit `prefetch`, application startup completed | 70.676 s |\n\nThese are individual original runs, not repeated measurements. No VirtioFS mount was available for this review. The new automatic branch selects the same",
-    "author": "bvolpato",
-    "state": "open",
-    "labels": [],
-    "url": "https://github.com/vllm-project/vllm/pull/51339",
-    "createdAt": "2026-08-07T01:02:07.000Z",
-    "updatedAt": "2026-10-05T03:19:47.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-30T05:39:24.275Z",
-    "contentHash": "sha256:94dde97881be5a4d5e23f81509a4393442fae1fdcda4a4844e9be9f914c77e7f",
-    "category": "PERFORMANCE",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
     "id": "vllm-pr-53692",
     "nodeId": "PR_kwDOI7xefs8AAAABA5jEiA",
     "repository": "vllm-project/vllm",
@@ -426,56 +529,6 @@
     "category": "FIX",
     "categorySource": "rules",
     "summary": null
-  },
-  {
-    "id": "vllm-pr-53149",
-    "nodeId": "PR_kwDOI7xefs8AAAABAdKBaw",
-    "repository": "vllm-project/vllm",
-    "number": 53149,
-    "type": "pr",
-    "title": "[Model] Enable LoRA support for tower and connector in GLM-ASR",
-    "bodyExcerpt": "## Purpose\n\nPart of #31479 (LoRA for the tower and connector of more multimodal models).\n\nEnable tower/connector LoRA for GLM-ASR (`GlmAsrForConditionalGeneration`). The audio tower (`GlmAsrEncoder`) and projector (`GlmAsrMultiModalProjector`) are already vLLM-native linear layers and `get_mm_mapping` already maps them, so this PR adds the token-count helpers that the LoRA mapping needs:\n\n- `get_num_mm_encoder_tokens` / `get_num_mm_connector_tokens`: every 30s chunk is padded to 3000 mel frames, which the conv stack downsamples to `audio_config.max_position_embeddings` (1500) tower rows; the projector runs on the 4x frame-merged output *before* the padded frames are trimmed, so it sees 375 rows per chunk (also the number of LM tokens a full chunk yields). Only the last chunk of an audio can yield fewer LM tokens, so `num_chunks = ceil(num_audio_tokens / 375)`.\n- `get_mm_lora_token_counts` override: derives the exact per-item counts from `mm_kwargs[\"input_features\"]` (chunks x padded length). `num_mm_embeds` alone is not invertible when the tail chunk is nearly empty (e.g. a 30.02s audio yields 375 LM tokens but 2 chunks / 3000 tower rows).\n\nBefore this change, starting GLM-ASR with `--enable-tower-connector-lora` fails at engine init (`TypeError: empty(): argument 'size' ... NoneType` from `get_punica_wrapper`, because the stub helper returns `None`).\n\nNot a duplicate: GLM-ASR is not on the done/WIP list of #31479 and no comment claims it (I claimed it on the issue before opening this PR); `gh pr list --state open --search \"31479 in:body\"` (LFM2-VL #51498, Intern-S1 #48129, Cosmos3-Edge #51949, Voxtral #45697, Qwen2-Audio #45944, Mistral3 #42228, Llama Nemotron VL #52749), `--search \"LoRA tower connector\"`, `--search \"get_num_mm_encoder_tokens\"` and `--search \"GLM-ASR\"` return nothing for this model. Related but not overlapping: #53092 replaces the `hasattr`-based support detection with an explicit `supports_tower_connector_lora` flag — if it lands first, this PR ju",
-    "author": "JonSnow1807",
-    "state": "open",
-    "labels": [
-      "multi-modality",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/53149",
-    "createdAt": "2026-08-20T18:26:12.000Z",
-    "updatedAt": "2026-10-02T18:57:53.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:bbc0abb77833db95fcf74bea9c94dab024d37a78904c64b41eac3e0f4ef78d7f",
-    "category": "NEW_SUPPORT",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "为 GLM-ASR 启用塔与连接器 LoRA",
-      "summaryZh": "新增 GLM-ASR 塔与连接器的 LoRA 令牌计数辅助函数，并根据 input_features 推导每个音频项的精确令牌数量，以支持多模态 LoRA 映射，解决启用 --enable-tower-connector-lora 启动 GLM-ASR 时，因令牌计数辅助函数返回 None，engine 初始化在 get_punica_wrapper 处报 TypeError；支持 GLM-ASR 的音频塔和投影器使用 LoRA；完整音频块每块产生 375 个语言模型令牌，尾部音频块可产生更少令牌",
-      "models": [
-        "GLM-ASR",
-        "GlmAsrForConditionalGeneration",
-        "GlmAsrEncoder",
-        "GlmAsrMultiModalProjector"
-      ],
-      "hardware": [],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "NEW_SUPPORT",
-      "severity": "HIGH",
-      "impactScopeZh": "影响启用塔与连接器 LoRA 的 GLM-ASR 引擎初始化及推理场景。",
-      "attention": "WATCH",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】Enable LoRA support for tower and connector in GLM-ASR",
-        "【正文】Before this change, starting GLM-ASR with `--enable-tower-connector-lora` fails at engine init (`TypeError: empty(): ..."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T10:27:08.865Z"
-    }
   },
   {
     "id": "vllm-issue-54359",
@@ -901,34 +954,6 @@
     "firstSeenAt": "2026-08-21T03:17:31.073Z",
     "contentHash": "sha256:069b8b961ab398d47aa86ff8cdc0ccdcdfecfe50ba2b01b0c6b96a04e1c08bc1",
     "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-53875",
-    "nodeId": "PR_kwDOI7xefs8AAAABBER5GA",
-    "repository": "vllm-project/vllm",
-    "number": 53875,
-    "type": "pr",
-    "title": "[Kernel][Perf] Fuse clamped MoE activation and UE8M0 FP8 block quantization",
-    "bodyExcerpt": "## Purpose\r\n\r\nFuse the clamped MoE activation path into FP8 block-128 activation quantization:\r\n\r\n1. finite SwiGLU clamping;\r\n2. BF16 SiLU and gated multiplication;\r\n3. dynamic E4M3 block quantization, including Hopper DeepGEMM UE8M0 scales; and\r\n4. optional filtering of invalid or non-local expert rows.\r\n\r\nThe CUDA implementation extends the existing stable-ABI `silu_and_mul_per_block_quant` op and has two execution strategies:\r\n\r\n- a lightweight one-block-per-quant-group kernel for launch-bound TP decode shapes without an `expert_map`;\r\n- an occupancy-driven persistent kernel when EP filtering is present or the output has at least 1M elements.\r\n\r\nThe persistent variant uses vectorized BF16 loads/FP8 stores and half-warp reductions. Both clamped variants preserve the BF16 activation materialization point and are bit-exact with the original two-kernel UE8M0 path.\r\n\r\nThe Triton experts dispatch remains narrow: CUDA, gated SiLU with a finite clamp, int32 routing IDs, FP8 W8A8 block shape `[128, 128]`, and no LoRA activation consumer. Large unfiltered prefills fall back to the existing kernels at the measured crossover. The existing unclamped E8M0 path remains excluded because its activation semantics are not bit-exact. `VLLM_USE_DSV4_FUSED_ACT_QUANT=0` is the matched A/B fallback.\r\n\r\n## Trace evidence\r\n\r\nPyTorch profiler trace of `zai-org/GLM-5.3-Flash` on 4x H200, TP4, MTP=5, BF16 KV cache, CUDA graphs:\r\n\r\n| Rank-0 stable window | Calls | Total | Average |\r\n|---|---:|---:|---:|\r\n| Baseline clamp | 658 | 2042.672 us | 3.104 us |\r\n| Baseline per-token-group quant (all paths) | 1316 | 3297.808 us | 2.506 us |\r\n| Fused target kernel | 658 | 1389.724 us | 2.112 us |\r\n| Remaining non-target quant | 658 | 1762.810 us | 2.679 us |\r\n\r\nFor each target MoE layer, the relevant baseline route is one clamp plus one of the two quant launches: approximately 5.65 us to 2.11 us, or **2.68x**, while removing one launch. With 45 target MoE layers this saves about 159 us per target forwa",
-    "author": "zigzagcai",
-    "state": "open",
-    "labels": [
-      "performance",
-      "needs-rebase",
-      "deepseek",
-      "quantization",
-      "DSv4",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/53875",
-    "createdAt": "2026-08-26T11:26:49.000Z",
-    "updatedAt": "2026-09-22T09:26:00.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-28T11:38:19.166Z",
-    "contentHash": "sha256:858689fbf82a10cb698cfe89aa8216e1f1369b811f97025b5951ded6ef3c4ae7",
-    "category": "PERFORMANCE",
     "categorySource": "rules",
     "summary": null
   },
