@@ -1,5 +1,176 @@
 [
   {
+    "id": "vllm-pr-50653",
+    "nodeId": "PR_kwDOI7xefs75SVPk",
+    "repository": "vllm-project/vllm",
+    "number": 50653,
+    "type": "pr",
+    "title": "[Bugfix][KV Offloading] Fix CPU offload block count mismatch across PP ranks",
+    "bodyExcerpt": "### Motivation\r\n\r\nNative CPU offloading computes CPU cache capacity from each worker's KV cache tensors. Under pipeline parallelism, workers may own different numbers or types of layers, so different PP ranks can derive different CPU offload chunk counts.\r\n\r\nThe scheduler uses the first worker's KV cache config, while workers build offloading specs from their local configs. If the scheduler-side chunk count is larger than a worker's local CPU buffer capacity, offloaded chunk ids can exceed that worker's allocated CPU cache range.\r\n\r\nThis is a stability fix, not just a consistency one: when an out-of-range id is actually used, the failure is not an assertion — it is a SIGSEGV inside the CUDA driver, 10–24 minutes into a run, with no traceback and nothing in the kernel log (second reproduction in #50821).\r\n\r\nThe divergence is not specific to uneven layer counts: it also occurs with a balanced pipeline when speculative decoding places the draft (MTP) layers on the last stage — both stages can own the same number of groups and the same\r\nnum_blocks and still compute different chunk counts.\r\n\r\n### Runtime Validation\r\n\r\n  I reproduced the issue with vLLM v0.26.0 using:\r\n\r\n  - Model: `GLM-5.2-NVFP4`\r\n  - `pipeline_parallel_size=4`\r\n  - `tensor_parallel_size=1`\r\n  - Native CPU offloading via `OffloadingConnector`\r\n  - Prefix caching enabled\r\n  - No SSD offloading\r\n\r\n  Before the fix, different PP ranks computed different CPU offload block counts from their local KV cache tensors:\r\n\r\n  ```text\r\n  scheduler/rank0 CPU num_blocks: 35341\r\n  worker/rank0 CPU num_blocks: 35341\r\n  worker/rank1 CPU num_blocks: 34435\r\n  worker/rank2 CPU num_blocks: 34435\r\n  worker/rank3 CPU num_blocks: 36561\r\n  ```\r\n  This confirms the mismatch. Since the scheduler allocates CPU block IDs based on its own CPU block count, rank1/rank2 only had capacity for 34435 blocks while the scheduler could allocate IDs up to 35340. Those IDs would be outside rank1/rank2's CPU buffer range.\r\n\r\n  After applying the ",
+    "author": "StellaH-ter",
+    "state": "open",
+    "labels": [
+      "bug",
+      "kv-connector",
+      "kv-cache-manager"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/50653",
+    "createdAt": "2026-08-01T03:41:26.000Z",
+    "updatedAt": "2026-10-10T02:01:57.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-21T05:16:41.987Z",
+    "contentHash": "sha256:db34d3fa7427f38b3f51ddcb73c38454ab1ad2aac3bde3cd72af59130115543d",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-53982",
+    "nodeId": "I_kwDOI7xefs8AAAABObhizQ",
+    "repository": "vllm-project/vllm",
+    "number": 53982,
+    "type": "issue",
+    "title": "[Bug]: _compute_slot_mapping_kernel reads block_table out of bounds for cache groups whose block table is narrower than the sequence",
+    "bodyExcerpt": "### Summary\n\n`_compute_slot_mapping_kernel` in `vllm/v1/worker/block_table.py` masks its block-table load by\ntoken validity and CP ownership, but **not** by whether the computed column index is inside the\nrow. Any KV cache group whose block table does not span the sequence in raw token positions\ntherefore performs an unbounded out-of-bounds read, scaling with sequence length.\n\nOn 8× MI325X (gfx942, ROCm 7.2.3) this eventually crosses into an unmapped page and takes down\nevery rank with `Memory access fault by GPU node-N ... Reason: Unknown`.\n\n### The missing guard\n\n`vllm/v1/worker/block_table.py` @ `main` `94d96e24`:\n\n```python\nblock_indices = (                                    # :463-466\n    virtual_block_indices * BLOCKS_PER_KV_BLOCK\n    + local_block_offsets // block_size\n)\nblock_numbers = tl.load(                             # :467-471\n    block_table_ptr + row_offset + block_indices,\n    mask=mask & is_local,                            # :469  ← no range term\n    other=0,\n).to(tl.int64)\nslot_offsets = local_block_offsets % block_size\nslot_ids = block_numbers * block_size + slot_offsets\nslot_ids = tl.where(is_local, slot_ids, PAD_ID)      # :474  ← no range term\n```\n\nThe model-side QSA slot helpers in #53896 do bound this (`valid &= logical_blocks < block_table.shape[1]`\nand a clamp before indexing); the generic kernel is the one path we found that does not.\n\n### Two independent instances, both from in-flight model PRs\n\nNeither spec class is on `main` yet; both are added by open PRs, and each declares a\n**one-block-per-request** side cache that the kernel then indexes with **raw token positions**:\n\n| PR | spec | `max_num_blocks_per_req()` | effective row width | index computed |\n|---|---|---|---|---|\n| #53896 (Qwen3.8-Flash-Next) | `CircularBufferSpec` | `1` | 128 tokens (after the 128-token alignment in `get_block_table_width`) | `pos // 8` |\n| #53906 (GLM-5.3-Flash) | `KpoolTailSpec` | `1` | 128 tokens | `pos // index_kpool` |\n\nBoth reach the kernel because ",
+    "author": "zzw09773",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "mrv1-only"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/53982",
+    "createdAt": "2026-08-27T02:45:09.000Z",
+    "updatedAt": "2026-10-09T21:56:11.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-27T10:07:19.897Z",
+    "contentHash": "sha256:116a2cd784c7e6b7b26168b0bf21424511fe06fb84131a79d561bd2042717e96",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-51309",
+    "nodeId": "PR_kwDOI7xefs77w-6a",
+    "repository": "vllm-project/vllm",
+    "number": 51309,
+    "type": "pr",
+    "title": "[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
+    "bodyExcerpt": "## Summary\r\n\r\nWith cross-layer index sharing, only some attention layers update the shared top-k buffer.\r\nThe old path still remapped that buffer on every layer.\r\n\r\nThis PR runs the remap only when the layer owns an indexer. For GLM-5.2 with\r\n`index_topk_freq = 4`, this reduces remaps from 78 to 21 per forward pass.\r\n\r\n## Safety\r\n\r\n- Layer 0 always owns an indexer, so the shared output is initialized before reuse.\r\n- Non-indexer layers do not change the inputs to the remap.\r\n- The default `index_topk_freq = 1` path is unchanged.\r\n- Speculative decoding still remaps on every layer.\r\n\r\n## Update: indexer and non-indexer layers are two KV cache groups\r\n\r\nhttps://github.com/vllm-project/vllm/pull/53781  added the is_index_group_leader field to MLAAttentionSpec: `is_index_group_leader=self.indexer is not None,`. Layers can only share a KV cache group if they agree on is_index_group_leader, so once the flag is set per layer, indexer and non-indexer layers land in different groups and therefore get different metadata instances with separate paged_kv_indices\r\n\r\n```\r\nindex_group_leader_set = {spec.is_index_group_leader for spec in specs}\r\nassert (\r\n    ...\r\n    and len(index_group_leader_set) == 1\r\n    ...\r\n), (\r\n    \"All attention layers in the same KV cache group must use the same \"\r\n    \"... index-sharing role, ...\"\r\n)\r\n```\r\n\r\nSo, remap should run for all indexer layers and the first non-indexer layer. The two non-indexer layer following the first non-indexer layer doesn't need a remap.\r\n\r\nThe following table shows how the remap condition changed between the commits and how it is implemented by `index_epoch` and  `remapped_epoch`. index_epoch is fixed per layer at construction: it counts indexer writes up to and including that layer - which selection is this layer entitled to read. remapped_epoch lives on the metadata and moves during the pass: it records which selection is currently sitting in that group's paged_kv_indices. A mismatch means the group is holding an older ",
+    "author": "amd-sriram",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "needs-rebase",
+      "mrv1-only"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/51309",
+    "createdAt": "2026-08-06T21:10:14.000Z",
+    "updatedAt": "2026-10-09T19:54:49.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T07:14:16.853Z",
+    "contentHash": "sha256:4099f3527c1943353e0af937e4af44adc515ded720d4fd65084c15f04d769809",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "ROCm跳过非索引层冗余稀疏索引重映射",
+      "summaryZh": "优化仅由拥有 indexer 的层执行稀疏索引 remap；非索引层直接进入 MLA kernel，解决跨层索引共享时，旧路径在每一层都重映射共享 top-k 缓冲区，导致非索引层执行冗余 remap；在 MI355X、TP=4、GLM-5.2-MXFP4、index_topk_freq=4 条件下，每次前向 remap 从 78 次降至 21 次；remap kernel 启动次数减少 73.3%，GPU 时间减少 73.0%。默认 index_topk_freq=1 路径及推测解码路径保持不变",
+      "models": [
+        "GLM-5.2-MXFP4"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "面向 ROCm 稀疏索引器和跨层索引共享场景，实测硬件为 MI355X。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
+        "【正文】This PR runs the remap only when the layer owns an indexer. For GLM-5.2 with index_topk_freq = 4, this reduces remaps من"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-54317",
+    "nodeId": "I_kwDOI7xefs8AAAABOwEXGQ",
+    "repository": "vllm-project/vllm",
+    "number": 54317,
+    "type": "issue",
+    "title": "[Bug]: GLM-5.3-Flash (glm5next) — recurring CUDA illegal memory access on 4xB200, surfacing in three unrelated kernels (KDA linear-attention, MHC TileLang, TRT-LLM fused MoE)",
+    "bodyExcerpt": "\n### Your current environment\n\n- Image: `vllm/vllm-openai:glm53-flash-x86_64-cu130` (`sha256:2e771fa615452282cc331eb418b3ef21636fce355bea0491fca89e6d362ab703`, published 2026-08-26 — the newest `glm53-flash` tag on Docker Hub)\n- `vllm.__version__` = `0.1.dev20051+g487ecf187`\n- tilelang 0.1.12\n- 4x NVIDIA B200 (SM100), TP=4, driver healthy: 0 uncorrected ECC, no pending page retirement, no Xid, `Remapping Failure Occurred: No` on all 4 GPUs\n- Model: `zai-org/GLM-5.3-Flash` (`Glm5NextForConditionalGeneration`)\n\nNote this model is not upstream yet (#53906 is open), so this is filed against the day-0 image.\n\n### 🐛 Describe the bug\n\nThe engine dies with `CUDA error: an illegal memory access was encountered` → `EngineDeadError`, repeatedly, under ordinary production chat traffic. Five crashes over ~6 hours, at 22 min / 10 min / 47 min / 2 h 34 min / 62 min of uptime. Before this the same box ran **15.5 h without a crash**, so it is load/state dependent rather than a startup or config error.\n\n**The distinguishing detail: the fault surfaces in three completely unrelated kernel families, and different TP ranks of the same crash report different kernels.**\n\n| Crash | Time (UTC) | Uptime | Faulting frame |\n|---|---|---|---|\n| 1 | 2026-08-28 22:48:48 | 22 min | `glm5next/nvidia/kda.py:581 _forward` → `flash_linear_attention/ops/kda.py:1576 chunk_kda_with_fused_gate` → `:1488 _fwd` → `ops/index.py:27 prepare_chunk_indices` |\n| 2 | 2026-08-28 23:08:46 | 10 min | `glm5next/nvidia/model.py:558 hc_fused_post_pre` → `layers/mhc.py:409 forward_cuda` → `kernels/mhc/tilelang.py:635 mhc_fused_post_pre_tilelang` → `tilelang/jit/kernel.py:202` |\n| 3 | 2026-08-29 00:18:55 | 47 min | same as #2 (`mhc_fused_post_pre_tilelang`) |\n| 4 | 2026-08-29 02:58:08 | 2 h 34 min | **mixed per rank**: 3 ranks `mhc_fused_post_pre_tilelang` / `mhc_pre_big_fuse_with_norm_tilelang` (TileLang, `CUDA_ERROR_ILLEGAL_ADDRESS`); 1 rank `chunk_kda_with_fused_gate` (`kda.py:581`, Triton) |\n| 5 | 2026-08-29 05:04:08 ",
+    "author": "erans",
+    "state": "open",
+    "labels": [
+      "kimi",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/54317",
+    "createdAt": "2026-08-29T05:42:52.000Z",
+    "updatedAt": "2026-10-09T14:57:09.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-29T07:16:20.199Z",
+    "contentHash": "sha256:2c0eed4bc1cd0d6a24d35719eb7fea5a4a6617c71c025bd73db85388acb52410",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-53578",
+    "nodeId": "PR_kwDOI7xefs8AAAABAzXJEA",
+    "repository": "vllm-project/vllm",
+    "number": 53578,
+    "type": "pr",
+    "title": "[Bugfix][ROCm][Disagg] Always run DP dummy on zero-token ranks (no stale sticky skip)",
+    "bodyExcerpt": "## Purpose\n\nWith `data_parallel_size > 1` and expert parallel enabled, only some DP ranks may hold tokens on a given engine step while others schedule zero tokens. Idle ranks must still run a dummy forward so per-layer EP collectives stay in lockstep; otherwise the busy rank deadlocks in all2all.\n\nToday `execute_model` only runs that dummy when `distributed_executor_backend == \"external_launcher\"`. Multiproc / MoRIIO WideEP disagg uses a different backend, so zero-token ranks skip the dummy and hang.\n\nHeadless / idle ranks may only enter via `Worker.execute_dummy_batch`. That path must also always `_dummy_run(1)` for `dp_size > 1`. Do **not** skip via a sticky latch set by `execute_model`: under dp_lockstep the latch can remain `True` across later engine steps when `execute_dummy_batch` was not paired with the call that set it. Skipping a needed dummy desyncs EP ranks (GLM-5.2 tip WideEP mid-gsm8k hang). Same-step double dummy is safe; a skipped dummy is not.\n\n## Changes\n\n* `vllm/v1/worker/gpu_model_runner.py` (`execute_model`):\n  * On zero-token steps, run `_dummy_run(1)` whenever `data_parallel_size > 1` (not only `external_launcher`).\n* `vllm/v1/worker/gpu_worker.py` (`execute_dummy_batch`):\n  * When `data_parallel_size > 1`, always `_dummy_run(1)` (no sticky early-return).\n\n## Test Plan\n\nMoRIIO **2P2D wide-EP** (DP16) disaggregated serving, image `vllm/vllm-openai-rocm:nightly`. Front-door: `ROUTER_TYPE=proxy` and `vllm-router`.\n\n### GLM-5.2-FP8 — 2P2D wide-EP DP16\n\n```bash\nexport VLLM_ROCM_USE_AITER=1\nexport VLLM_ROCM_USE_AITER_MLA=1\nexport VLLM_ROCM_USE_AITER_MOE=1\nexport VLLM_ROCM_USE_AITER_RMSNORM=1\nexport VLLM_ROCM_USE_AITER_FUSION_SHARED_EXPERTS=0\n# HT/LL path (unset ALL2ALL_BACKEND); P eager / D PIECEWISE\n\n# PREFILL — master (node0, DP ranks 0–7)\nvllm serve /data/models2/GLM-5.2-FP8 \\\n    --host $PREFILL_IP --port 20005 -tp 1 \\\n    --data-parallel-size 16 \\\n    --data-parallel-size-local 8 \\\n    --data-parallel-address $PREFILL_IP \\\n    --data-parallel-rp",
+    "author": "avininjamay8",
+    "state": "open",
+    "labels": [
+      "bug",
+      "rocm",
+      "mrv1-only"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/53578",
+    "createdAt": "2026-08-24T13:21:57.000Z",
+    "updatedAt": "2026-10-09T12:16:47.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-10-09T06:29:16.754Z",
+    "contentHash": "sha256:49aa3a54c642c0f4e77c53ad71e7a8b73ae25184cce795cc939d06ee0c78f3f6",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-54520",
+    "nodeId": "PR_kwDOI7xefs8AAAABBkLufg",
+    "repository": "vllm-project/vllm",
+    "number": 54520,
+    "type": "pr",
+    "title": "[Kernel] Integrate DeepGEMM NVFP4 MegaMoE with fused shared experts",
+    "bodyExcerpt": "## Summary\r\n\r\nAdd a ModelOpt NVFP4 MegaMoE path backed by DeepGEMM, including fused BF16 shared-expert execution.\r\n\r\n- Quantize NVFP4 activations and stage activation/scales/top-k directly into the symmetric buffer in one Triton launch.\r\n- Transform routed NVFP4 weights/scales into the DeepGEMM layout.\r\n- Fuse compatible BF16 shared experts; keep the ordinary shared path for unsupported modules.\r\n- Keep symmetric-buffer allocation/rendezvous outside forward and CUDA Graph capture.\r\n- Fail closed for unsupported router semantics, dtype, bias, LoRA, alignment, platform, DBO, or missing DeepGEMM APIs.\r\n- Preserve the existing ModelOpt path unless `--moe-backend deep_gemm_mega_moe` is selected.\r\n\r\nRequires a DeepGEMM build containing the NVFP4 MegaMoE APIs from the merged [deepseek-ai/DeepGEMM#409](https://github.com/deepseek-ai/DeepGEMM/pull/409).\r\n\r\n### Why this is not a duplicate\n\nThe related open Kimi K3 and DeepSeek-V4 changes target model-specific paths; this PR is the only open change integrating NVFP4 MegaMoE with the ModelOpt/RoutedExperts path used by GLM-5.2.\n\n### Design and review fixes\r\n\r\n- Replaced `scaled_fp4_quant` plus temporary tensors and four `copy_` calls with direct-to-symmetric-buffer NVFP4 staging.\r\n- Folded FP4 quantization, E4M3 scale packing, top-k conversion, and padding masking into one launch.\r\n- Cached the reciprocal activation global scale outside forward.\r\n- Added fail-closed handling for `apply_router_weight_on_input` and other unsupported configurations.\r\n- Restricted shared fusion to modules whose semantics are preserved; otherwise shared execution remains unfused.\r\n- Fixed the real startup contract found on GB300: router IDs may be `int32` or `int64`, while the symmetric `topk_idx` output is `int64`.\r\n- Expanded contract, padding, dtype, H=6144, and CUDA Graph replay tests.\r\n\r\n## Test Plan\r\n\r\n### Environment\r\n\r\n- 8x GB300, two hosts x four GPUs, DP8/EP8 and TP1.\r\n- Model: `nvidia/GLM-5.2-NVFP4`.\r\n- CUDA 13, PyTorch `2.13.0+cu130`, Fl",
+    "author": "zhou9402",
+    "state": "closed",
+    "labels": [
+      "quantization"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/54520",
+    "createdAt": "2026-08-31T07:05:50.000Z",
+    "updatedAt": "2026-10-09T09:56:03.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-01T05:28:24.707Z",
+    "contentHash": "sha256:a8054936d70990ac3245604e49209536843a93862d8bf0f29ca68791d62e21e4",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-51314",
     "nodeId": "PR_kwDOI7xefs77xdSz",
     "repository": "vllm-project/vllm",
@@ -41,55 +212,6 @@
       "evidence": [
         "【标题】[ROCm][Perf] Skip cleaning sparse prefill MQA logits",
         "【正文】This PR passes `clean_logits=False` to AITER, so the buffer uses `torch.empty` and the fill is removed."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-pr-51309",
-    "nodeId": "PR_kwDOI7xefs77w-6a",
-    "repository": "vllm-project/vllm",
-    "number": 51309,
-    "type": "pr",
-    "title": "[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
-    "bodyExcerpt": "## Summary\r\n\r\nWith cross-layer index sharing, only some attention layers update the shared top-k buffer.\r\nThe old path still remapped that buffer on every layer.\r\n\r\nThis PR runs the remap only when the layer owns an indexer. For GLM-5.2 with\r\n`index_topk_freq = 4`, this reduces remaps from 78 to 21 per forward pass.\r\n\r\n## Safety\r\n\r\n- Layer 0 always owns an indexer, so the shared output is initialized before reuse.\r\n- Non-indexer layers do not change the inputs to the remap.\r\n- The default `index_topk_freq = 1` path is unchanged.\r\n- Speculative decoding still remaps on every layer.\r\n\r\n## Update: indexer and non-indexer layers are two KV cache groups\r\n\r\nhttps://github.com/vllm-project/vllm/pull/53781  added the is_index_group_leader field to MLAAttentionSpec: `is_index_group_leader=self.indexer is not None,`. Layers can only share a KV cache group if they agree on is_index_group_leader, so once the flag is set per layer, indexer and non-indexer layers land in different groups and therefore get different metadata instances with separate paged_kv_indices\r\n\r\n```\r\nindex_group_leader_set = {spec.is_index_group_leader for spec in specs}\r\nassert (\r\n    ...\r\n    and len(index_group_leader_set) == 1\r\n    ...\r\n), (\r\n    \"All attention layers in the same KV cache group must use the same \"\r\n    \"... index-sharing role, ...\"\r\n)\r\n```\r\n\r\nSo, remap should run for all indexer layers and the first non-indexer layer. The two non-indexer layer following the first non-indexer layer doesn't need a remap.\r\n\r\nThe following table shows how the remap condition changed between the commits and how it is implemented by `index_epoch` and  `remapped_epoch`. index_epoch is fixed per layer at construction: it counts indexer writes up to and including that layer - which selection is this layer entitled to read. remapped_epoch lives on the metadata and moves during the pass: it records which selection is currently sitting in that group's paged_kv_indices. A mismatch means the group is holding an older ",
-    "author": "amd-sriram",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "mrv1-only"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/51309",
-    "createdAt": "2026-08-06T21:10:14.000Z",
-    "updatedAt": "2026-10-09T06:27:42.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T07:14:16.853Z",
-    "contentHash": "sha256:86208307a0e0da51dce102e0605d25707b9cd509690d15d2143d23b0550218f2",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "ROCm跳过非索引层冗余稀疏索引重映射",
-      "summaryZh": "优化仅由拥有 indexer 的层执行稀疏索引 remap；非索引层直接进入 MLA kernel，解决跨层索引共享时，旧路径在每一层都重映射共享 top-k 缓冲区，导致非索引层执行冗余 remap；在 MI355X、TP=4、GLM-5.2-MXFP4、index_topk_freq=4 条件下，每次前向 remap 从 78 次降至 21 次；remap kernel 启动次数减少 73.3%，GPU 时间减少 73.0%。默认 index_topk_freq=1 路径及推测解码路径保持不变",
-      "models": [
-        "GLM-5.2-MXFP4"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "面向 ROCm 稀疏索引器和跨层索引共享场景，实测硬件为 MI355X。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[ROCm][Perf] Skip redundant sparse index remap on non-indexer layers",
-        "【正文】This PR runs the remap only when the layer owns an indexer. For GLM-5.2 with index_topk_freq = 4, this reduces remaps من"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",
@@ -193,31 +315,6 @@
     "firstSeenAt": "2026-08-30T05:39:24.275Z",
     "contentHash": "sha256:d9071d48093c6158535892198661ecaeeb652ded03fbb503745436434aa65ccd",
     "category": "PERFORMANCE",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-53578",
-    "nodeId": "PR_kwDOI7xefs8AAAABAzXJEA",
-    "repository": "vllm-project/vllm",
-    "number": 53578,
-    "type": "pr",
-    "title": "[Bugfix][ROCm][Disagg] Always run DP dummy on zero-token ranks (no stale sticky skip)",
-    "bodyExcerpt": "## Purpose\n\nWith `data_parallel_size > 1` and expert parallel enabled, only some DP ranks may hold tokens on a given engine step while others schedule zero tokens. Idle ranks must still run a dummy forward so per-layer EP collectives stay in lockstep; otherwise the busy rank deadlocks in all2all.\n\nToday `execute_model` only runs that dummy when `distributed_executor_backend == \"external_launcher\"`. Multiproc / MoRIIO WideEP disagg uses a different backend, so zero-token ranks skip the dummy and hang.\n\nHeadless / idle ranks may only enter via `Worker.execute_dummy_batch`. That path must also always `_dummy_run(1)` for `dp_size > 1`. Do **not** skip via a sticky latch set by `execute_model`: under dp_lockstep the latch can remain `True` across later engine steps when `execute_dummy_batch` was not paired with the call that set it. Skipping a needed dummy desyncs EP ranks (GLM-5.2 tip WideEP mid-gsm8k hang). Same-step double dummy is safe; a skipped dummy is not.\n\n## Changes\n\n* `vllm/v1/worker/gpu_model_runner.py` (`execute_model`):\n  * On zero-token steps, run `_dummy_run(1)` whenever `data_parallel_size > 1` (not only `external_launcher`).\n* `vllm/v1/worker/gpu_worker.py` (`execute_dummy_batch`):\n  * When `data_parallel_size > 1`, always `_dummy_run(1)` (no sticky early-return).\n\n## Test Plan\n\nMoRIIO **2P2D wide-EP** (DP16) disaggregated serving, image `vllm/vllm-openai-rocm:nightly`. Front-door: `ROUTER_TYPE=proxy` and `vllm-router`.\n\n### GLM-5.2-FP8 — 2P2D wide-EP DP16\n\n```bash\nexport VLLM_ROCM_USE_AITER=1\nexport VLLM_ROCM_USE_AITER_MLA=1\nexport VLLM_ROCM_USE_AITER_MOE=1\nexport VLLM_ROCM_USE_AITER_RMSNORM=1\nexport VLLM_ROCM_USE_AITER_FUSION_SHARED_EXPERTS=0\n# HT/LL path (unset ALL2ALL_BACKEND); P eager / D PIECEWISE\n\n# PREFILL — master (node0, DP ranks 0–7)\nvllm serve /data/models2/GLM-5.2-FP8 \\\n    --host $PREFILL_IP --port 20005 -tp 1 \\\n    --data-parallel-size 16 \\\n    --data-parallel-size-local 8 \\\n    --data-parallel-address $PREFILL_IP \\\n    --data-parallel-rp",
-    "author": "avininjamay8",
-    "state": "open",
-    "labels": [
-      "bug",
-      "rocm",
-      "mrv1-only"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/53578",
-    "createdAt": "2026-08-24T13:21:57.000Z",
-    "updatedAt": "2026-10-08T14:57:33.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-10-09T06:29:16.754Z",
-    "contentHash": "sha256:d008fd3469576f4ba9609405a837703e117db621664b90f58f5f8b6de03402d9",
-    "category": "FIX",
     "categorySource": "rules",
     "summary": null
   },
@@ -500,32 +597,6 @@
     "mergedAt": "2026-10-04T15:55:19.000Z",
     "firstSeenAt": "2026-08-26T02:09:14.386Z",
     "contentHash": "sha256:baf0e0dfa0b735dfe29bd4b7966eef5f2af448e8aee5888d9e822b5b17e6537d",
-    "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-50653",
-    "nodeId": "PR_kwDOI7xefs75SVPk",
-    "repository": "vllm-project/vllm",
-    "number": 50653,
-    "type": "pr",
-    "title": "[Bugfix][KV Offloading] Fix CPU offload block count mismatch across PP ranks",
-    "bodyExcerpt": "### Motivation\r\n\r\nNative CPU offloading computes CPU cache capacity from each worker's KV cache tensors. Under pipeline parallelism, workers may own different numbers or types of layers, so different PP ranks can derive different CPU offload block counts.\r\n\r\nThe scheduler uses the first worker's KV cache config, while workers build offloading specs from their local configs. If the scheduler-side CPU block count is larger than a worker's local CPU buffer capacity, offloaded block IDs can exceed that worker's allocated CPU cache range.\r\n\r\n### Runtime Validation\r\n\r\n  I reproduced the issue with vLLM v0.26.0 using:\r\n\r\n  - Model: `GLM-5.2-NVFP4`\r\n  - `pipeline_parallel_size=4`\r\n  - `tensor_parallel_size=1`\r\n  - Native CPU offloading via `OffloadingConnector`\r\n  - Prefix caching enabled\r\n  - No SSD offloading\r\n\r\n  Before the fix, different PP ranks computed different CPU offload block counts from their local KV cache tensors:\r\n\r\n  ```text\r\n  scheduler/rank0 CPU num_blocks: 35341\r\n  worker/rank0 CPU num_blocks: 35341\r\n  worker/rank1 CPU num_blocks: 34435\r\n  worker/rank2 CPU num_blocks: 34435\r\n  worker/rank3 CPU num_blocks: 36561\r\n  ```\r\n  This confirms the mismatch. Since the scheduler allocates CPU block IDs based on its own CPU block count, rank1/rank2 only had capacity for 34435 blocks while the scheduler could allocate IDs up to 35340. Those IDs would be outside rank1/rank2's CPU buffer range.\r\n\r\n  After applying the fix, all PP ranks used the same unified minimum CPU block count:\r\n  ```text\r\n  scheduler CPU num_blocks: 34435\r\n  worker/rank0 CPU num_blocks: 34435\r\n  worker/rank1 CPU num_blocks: 34435\r\n  worker/rank2 CPU num_blocks: 34435\r\n  worker/rank3 CPU num_blocks: 34435\r\n  ```\r\n  The fixed server also started successfully and returned successful responses:\r\n\r\n  GET /health -> 200\r\n  POST /v1/completions -> 200\r\n\r\n  ### Proposed Changes\r\n\r\n  - Add `num_cpu_blocks` to `KVCacheConfig` and `OffloadingConfig`.\r\n  - Compute CPU offload block capacity for every worker KV",
-    "author": "StellaH-ter",
-    "state": "open",
-    "labels": [
-      "bug",
-      "needs-rebase",
-      "kv-connector",
-      "kv-cache-manager"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/50653",
-    "createdAt": "2026-08-01T03:41:26.000Z",
-    "updatedAt": "2026-10-04T14:56:34.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-21T05:16:41.987Z",
-    "contentHash": "sha256:ffcfc68aa92d5e73578b76d556b1eff309e4ee302e31bf98c036dd6d2e7eaee0",
     "category": "FIX",
     "categorySource": "rules",
     "summary": null
@@ -979,30 +1050,6 @@
     "firstSeenAt": "2026-09-01T05:28:24.707Z",
     "contentHash": "sha256:012f7e052e82c124b4dfbf8a8dd00a095c45513ee6fc1196c7053ea3f3183632",
     "category": "PERFORMANCE",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-issue-54317",
-    "nodeId": "I_kwDOI7xefs8AAAABOwEXGQ",
-    "repository": "vllm-project/vllm",
-    "number": 54317,
-    "type": "issue",
-    "title": "[Bug]: GLM-5.3-Flash (glm5next) — recurring CUDA illegal memory access on 4xB200, surfacing in three unrelated kernels (KDA linear-attention, MHC TileLang, TRT-LLM fused MoE)",
-    "bodyExcerpt": "\n### Your current environment\n\n- Image: `vllm/vllm-openai:glm53-flash-x86_64-cu130` (`sha256:2e771fa615452282cc331eb418b3ef21636fce355bea0491fca89e6d362ab703`, published 2026-08-26 — the newest `glm53-flash` tag on Docker Hub)\n- `vllm.__version__` = `0.1.dev20051+g487ecf187`\n- tilelang 0.1.12\n- 4x NVIDIA B200 (SM100), TP=4, driver healthy: 0 uncorrected ECC, no pending page retirement, no Xid, `Remapping Failure Occurred: No` on all 4 GPUs\n- Model: `zai-org/GLM-5.3-Flash` (`Glm5NextForConditionalGeneration`)\n\nNote this model is not upstream yet (#53906 is open), so this is filed against the day-0 image.\n\n### 🐛 Describe the bug\n\nThe engine dies with `CUDA error: an illegal memory access was encountered` → `EngineDeadError`, repeatedly, under ordinary production chat traffic. Five crashes over ~6 hours, at 22 min / 10 min / 47 min / 2 h 34 min / 62 min of uptime. Before this the same box ran **15.5 h without a crash**, so it is load/state dependent rather than a startup or config error.\n\n**The distinguishing detail: the fault surfaces in three completely unrelated kernel families, and different TP ranks of the same crash report different kernels.**\n\n| Crash | Time (UTC) | Uptime | Faulting frame |\n|---|---|---|---|\n| 1 | 2026-08-28 22:48:48 | 22 min | `glm5next/nvidia/kda.py:581 _forward` → `flash_linear_attention/ops/kda.py:1576 chunk_kda_with_fused_gate` → `:1488 _fwd` → `ops/index.py:27 prepare_chunk_indices` |\n| 2 | 2026-08-28 23:08:46 | 10 min | `glm5next/nvidia/model.py:558 hc_fused_post_pre` → `layers/mhc.py:409 forward_cuda` → `kernels/mhc/tilelang.py:635 mhc_fused_post_pre_tilelang` → `tilelang/jit/kernel.py:202` |\n| 3 | 2026-08-29 00:18:55 | 47 min | same as #2 (`mhc_fused_post_pre_tilelang`) |\n| 4 | 2026-08-29 02:58:08 | 2 h 34 min | **mixed per rank**: 3 ranks `mhc_fused_post_pre_tilelang` / `mhc_pre_big_fuse_with_norm_tilelang` (TileLang, `CUDA_ERROR_ILLEGAL_ADDRESS`); 1 rank `chunk_kda_with_fused_gate` (`kda.py:581`, Triton) |\n| 5 | 2026-08-29 05:04:08 ",
-    "author": "erans",
-    "state": "open",
-    "labels": [
-      "kimi",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/54317",
-    "createdAt": "2026-08-29T05:42:52.000Z",
-    "updatedAt": "2026-09-19T22:13:12.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-29T07:16:20.199Z",
-    "contentHash": "sha256:1f38288bfb4b1e78ac4d612bc3cfe12303354e7b40144861041ef6c755e5e5eb",
-    "category": "BUG",
     "categorySource": "rules",
     "summary": null
   },
@@ -2257,29 +2304,6 @@
     "summary": null
   },
   {
-    "id": "vllm-pr-54520",
-    "nodeId": "PR_kwDOI7xefs8AAAABBkLufg",
-    "repository": "vllm-project/vllm",
-    "number": 54520,
-    "type": "pr",
-    "title": "[Kernel] Integrate DeepGEMM NVFP4 MegaMoE with fused shared experts",
-    "bodyExcerpt": "## Summary\r\n\r\nAdd a ModelOpt NVFP4 MegaMoE path backed by DeepGEMM, including fused BF16 shared-expert execution.\r\n\r\n- Quantize NVFP4 activations and stage activation/scales/top-k directly into the symmetric buffer in one Triton launch.\r\n- Transform routed NVFP4 weights/scales into the DeepGEMM layout.\r\n- Fuse compatible BF16 shared experts; keep the ordinary shared path for unsupported modules.\r\n- Keep symmetric-buffer allocation/rendezvous outside forward and CUDA Graph capture.\r\n- Fail closed for unsupported router semantics, dtype, bias, LoRA, alignment, platform, DBO, or missing DeepGEMM APIs.\r\n- Preserve the existing ModelOpt path unless `--moe-backend deep_gemm_mega_moe` is selected.\r\n\r\nRequires a DeepGEMM build containing the NVFP4 MegaMoE APIs from the merged [deepseek-ai/DeepGEMM#409](https://github.com/deepseek-ai/DeepGEMM/pull/409).\r\n\r\n### Why this is not a duplicate\n\nThe related open Kimi K3 and DeepSeek-V4 changes target model-specific paths; this PR is the only open change integrating NVFP4 MegaMoE with the ModelOpt/RoutedExperts path used by GLM-5.2.\n\n### Design and review fixes\r\n\r\n- Replaced `scaled_fp4_quant` plus temporary tensors and four `copy_` calls with direct-to-symmetric-buffer NVFP4 staging.\r\n- Folded FP4 quantization, E4M3 scale packing, top-k conversion, and padding masking into one launch.\r\n- Cached the reciprocal activation global scale outside forward.\r\n- Added fail-closed handling for `apply_router_weight_on_input` and other unsupported configurations.\r\n- Restricted shared fusion to modules whose semantics are preserved; otherwise shared execution remains unfused.\r\n- Fixed the real startup contract found on GB300: router IDs may be `int32` or `int64`, while the symmetric `topk_idx` output is `int64`.\r\n- Expanded contract, padding, dtype, H=6144, and CUDA Graph replay tests.\r\n\r\n## Test Plan\r\n\r\n### Environment\r\n\r\n- 8x GB300, two hosts x four GPUs, DP8/EP8 and TP1.\r\n- Model: `nvidia/GLM-5.2-NVFP4`.\r\n- CUDA 13, PyTorch `2.13.0+cu130`, Fl",
-    "author": "zhou9402",
-    "state": "closed",
-    "labels": [
-      "quantization"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/54520",
-    "createdAt": "2026-08-31T07:05:50.000Z",
-    "updatedAt": "2026-09-03T04:19:36.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-01T05:28:24.707Z",
-    "contentHash": "sha256:73f924fafb74ce5c9e6a8a8118a657b3a5155f55fda5bdf1d1079dd80a3e7469",
-    "category": "NEW_SUPPORT",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
     "id": "vllm-pr-50883",
     "nodeId": "PR_kwDOI7xefs76Fy43",
     "repository": "vllm-project/vllm",
@@ -3028,29 +3052,6 @@
     "mergedAt": null,
     "firstSeenAt": "2026-08-28T11:38:19.166Z",
     "contentHash": "sha256:22bb77312ba4379ab9900667ed967c0a4963363cad74c4517e6d8e66283fdf21",
-    "category": "BUG",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-issue-53982",
-    "nodeId": "I_kwDOI7xefs8AAAABObhizQ",
-    "repository": "vllm-project/vllm",
-    "number": 53982,
-    "type": "issue",
-    "title": "[Bug]: _compute_slot_mapping_kernel reads block_table out of bounds for cache groups whose block table is narrower than the sequence",
-    "bodyExcerpt": "### Summary\n\n`_compute_slot_mapping_kernel` in `vllm/v1/worker/block_table.py` masks its block-table load by\ntoken validity and CP ownership, but **not** by whether the computed column index is inside the\nrow. Any KV cache group whose block table does not span the sequence in raw token positions\ntherefore performs an unbounded out-of-bounds read, scaling with sequence length.\n\nOn 8× MI325X (gfx942, ROCm 7.2.3) this eventually crosses into an unmapped page and takes down\nevery rank with `Memory access fault by GPU node-N ... Reason: Unknown`.\n\n### The missing guard\n\n`vllm/v1/worker/block_table.py` @ `main` `94d96e24`:\n\n```python\nblock_indices = (                                    # :463-466\n    virtual_block_indices * BLOCKS_PER_KV_BLOCK\n    + local_block_offsets // block_size\n)\nblock_numbers = tl.load(                             # :467-471\n    block_table_ptr + row_offset + block_indices,\n    mask=mask & is_local,                            # :469  ← no range term\n    other=0,\n).to(tl.int64)\nslot_offsets = local_block_offsets % block_size\nslot_ids = block_numbers * block_size + slot_offsets\nslot_ids = tl.where(is_local, slot_ids, PAD_ID)      # :474  ← no range term\n```\n\nThe model-side QSA slot helpers in #53896 do bound this (`valid &= logical_blocks < block_table.shape[1]`\nand a clamp before indexing); the generic kernel is the one path we found that does not.\n\n### Two independent instances, both from in-flight model PRs\n\nNeither spec class is on `main` yet; both are added by open PRs, and each declares a\n**one-block-per-request** side cache that the kernel then indexes with **raw token positions**:\n\n| PR | spec | `max_num_blocks_per_req()` | effective row width | index computed |\n|---|---|---|---|---|\n| #53896 (Qwen3.8-Flash-Next) | `CircularBufferSpec` | `1` | 128 tokens (after the 128-token alignment in `get_block_table_width`) | `pos // 8` |\n| #53906 (GLM-5.3-Flash) | `KpoolTailSpec` | `1` | 128 tokens | `pos // index_kpool` |\n\nBoth reach the kernel because ",
-    "author": "zzw09773",
-    "state": "open",
-    "labels": [
-      "rocm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/53982",
-    "createdAt": "2026-08-27T02:45:09.000Z",
-    "updatedAt": "2026-08-29T07:51:42.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-27T10:07:19.897Z",
-    "contentHash": "sha256:e6baf10cdfae2768b7de38e64ad9885bd7b557e65e9fdce5a280229c023cabbc",
     "category": "BUG",
     "categorySource": "rules",
     "summary": null
