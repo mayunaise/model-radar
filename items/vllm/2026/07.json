@@ -1,5 +1,126 @@
 [
   {
+    "id": "vllm-issue-48380",
+    "nodeId": "I_kwDOI7xefs8AAAABIfzCNQ",
+    "repository": "vllm-project/vllm",
+    "number": 48380,
+    "type": "issue",
+    "title": "[Bug]: DSpark/DFlash speculative decoding fails to load with --kv-cache-dtype fp8_ds_mla: draft inherits an MLA-only cache layout",
+    "bodyExcerpt": "### Summary\n\nLaunching a DSA-family target (GLM-5.2, DeepSeek-V3.2) with `--kv-cache-dtype fp8_ds_mla` and a DSpark speculator fails during draft-model load:\n\n```\nValueError: No valid attention backend found for cuda with\nAttentionSelectorConfig(head_size=64, dtype=torch.bfloat16,\nkv_cache_dtype=fp8_ds_mla, use_mla=False, use_non_causal=True, ...).\nReasons: {FLASH_ATTN: [kv_cache_dtype not supported], FLASHINFER: [kv_cache_dtype\nnot supported], TRITON_ATTN: [kv_cache_dtype not supported], FLEX_ATTENTION:\n[kv_cache_dtype not supported], TURBOQUANT: [kv_cache_dtype not supported,\nnon-causal attention not supported]}\n```\n\nThe DSpark draft is a dense (non-MLA) Qwen3-style transformer, but `load_dspark_model` builds the draft's `VllmConfig` with the target's `cache_config`, so the draft's attention layers try to use the MLA-only `fp8_ds_mla` layout, which no dense backend accepts.\n\nRelated but distinct from #47934 (FP4 target on B300, crashes later in FlashInfer draft attention) and #47626 (H20 fp8): the underlying issue — the draft inheriting a target-only kv-cache dtype — looks common to this family.\n\n### Repro\n\n```bash\nvllm serve nvidia/GLM-5.2-NVFP4 \\\n  --tensor-parallel-size 4 \\\n  --kv-cache-dtype fp8_ds_mla \\\n  --speculative-config '{\"method\":\"dspark\",\"model\":\"RedHatAI/GLM-5.2-speculator.dspark\",\"num_speculative_tokens\":7}'\n```\n\nNeeds the fix from #48378 to get this far on current main (fp8_ds_mla does not boot at all otherwise).\n\n### Fix\n\nIn `load_dspark_model`, fall back to the model dtype for the draft's cache config when the target uses an MLA-only layout. With that one change the server boots and DSpark produces coherent output end-to-end on 4×H200 (GLM-5.2-NVFP4 target, TP4): 95 tok/s N=1, mean accepted length ~2.4.\n\nThe accompanying PR also adds a config-validation fail-fast for DCP>1 + dflash/dspark: the draft slot mapping is DCP-blind, so acceptance silently collapses to ~0% (as reported in the #46514 discussion).\n\n*AI assistance (Claude) was used to bisec",
+    "author": "drakosha",
+    "state": "open",
+    "labels": [
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/48380",
+    "createdAt": "2026-07-12T03:04:18.000Z",
+    "updatedAt": "2026-10-11T02:01:00.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-10-11T06:10:38.433Z",
+    "contentHash": "sha256:3ab38d41a792d0d8492ec9667e9d62c5ef796df37172ebeced66c7b4add70dab",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-48405",
+    "nodeId": "I_kwDOI7xefs8AAAABIhZFWQ",
+    "repository": "vllm-project/vllm",
+    "number": 48405,
+    "type": "issue",
+    "title": "[Bug]: glm-5.2-fp8 with --kvcache-dtype fp8 with h20-3e error",
+    "bodyExcerpt": "### Your current environment\n\nglm-5.2-fp8 with --kvcache-dtype fp8 with h20-3e error\n\n(EngineCore pid=319) RuntimeError: Worker failed with error 'shape '[512, 64, 576]' is invalid for input of size 21495808', please check the stack trace above for the root cause\n\n\n(EngineCore pid=319) RuntimeError: Worker failed with error 'shape '[192, 64, 576]' is invalid for input of size 8060928', please check the stack trace above for the root cause\n\n### 🐛 Describe the bug\n\n(EngineCore pid=319) RuntimeError: Worker failed with error 'shape '[512, 64, 576]' is invalid for input of size 21495808', please check the stack trace above for the root cause\n\n\n(EngineCore pid=319) RuntimeError: Worker failed with error 'shape '[192, 64, 576]' is invalid for input of size 8060928', please check the stack trace above for the root cause\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "yiminghub2024",
+    "state": "open",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/48405",
+    "createdAt": "2026-07-12T11:31:52.000Z",
+    "updatedAt": "2026-10-11T02:00:56.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:7c0c669869bbcb56438b397d5cc90f0acc42a4fed5a9a221c31003869adb0798",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.2-FP8 KV Cache FP8 形状错误",
+      "summaryZh": "GLM-5.2-FP8 使用 FP8 KV cache 在 H20-3E 上运行：使用 --kvcache-dtype fp8 启动 GLM-5.2-FP8 时，Worker 报错，张量无法重塑为“[512, 64, 576]”或“[192, 64, 576]”",
+      "models": [
+        "GLM-5.2-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "H20-3E 上启用 FP8 KV cache 的运行场景。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】glm-5.2-fp8 with --kvcache-dtype fp8 with h20-3e error",
+        "【正文】RuntimeError: Worker failed with error 'shape '[512, 64, 576]' is invalid for input of size 21495808'"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-48406",
+    "nodeId": "I_kwDOI7xefs8AAAABIhZN5Q",
+    "repository": "vllm-project/vllm",
+    "number": 48406,
+    "type": "issue",
+    "title": "[Bug]: glm-5.2-fp8 with --kvcache-dtype fp8 with h20-3e with dspark error",
+    "bodyExcerpt": "### Your current environment\n\nglm-5.2-fp8 with --kvcache-dtype fp8 with h20-3e with dspark error\n\n ValueError: No valid attention backend found for cuda with AttentionSelectorConfig(head_size=64, dtype=torch.bfloat16, kv_cache_dtype=fp8_ds_mla, block_size=None, use_mla=False, has_sink=False, use_sparse=False, use_mm_prefix=False, use_per_head_quant_scales=False, attn_type=AttentionType.DECODER, use_non_causal=True, use_batch_invariant=False, use_kv_connector=False). Reasons: {FLASH_ATTN: [kv_cache_dtype not supported], FLASHINFER: [kv_cache_dtype not supported], TRITON_ATTN: [kv_cache_dtype not supported], FLEX_ATTENTION: [kv_cache_dtype not supported], TURBOQUANT: [kv_cache_dtype not supported, non-causal attention not supported]}.\n\n### 🐛 Describe the bug\n\n ValueError: No valid attention backend found for cuda with AttentionSelectorConfig(head_size=64, dtype=torch.bfloat16, kv_cache_dtype=fp8_ds_mla, block_size=None, use_mla=False, has_sink=False, use_sparse=False, use_mm_prefix=False, use_per_head_quant_scales=False, attn_type=AttentionType.DECODER, use_non_causal=True, use_batch_invariant=False, use_kv_connector=False). Reasons: {FLASH_ATTN: [kv_cache_dtype not supported], FLASHINFER: [kv_cache_dtype not supported], TRITON_ATTN: [kv_cache_dtype not supported], FLEX_ATTENTION: [kv_cache_dtype not supported], TURBOQUANT: [kv_cache_dtype not supported, non-causal attention not supported]}.\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "yiminghub2024",
+    "state": "open",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/48406",
+    "createdAt": "2026-07-12T11:32:37.000Z",
+    "updatedAt": "2026-10-11T02:00:53.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:e0b96b26220af9597abfd09dd963321cde2256ac14e841a0181cad1d50c63fe6",
+    "category": "COMPATIBILITY",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.2-FP8 使用 FP8 KV Cache 无可用注意力后端",
+      "summaryZh": "GLM-5.2-FP8 在 H20-3E 与 DSpark 环境中启用 FP8 KV Cache：使用 --kvcache-dtype fp8 时，CUDA 注意力后端选择失败并抛出 ValueError；FLASH_ATTN、FLASHINFER、TRITON_ATTN、FLEX_ATTENTION 和 TURBOQUANT 均不支持 kv_cache_dtype=fp8_ds_mla，且 TURBOQUANT 不支持非因果注意力；该配置无法选择有效的注意力后端",
+      "models": [
+        "GLM-5.2-FP8"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "COMPATIBILITY",
+      "severity": "HIGH",
+      "impactScopeZh": "影响在 H20-3E、DSpark 环境中使用 FP8 KV Cache 的 CUDA 推理配置。",
+      "attention": "IMMEDIATE",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】glm-5.2-fp8 with --kvcache-dtype fp8 with h20-3e with dspark error",
+        "【正文】ValueError: No valid attention backend found ... kv_cache_dtype=fp8_ds_mla"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-issue-49349",
     "nodeId": "I_kwDOI7xefs8AAAABJn8gYg",
     "repository": "vllm-project/vllm",
@@ -3656,102 +3777,6 @@
       "evidence": [
         "【标题】GLM-5.2 nvpf4 quantization not loading with TP",
         "【正文】torch.AcceleratorError: CUDA error: an illegal memory access was encountered"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-48406",
-    "nodeId": "I_kwDOI7xefs8AAAABIhZN5Q",
-    "repository": "vllm-project/vllm",
-    "number": 48406,
-    "type": "issue",
-    "title": "[Bug]: glm-5.2-fp8 with --kvcache-dtype fp8 with h20-3e with dspark error",
-    "bodyExcerpt": "### Your current environment\n\nglm-5.2-fp8 with --kvcache-dtype fp8 with h20-3e with dspark error\n\n ValueError: No valid attention backend found for cuda with AttentionSelectorConfig(head_size=64, dtype=torch.bfloat16, kv_cache_dtype=fp8_ds_mla, block_size=None, use_mla=False, has_sink=False, use_sparse=False, use_mm_prefix=False, use_per_head_quant_scales=False, attn_type=AttentionType.DECODER, use_non_causal=True, use_batch_invariant=False, use_kv_connector=False). Reasons: {FLASH_ATTN: [kv_cache_dtype not supported], FLASHINFER: [kv_cache_dtype not supported], TRITON_ATTN: [kv_cache_dtype not supported], FLEX_ATTENTION: [kv_cache_dtype not supported], TURBOQUANT: [kv_cache_dtype not supported, non-causal attention not supported]}.\n\n### 🐛 Describe the bug\n\n ValueError: No valid attention backend found for cuda with AttentionSelectorConfig(head_size=64, dtype=torch.bfloat16, kv_cache_dtype=fp8_ds_mla, block_size=None, use_mla=False, has_sink=False, use_sparse=False, use_mm_prefix=False, use_per_head_quant_scales=False, attn_type=AttentionType.DECODER, use_non_causal=True, use_batch_invariant=False, use_kv_connector=False). Reasons: {FLASH_ATTN: [kv_cache_dtype not supported], FLASHINFER: [kv_cache_dtype not supported], TRITON_ATTN: [kv_cache_dtype not supported], FLEX_ATTENTION: [kv_cache_dtype not supported], TURBOQUANT: [kv_cache_dtype not supported, non-causal attention not supported]}.\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
-    "author": "yiminghub2024",
-    "state": "open",
-    "labels": [
-      "bug"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/48406",
-    "createdAt": "2026-07-12T11:32:37.000Z",
-    "updatedAt": "2026-07-13T00:44:41.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:8bdac203734def5b2c05c20f42e5127b5ef6f74f62b2a6fed3b7bafb1d801837",
-    "category": "COMPATIBILITY",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5.2-FP8 使用 FP8 KV Cache 无可用注意力后端",
-      "summaryZh": "GLM-5.2-FP8 在 H20-3E 与 DSpark 环境中启用 FP8 KV Cache：使用 --kvcache-dtype fp8 时，CUDA 注意力后端选择失败并抛出 ValueError；FLASH_ATTN、FLASHINFER、TRITON_ATTN、FLEX_ATTENTION 和 TURBOQUANT 均不支持 kv_cache_dtype=fp8_ds_mla，且 TURBOQUANT 不支持非因果注意力；该配置无法选择有效的注意力后端",
-      "models": [
-        "GLM-5.2-FP8"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "COMPATIBILITY",
-      "severity": "HIGH",
-      "impactScopeZh": "影响在 H20-3E、DSpark 环境中使用 FP8 KV Cache 的 CUDA 推理配置。",
-      "attention": "IMMEDIATE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】glm-5.2-fp8 with --kvcache-dtype fp8 with h20-3e with dspark error",
-        "【正文】ValueError: No valid attention backend found ... kv_cache_dtype=fp8_ds_mla"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-48405",
-    "nodeId": "I_kwDOI7xefs8AAAABIhZFWQ",
-    "repository": "vllm-project/vllm",
-    "number": 48405,
-    "type": "issue",
-    "title": "[Bug]: glm-5.2-fp8 with --kvcache-dtype fp8 with h20-3e error",
-    "bodyExcerpt": "### Your current environment\n\nglm-5.2-fp8 with --kvcache-dtype fp8 with h20-3e error\n\n(EngineCore pid=319) RuntimeError: Worker failed with error 'shape '[512, 64, 576]' is invalid for input of size 21495808', please check the stack trace above for the root cause\n\n\n(EngineCore pid=319) RuntimeError: Worker failed with error 'shape '[192, 64, 576]' is invalid for input of size 8060928', please check the stack trace above for the root cause\n\n### 🐛 Describe the bug\n\n(EngineCore pid=319) RuntimeError: Worker failed with error 'shape '[512, 64, 576]' is invalid for input of size 21495808', please check the stack trace above for the root cause\n\n\n(EngineCore pid=319) RuntimeError: Worker failed with error 'shape '[192, 64, 576]' is invalid for input of size 8060928', please check the stack trace above for the root cause\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
-    "author": "yiminghub2024",
-    "state": "open",
-    "labels": [
-      "bug"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/48405",
-    "createdAt": "2026-07-12T11:31:52.000Z",
-    "updatedAt": "2026-07-12T11:33:00.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:085129bfb8757017376612f1e1821419261d45a8a3f6fcb1bf128c5487c5c775",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5.2-FP8 KV Cache FP8 形状错误",
-      "summaryZh": "GLM-5.2-FP8 使用 FP8 KV cache 在 H20-3E 上运行：使用 --kvcache-dtype fp8 启动 GLM-5.2-FP8 时，Worker 报错，张量无法重塑为“[512, 64, 576]”或“[192, 64, 576]”",
-      "models": [
-        "GLM-5.2-FP8"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "H20-3E 上启用 FP8 KV cache 的运行场景。",
-      "attention": "IMMEDIATE",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】glm-5.2-fp8 with --kvcache-dtype fp8 with h20-3e error",
-        "【正文】RuntimeError: Worker failed with error 'shape '[512, 64, 576]' is invalid for input of size 21495808'"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",

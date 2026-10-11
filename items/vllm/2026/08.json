@@ -1,5 +1,153 @@
 [
   {
+    "id": "vllm-pr-51339",
+    "nodeId": "PR_kwDOI7xefs770auL",
+    "repository": "vllm-project/vllm",
+    "number": 51339,
+    "type": "pr",
+    "title": "[Model Loader][Perf] Auto-prefetch VirtioFS checkpoints",
+    "bodyExcerpt": "<!-- markdownlint-disable -->\n## Overview\n\nEnable the existing RAM-guarded safetensors auto-prefetch path for VirtioFS checkpoints. Explicit `lazy` remains an opt-out.\n\n## Claims\n\n- Automatic selection includes `virtiofs` alongside NFS, NFS4, and Lustre, only when the strategy is unset and checkpoint size is at most 90% of available RAM.\n- The change reuses the existing prefetch helper and renames the internal filesystem classification to cover host/guest shared filesystems.\n- A prior GLM-5.2 loading run demonstrated the benefit of that helper on one VirtioFS configuration; the measurements below are not a fresh benchmark of automatic selection.\n\n## Validation\n\nValidated on 2026-10-10 at published head `899bca4acb` and in a temporary merge with upstream `276fbcff2717bd934cfa37c8a2e4c391f3e7237b`. The published branch was not rebased.\n\n```sh\nVLLM_TARGET_DEVICE=cpu CUDA_VISIBLE_DEVICES='' .venv/bin/python -m pytest tests/model_executor/model_loader/test_weight_utils.py tests/test_config.py -k 'auto_prefetch_selection or safetensors_load_strategy' -q\n.venv/bin/pre-commit run --hook-stage manual --files vllm/config/load.py vllm/model_executor/model_loader/weight_utils.py tests/model_executor/model_loader/test_weight_utils.py\n```\n\nThe five loader/config cases pass on both versions; all applicable scoped hooks pass. Removing `virtiofs` from the filesystem set gives **1 failure and 4 passes**. Tests replace filesystem/RAM detection and prefetch selection, then load real safetensors values.\n\nHistorical GLM-5.2 loading measurement, with a 1403.19 GiB checkpoint fitting available RAM:\n\n| Configuration | Model loading |\n| --- | ---: |\n| Default path before this change, VirtioFS detected but prefetch disabled | 1596.999 s |\n| Explicit `prefetch`, application startup completed | 70.676 s |\n\nThese are individual original runs, not repeated measurements. No VirtioFS mount was available for this review. The automatic branch selects the same helper after the RAM guard.\n\n## Details\n\n",
+    "author": "bvolpato",
+    "state": "open",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/pull/51339",
+    "createdAt": "2026-08-07T01:02:07.000Z",
+    "updatedAt": "2026-10-11T01:02:34.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-30T05:39:24.275Z",
+    "contentHash": "sha256:2a2162889f6851be95b39d79ad260741c013121b48372f9954001c2c3de8a4c8",
+    "category": "PERFORMANCE",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-53739",
+    "nodeId": "PR_kwDOI7xefs8AAAABA8tfqQ",
+    "repository": "vllm-project/vllm",
+    "number": 53739,
+    "type": "pr",
+    "title": "[Bugfix][Parser] Terminate streamed tool arguments the flush cannot extend",
+    "bodyExcerpt": "## Purpose\n\nA streaming tool call can end with `finish_reason` set while `arguments` is cut off mid-string. Any client that calls `json.loads` on the accumulated arguments fails on it. Reproduced live on Qwen3.8-27B in 7 of 25 requests sent straight at the worker, no proxy in the path.\n\n`_safe_arg_prefix` (`parser_engine.py:299` on main at `8a2364605c0b`) deliberately streams unterminated string values for prefix-stable keys. Its own docstring (`:306-308`) carries the contract: \"String values for keys in `string_keys` are prefix-stable, so stream their unterminated content instead of buffering long arguments until the closing tag arrives.\" Something has to close them, and that something is the flush.\n\n`_flush_arg_converter` (`parser_engine.py:1052` on main) re-derives the arguments with `partial=False`. Four of the seven in-tree converters build their result from completed parameters and fold the still-open one in only under `if partial:`. So when generation ends while a parameter is open, the non-partial re-derivation **drops that parameter**, and the result is neither longer than nor a prefix of what was already streamed. Both guards (`:1068-1070`) fail, the function returns `None`, and nothing ever terminates the prefix the client is holding.\n\nThis is not conditional on the model misbehaving. Anything that ends generation with a parameter open reaches it: a `max_tokens` stop, a stop string, or a malformed continuation.\n\n### Blast radius, measured\n\nOn main at `8a2364605c0b`, 13 engine parsers set an `arg_converter`, through 7 converters. Each converter called directly with one complete and one open string parameter:\n\n| converter | parsers | `partial=True` -> `partial=False` |\n|---|---|---|\n| `_qwen3_arg_converter` | qwen3, seed_oss, nemotron_v3, granite_thinking_parser | drops the open parameter, 75 chars -> 21 |\n| `_minimax_m2_arg_converter` | minimax_m2 | drops the open parameter, 75 -> 21 |\n| `_glm47_arg_converter` | glm47_moe, ling3 | drops the open parameter,",
+    "author": "amittell",
+    "state": "open",
+    "labels": [
+      "bug",
+      "tool-calling",
+      "qwen",
+      "inkling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/53739",
+    "createdAt": "2026-08-25T14:20:59.000Z",
+    "updatedAt": "2026-10-10T14:25:53.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-26T02:09:14.386Z",
+    "contentHash": "sha256:dbce2f25abc100d2421770813de37f00521adf560bb3dc5fa734a1898384d85a",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-54396",
+    "nodeId": "PR_kwDOI7xefs8AAAABBfDjCA",
+    "repository": "vllm-project/vllm",
+    "number": 54396,
+    "type": "pr",
+    "title": "[Bugfix][Multimodal] Guard GLMGA video sampling against zero source fps",
+    "bodyExcerpt": "## Motivation\n\n`GLMGAVideoBackend.compute_frames_index_to_sample` divides by `source.original_fps` in two places — the duration fallback (`round(max_frame_idx / original_fps) + 1`) and `duration_per_frame = 1 / original_fps` — without validating it. vLLM reports `original_fps == 0` for clips with an unknown or variable frame rate (VFR, malformed containers, failed webcam captures), so those inputs crash with a bare `ZeroDivisionError: float division by zero`.\n\nEvery other fps-driven backend in `vllm/multimodal/video.py` already guards this (`Qwen2VLVideoBackend`, `Qwen3VLVideoBackend`, `GLM46VVideoBackend`, and `Molmo2VideoBackend` in fps mode); GLMGA is the remaining one without the check.\n\n## Modifications\n\n- Added the same `original_fps <= 0` guard to `GLMGAVideoBackend`, raising a descriptive `ValueError` that names the backend and the cause, mirroring the existing Qwen2-VL / Qwen3-VL behavior.\n- Added a regression test covering both crash paths (duration reported vs. duration missing).\n\n## Verification\n\n- `pytest tests/multimodal/test_video.py::test_glmga_video_backend_rejects_unknown_source_fps` -> 1 passed.\n- On unpatched `main`, the same test fails with `ZeroDivisionError: float division by zero` for both `duration=5.0` (at `duration_per_frame = 1 / original_fps`) and `duration=0.0` (at the duration fallback).\n- Neighbor sampling tests `pytest tests/multimodal/test_video.py -k glm46v`: 12 passed; the single failure (`test_video_processor_from_model_repo[glm46v]`) is an unrelated missing `av` module in my local environment and fails identically on unpatched `main`.\n\n## Duplicate check\n\nSearched open PRs and issues for `glmga`, `glmga fps`, and `video original_fps`: nothing covers the GLMGA backend. #53844 fixes the same bug class for `Qwen3VLVideoBackend` only and does not touch GLMGA; this PR is scoped to GLMGA so the two can land independently.\n\n## AI assistance\n\nThis change was developed with AI assistance (bug identification, patch, and regression test). ",
+    "author": "blueOf",
+    "state": "open",
+    "labels": [
+      "bug",
+      "multi-modality",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/54396",
+    "createdAt": "2026-08-30T05:40:44.000Z",
+    "updatedAt": "2026-10-10T10:42:08.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-31T05:54:38.982Z",
+    "contentHash": "sha256:b53fadcac73cecb7b2203c24f606665e4a5b82f92add2edfce0e92cdd4be6d53",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-50933",
+    "nodeId": "PR_kwDOI7xefs76RqEc",
+    "repository": "vllm-project/vllm",
+    "number": 50933,
+    "type": "pr",
+    "title": "[Bugfix] Resolve $ref/$defs in tool schemas and preserve definitions",
+    "bodyExcerpt": "## Purpose\n\nFixes #46924. Supersedes #46925 (incomplete fix) and #46170 (`pop`→`get` only).\n\nTool schemas generated by Pydantic v2 use `$defs`/`$ref` to define nested types. Two bugs caused nested object arguments (e.g. `{\"kind\": \"week\"}`) to be double-encoded as JSON strings:\n\n1. **No `$ref` resolution** — `find_tool_properties()` returned raw `$ref` pointers, and `extract_types_from_schema()` fell back to `[\"string\"]` for unresolved references. This caused nested objects to be treated as strings.\n\n2. **Destructive `pop(\"$defs\")`** — `_get_tool_schema_defs()` used `params.pop(\"$defs\", {})`, mutating the tool's parameter dict. On the streaming/engine path where `_get_tool_schema_defs` runs before `find_tool_properties`, the `$defs` were already gone, making ref resolution impossible even if added.\n\n### Fix\n\n- Add `_resolve_refs()` helper that inlines `$ref` pointers against `$defs` (Pydantic v2) and `definitions` (JSON Schema draft-07), with JSON Pointer escape decoding (`~0`→`~`, `~1`→`/`) and bounded recursion for cyclic schemas.\n- Extract `_resolved_tool_properties()` to unify resolution for both definition namespaces.\n- Update `find_tool_properties()` to resolve refs before returning — all downstream callers (qwen3_coder, deepseek_v32, seed_oss, glm4_moe, parser engine) automatically get concrete type information.\n- Change `params.pop(\"$defs\", {})` to `params.get(\"$defs\", {})` in `_get_tool_schema_defs()` so definitions survive for subsequent argument coercion.\n\n### Credit\n\nThis fix incorporates insights from:\n- @hclsys who identified the `pop` ordering issue in #46925\n- @alexeldeib who provided a complete supplementary patch with legacy defs support, cycle protection, and JSON Pointer decoding based on production traffic\n\n## Test Plan\n\n```bash\n# New ref-resolution tests\n.venv/bin/python -m pytest tests/tool_parsers/test_utils.py::TestFindToolPropertiesRefResolution -v\n\n# New defs-preservation tests  \n.venv/bin/python -m pytest tests/tool_parsers/test_utils.py::",
+    "author": "ben7am1n",
+    "state": "open",
+    "labels": [
+      "bug",
+      "needs-rebase",
+      "tool-calling",
+      "qwen",
+      "deepseek"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/50933",
+    "createdAt": "2026-08-04T00:01:28.000Z",
+    "updatedAt": "2026-10-10T08:14:06.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-23T04:59:29.150Z",
+    "contentHash": "sha256:138e6a0241d7f2b14f68e650f62ce6307f46f6de80e3e1700e0c68375de1848c",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-51314",
+    "nodeId": "PR_kwDOI7xefs77xdSz",
+    "repository": "vllm-project/vllm",
+    "number": 51314,
+    "type": "pr",
+    "title": "[ROCm][Perf] Skip cleaning sparse prefill MQA logits",
+    "bodyExcerpt": "## Summary\n\nThe sparse prefill path creates the MQA-logits buffer with `torch.full(..., -inf)`.\nThis launches an FP32 fill before every logits kernel.\n\nThis PR passes `clean_logits=False` to AITER, so the buffer uses `torch.empty`\nand the fill is removed.\n\n## Safety\n\nThe only consumer is `top_k_per_row_prefill`. It reads each row only inside\n`[cu_seqlen_ks, cu_seqlen_ke)`. Its vectorized path also guards the final partial\nload, so padding values are never read. The top-k result is unchanged.\n\n## Results\n\nMI355X, TP=4, rank 0, comparable before/after captures:\n\n| metric | before | after |\n|---|---:|---:|\n| FP32 fill launches | 18,162 | **0** |\n| FP32 fill GPU time | 1,250.2 ms | **0 ms** |\n| MQA-logits launches | 18,108 | 17,930 |\n\nThe removed fill was **0.89% of total GPU kernel time**. In the sample below it\ntakes 74.6 µs and is fully serialized before the logits kernel.\n\n![Before: FP32 fill before MQA logits](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr4_before.png)\n\n![After: fill removed](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr4_after.png)\n\n## Model-level e2e results\n\n### Test conditions\n\n| | |\n|---|---|\n| Hardware | MI355X (gfx950), TP=4 |\n| Model | `amd/GLM-5.2-MXFP4`, fp8 KV cache |\n| Stack | vLLM `69715823`, AITER `4a1cc77`, flydsl `0.3.0` |\n| Server | `--async-scheduling --max-num-seqs 256 --max-num-batched-tokens 16384 --block-size 64 --no-enable-prefix-caching`, `index_topk_freq=4` |\n| Env | `VLLM_ROCM_USE_AITER=1`, `VLLM_ROCM_USE_AITER_SPARSE_INDEXER=1`, `AITER_USE_FLYDSL_MOE_SORTING=1`, `VLLM_ROCM_QUICK_REDUCE_QUANTIZATION=INT4` |\n| Perf | `vllm bench serve`, random dataset, `--ignore-eos --request-rate inf`, ISL 1024 and 8192, OSL 1024, concurrency 1-256 (16 points) |\n| Accuracy | `lm_eval` gsm8k 5-shot chat template with thinking enabled, `max_gen_toks=8192`; RULER `niah_single_2` at 16k |\n| Sampling | checkpoint default (tempe",
+    "author": "amd-sriram",
+    "state": "open",
+    "labels": [
+      "rocm",
+      "ready"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/51314",
+    "createdAt": "2026-08-06T21:41:17.000Z",
+    "updatedAt": "2026-10-10T06:34:23.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T07:14:16.853Z",
+    "contentHash": "sha256:c0c46a7eaa5563e14fc23ff47418853054db78dac9565e76441d2a2e05c5efda",
+    "category": "PERFORMANCE",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "ROCm跳过稀疏预填充MQA logits清理",
+      "summaryZh": "优化 AITER 稀疏预填充路径，传入 `clean_logits=False`，使用 `torch.empty` 创建 MQA-logits 缓冲区，移除每次 logits kernel 前的 FP32 填充；在 MI355X、TP=4 测试中，FP32 填充启动次数从 18,162 降至 0，GPU 时间从 1,250.2 ms 降至 0；top-k 结果不变",
+      "models": [
+        "amd/GLM-5.2-MXFP4"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "PERFORMANCE",
+      "severity": "MEDIUM",
+      "impactScopeZh": "面向 ROCm/AITER 稀疏预填充推理路径，测试硬件为 MI355X（gfx950）。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】[ROCm][Perf] Skip cleaning sparse prefill MQA logits",
+        "【正文】This PR passes `clean_logits=False` to AITER, so the buffer uses `torch.empty` and the fill is removed."
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
     "id": "vllm-pr-50653",
     "nodeId": "PR_kwDOI7xefs75SVPk",
     "repository": "vllm-project/vllm",
@@ -171,55 +319,6 @@
     "summary": null
   },
   {
-    "id": "vllm-pr-51314",
-    "nodeId": "PR_kwDOI7xefs77xdSz",
-    "repository": "vllm-project/vllm",
-    "number": 51314,
-    "type": "pr",
-    "title": "[ROCm][Perf] Skip cleaning sparse prefill MQA logits",
-    "bodyExcerpt": "## Summary\n\nThe sparse prefill path creates the MQA-logits buffer with `torch.full(..., -inf)`.\nThis launches an FP32 fill before every logits kernel.\n\nThis PR passes `clean_logits=False` to AITER, so the buffer uses `torch.empty`\nand the fill is removed.\n\n## Safety\n\nThe only consumer is `top_k_per_row_prefill`. It reads each row only inside\n`[cu_seqlen_ks, cu_seqlen_ke)`. Its vectorized path also guards the final partial\nload, so padding values are never read. The top-k result is unchanged.\n\n## Results\n\nMI355X, TP=4, rank 0, comparable before/after captures:\n\n| metric | before | after |\n|---|---:|---:|\n| FP32 fill launches | 18,162 | **0** |\n| FP32 fill GPU time | 1,250.2 ms | **0 ms** |\n| MQA-logits launches | 18,108 | 17,930 |\n\nThe removed fill was **0.89% of total GPU kernel time**. In the sample below it\ntakes 74.6 µs and is fully serialized before the logits kernel.\n\n![Before: FP32 fill before MQA logits](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr4_before.png)\n\n![After: fill removed](https://raw.githubusercontent.com/amd-sriram/vllm/ce9490285bbd8099e2d37c5aec8b3d24b7a20785/figures/fig_pr4_after.png)\n\n## Model-level e2e results\n\n### Test conditions\n\n| | |\n|---|---|\n| Hardware | MI355X (gfx950), TP=4 |\n| Model | `amd/GLM-5.2-MXFP4`, fp8 KV cache |\n| Stack | vLLM `69715823`, AITER `4a1cc77`, flydsl `0.3.0` |\n| Server | `--async-scheduling --max-num-seqs 256 --max-num-batched-tokens 16384 --block-size 64 --no-enable-prefix-caching`, `index_topk_freq=4` |\n| Env | `VLLM_ROCM_USE_AITER=1`, `VLLM_ROCM_USE_AITER_SPARSE_INDEXER=1`, `AITER_USE_FLYDSL_MOE_SORTING=1`, `VLLM_ROCM_QUICK_REDUCE_QUANTIZATION=INT4` |\n| Perf | `vllm bench serve`, random dataset, `--ignore-eos --request-rate inf`, ISL 1024 and 8192, OSL 1024, concurrency 1-256 (16 points) |\n| Accuracy | `lm_eval` gsm8k 5-shot chat template with thinking enabled, `max_gen_toks=8192`; RULER `niah_single_2` at 16k |\n| Sampling | checkpoint default (tempe",
-    "author": "amd-sriram",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "ready"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/51314",
-    "createdAt": "2026-08-06T21:41:17.000Z",
-    "updatedAt": "2026-10-09T06:27:48.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T07:14:16.853Z",
-    "contentHash": "sha256:2dc968b0b0d22fffbd1be8666b2509866df02902db4efb576d38ed93ceca5f30",
-    "category": "PERFORMANCE",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "ROCm跳过稀疏预填充MQA logits清理",
-      "summaryZh": "优化 AITER 稀疏预填充路径，传入 `clean_logits=False`，使用 `torch.empty` 创建 MQA-logits 缓冲区，移除每次 logits kernel 前的 FP32 填充；在 MI355X、TP=4 测试中，FP32 填充启动次数从 18,162 降至 0，GPU 时间从 1,250.2 ms 降至 0；top-k 结果不变",
-      "models": [
-        "amd/GLM-5.2-MXFP4"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "PERFORMANCE",
-      "severity": "MEDIUM",
-      "impactScopeZh": "面向 ROCm/AITER 稀疏预填充推理路径，测试硬件为 MI355X（gfx950）。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】[ROCm][Perf] Skip cleaning sparse prefill MQA logits",
-        "【正文】This PR passes `clean_logits=False` to AITER, so the buffer uses `torch.empty` and the fill is removed."
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
     "id": "vllm-pr-53149",
     "nodeId": "PR_kwDOI7xefs8AAAABAdKBaw",
     "repository": "vllm-project/vllm",
@@ -293,27 +392,6 @@
     "mergedAt": null,
     "firstSeenAt": "2026-08-28T11:38:19.166Z",
     "contentHash": "sha256:5b3a0d59ebd6bc01ed438fea251118584135971dbacab48c54dc3cb1e28d8459",
-    "category": "PERFORMANCE",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-51339",
-    "nodeId": "PR_kwDOI7xefs770auL",
-    "repository": "vllm-project/vllm",
-    "number": 51339,
-    "type": "pr",
-    "title": "[Model Loader][Perf] Auto-prefetch VirtioFS checkpoints",
-    "bodyExcerpt": "<!-- markdownlint-disable -->\n## Overview\n\nEnable the existing RAM-guarded safetensors auto-prefetch path for VirtioFS checkpoints. Explicit `lazy` remains an opt-out.\n\n## Claims\n\n- Automatic selection includes `virtiofs` alongside NFS, NFS4, and Lustre, only when the strategy is unset and checkpoint size is at most 90% of available RAM.\n- The change reuses the existing prefetch helper and renames the internal filesystem classification to cover host/guest shared filesystems.\n- A prior GLM-5.2 loading run demonstrated the benefit of that helper on one VirtioFS configuration; the measurements below are not a fresh benchmark of automatic selection.\n\n## Validation\n\nFresh validation on 2026-10-03 used upstream `1a001d584244bd21829a5e5bd4a376ea141c0ce3` plus this PR.\n\n```sh\nVLLM_TARGET_DEVICE=cpu CUDA_VISIBLE_DEVICES='' .venv/bin/python -m pytest tests/model_executor/model_loader/test_weight_utils.py tests/test_config.py -k 'auto_prefetch_selection or safetensors_load_strategy' -q\n.venv/bin/pre-commit run --hook-stage manual --files vllm/config/load.py vllm/model_executor/model_loader/weight_utils.py tests/model_executor/model_loader/test_weight_utils.py\n```\n\nThe five focused loader/config cases passed. Restoring current-upstream loader logic produced **1 failure and 4 passes**; the VirtioFS automatic-selection case fails before the fix. The tests mock filesystem/RAM detection and the prefetch helper, then load real safetensors values. All applicable scoped pre-commit hooks passed, including mypy for Python 3.10 through 3.13.\n\nHistorical GLM-5.2 loading measurement, with a 1403.19 GiB checkpoint fitting available RAM:\n\n| Configuration | Model loading |\n| --- | ---: |\n| Default path before this change, VirtioFS detected but prefetch disabled | 1596.999 s |\n| Explicit `prefetch`, application startup completed | 70.676 s |\n\nThese are individual original runs, not repeated measurements. No VirtioFS mount was available for this review. The new automatic branch selects the same",
-    "author": "bvolpato",
-    "state": "open",
-    "labels": [],
-    "url": "https://github.com/vllm-project/vllm/pull/51339",
-    "createdAt": "2026-08-07T01:02:07.000Z",
-    "updatedAt": "2026-10-08T23:55:12.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-30T05:39:24.275Z",
-    "contentHash": "sha256:d9071d48093c6158535892198661ecaeeb652ded03fbb503745436434aa65ccd",
     "category": "PERFORMANCE",
     "categorySource": "rules",
     "summary": null
@@ -446,32 +524,6 @@
     "summary": null
   },
   {
-    "id": "vllm-pr-50933",
-    "nodeId": "PR_kwDOI7xefs76RqEc",
-    "repository": "vllm-project/vllm",
-    "number": 50933,
-    "type": "pr",
-    "title": "[Bugfix] Resolve $ref/$defs in tool schemas and preserve definitions",
-    "bodyExcerpt": "## Purpose\n\nFixes #46924. Supersedes #46925 (incomplete fix) and #46170 (`pop`→`get` only).\n\nTool schemas generated by Pydantic v2 use `$defs`/`$ref` to define nested types. Two bugs caused nested object arguments (e.g. `{\"kind\": \"week\"}`) to be double-encoded as JSON strings:\n\n1. **No `$ref` resolution** — `find_tool_properties()` returned raw `$ref` pointers, and `extract_types_from_schema()` fell back to `[\"string\"]` for unresolved references. This caused nested objects to be treated as strings.\n\n2. **Destructive `pop(\"$defs\")`** — `_get_tool_schema_defs()` used `params.pop(\"$defs\", {})`, mutating the tool's parameter dict. On the streaming/engine path where `_get_tool_schema_defs` runs before `find_tool_properties`, the `$defs` were already gone, making ref resolution impossible even if added.\n\n### Fix\n\n- Add `_resolve_refs()` helper that inlines `$ref` pointers against `$defs` (Pydantic v2) and `definitions` (JSON Schema draft-07), with JSON Pointer escape decoding (`~0`→`~`, `~1`→`/`) and bounded recursion for cyclic schemas.\n- Extract `_resolved_tool_properties()` to unify resolution for both definition namespaces.\n- Update `find_tool_properties()` to resolve refs before returning — all downstream callers (qwen3_coder, deepseek_v32, seed_oss, glm4_moe, parser engine) automatically get concrete type information.\n- Change `params.pop(\"$defs\", {})` to `params.get(\"$defs\", {})` in `_get_tool_schema_defs()` so definitions survive for subsequent argument coercion.\n\n### Credit\n\nThis fix incorporates insights from:\n- @hclsys who identified the `pop` ordering issue in #46925\n- @alexeldeib who provided a complete supplementary patch with legacy defs support, cycle protection, and JSON Pointer decoding based on production traffic\n\n## Test Plan\n\n```bash\n# New ref-resolution tests\n.venv/bin/python -m pytest tests/tool_parsers/test_utils.py::TestFindToolPropertiesRefResolution -v\n\n# New defs-preservation tests  \n.venv/bin/python -m pytest tests/tool_parsers/test_utils.py::",
-    "author": "ben7am1n",
-    "state": "open",
-    "labels": [
-      "bug",
-      "tool-calling",
-      "qwen",
-      "deepseek"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/50933",
-    "createdAt": "2026-08-04T00:01:28.000Z",
-    "updatedAt": "2026-10-06T02:26:50.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-23T04:59:29.150Z",
-    "contentHash": "sha256:39dde675c719ff53b5575492cc7731803ad12f31d97e649e728156e98c27cd19",
-    "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
     "id": "vllm-pr-54078",
     "nodeId": "PR_kwDOI7xefs8AAAABBPIAoQ",
     "repository": "vllm-project/vllm",
@@ -523,32 +575,6 @@
     "mergedAt": null,
     "firstSeenAt": "2026-09-01T05:28:24.707Z",
     "contentHash": "sha256:6bf4dec5a36e6ca64413733667996e70575a28ab3b04d2fb96c1919c75a922db",
-    "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-53739",
-    "nodeId": "PR_kwDOI7xefs8AAAABA8tfqQ",
-    "repository": "vllm-project/vllm",
-    "number": 53739,
-    "type": "pr",
-    "title": "[Bugfix][Parser] Terminate streamed tool arguments the flush cannot extend",
-    "bodyExcerpt": "## Purpose\n\nA streaming tool call can end with `finish_reason` set while `arguments` is cut off mid-string. Any client that calls `json.loads` on the accumulated arguments fails on it. Reproduced live on Qwen3.8-27B in 7 of 25 requests sent straight at the worker, no proxy in the path.\n\n`_safe_arg_prefix` (`parser_engine.py:299` on main at `8a2364605c0b`) deliberately streams unterminated string values for prefix-stable keys. Its own docstring (`:306-308`) carries the contract: \"String values for keys in `string_keys` are prefix-stable, so stream their unterminated content instead of buffering long arguments until the closing tag arrives.\" Something has to close them, and that something is the flush.\n\n`_flush_arg_converter` (`parser_engine.py:1052` on main) re-derives the arguments with `partial=False`. Four of the seven in-tree converters build their result from completed parameters and fold the still-open one in only under `if partial:`. So when generation ends while a parameter is open, the non-partial re-derivation **drops that parameter**, and the result is neither longer than nor a prefix of what was already streamed. Both guards (`:1068-1070`) fail, the function returns `None`, and nothing ever terminates the prefix the client is holding.\n\nThis is not conditional on the model misbehaving. Anything that ends generation with a parameter open reaches it: a `max_tokens` stop, a stop string, or a malformed continuation.\n\n### Blast radius, measured\n\nOn main at `8a2364605c0b`, 13 engine parsers set an `arg_converter`, through 7 converters. Each converter called directly with one complete and one open string parameter:\n\n| converter | parsers | `partial=True` -> `partial=False` |\n|---|---|---|\n| `_qwen3_arg_converter` | qwen3, seed_oss, nemotron_v3, granite_thinking_parser | drops the open parameter, 75 chars -> 21 |\n| `_minimax_m2_arg_converter` | minimax_m2 | drops the open parameter, 75 -> 21 |\n| `_glm47_arg_converter` | glm47_moe, ling3 | drops the open parameter,",
-    "author": "amittell",
-    "state": "open",
-    "labels": [
-      "bug",
-      "tool-calling",
-      "qwen",
-      "inkling"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/53739",
-    "createdAt": "2026-08-25T14:20:59.000Z",
-    "updatedAt": "2026-10-05T20:08:53.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-26T02:09:14.386Z",
-    "contentHash": "sha256:0079a839ad2dc8981195324252a9d5453d2a5d5cb8938a77b9f17ea9bc256964",
     "category": "FIX",
     "categorySource": "rules",
     "summary": null
@@ -2199,31 +2225,6 @@
     "firstSeenAt": "2026-08-24T10:27:08.865Z",
     "contentHash": "sha256:7a1756f5b396e3119fb7e99daee1e190d7b140c80cf4331613bd2ad8e33d23f1",
     "category": "DOCS",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-54396",
-    "nodeId": "PR_kwDOI7xefs8AAAABBfDjCA",
-    "repository": "vllm-project/vllm",
-    "number": 54396,
-    "type": "pr",
-    "title": "[Bugfix][Multimodal] Guard GLMGA video sampling against zero source fps",
-    "bodyExcerpt": "## Motivation\n\n`GLMGAVideoBackend.compute_frames_index_to_sample` divides by `source.original_fps` in two places — the duration fallback (`round(max_frame_idx / original_fps) + 1`) and `duration_per_frame = 1 / original_fps` — without validating it. vLLM reports `original_fps == 0` for clips with an unknown or variable frame rate (VFR, malformed containers, failed webcam captures), so those inputs crash with a bare `ZeroDivisionError: float division by zero`.\n\nEvery other fps-driven backend in `vllm/multimodal/video.py` already guards this (`Qwen2VLVideoBackend`, `Qwen3VLVideoBackend`, `GLM46VVideoBackend`, and `Molmo2VideoBackend` in fps mode); GLMGA is the remaining one without the check.\n\n## Modifications\n\n- Added the same `original_fps <= 0` guard to `GLMGAVideoBackend`, raising a descriptive `ValueError` that names the backend and the cause, mirroring the existing Qwen2-VL / Qwen3-VL behavior.\n- Added a regression test covering both crash paths (duration reported vs. duration missing).\n\n## Verification\n\n- `pytest tests/multimodal/test_video.py::test_glmga_video_backend_rejects_unknown_source_fps` -> 1 passed.\n- On unpatched `main`, the same test fails with `ZeroDivisionError: float division by zero` for both `duration=5.0` (at `duration_per_frame = 1 / original_fps`) and `duration=0.0` (at the duration fallback).\n- Neighbor sampling tests `pytest tests/multimodal/test_video.py -k glm46v`: 12 passed; the single failure (`test_video_processor_from_model_repo[glm46v]`) is an unrelated missing `av` module in my local environment and fails identically on unpatched `main`.\n\n## Duplicate check\n\nSearched open PRs and issues for `glmga`, `glmga fps`, and `video original_fps`: nothing covers the GLMGA backend. #53844 fixes the same bug class for `Qwen3VLVideoBackend` only and does not touch GLMGA; this PR is scoped to GLMGA so the two can land independently.\n\n## AI assistance\n\nThis change was developed with AI assistance (bug identification, patch, and regression test). ",
-    "author": "blueOf",
-    "state": "open",
-    "labels": [
-      "bug",
-      "multi-modality",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/54396",
-    "createdAt": "2026-08-30T05:40:44.000Z",
-    "updatedAt": "2026-09-04T17:11:45.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-31T05:54:38.982Z",
-    "contentHash": "sha256:832c646d725f0049e1750df556bb57af754bbe72bc6345c7029ca22d4e2fc10d",
-    "category": "FIX",
     "categorySource": "rules",
     "summary": null
   },
