@@ -1,0 +1,23 @@
+[
+  {
+    "id": "llamafactory-issue-10887",
+    "nodeId": "I_kwDOJodxvs8AAAABWvEWNg",
+    "repository": "hiyouga/LlamaFactory",
+    "number": 10887,
+    "type": "issue",
+    "title": "Transparent images become black: `_preprocess_image` drops alpha with `convert(\"RGB\")`",
+    "bodyExcerpt": "**Problem**\n\n`BasePlugin._preprocess_image` in `src/llamafactory/data/mm_plugin.py` ends with:\n\n```python\nif image.mode != \"RGB\":\n    image = image.convert(\"RGB\")\n```\n\nFor transparent images (`RGBA`, `LA`, and palette `P` PNGs with a transparent colour) this drops the transparency without filling in a background. Transparent areas turn black (or whatever colour is stored underneath). Black lines and text on a transparent background become invisible.\n\nEvery image goes through this function via `_regularize_images`: training data in all plugins, and inference with the vLLM engine (`chat/vllm_engine.py`). So vLLM's own transparency handling never gets a chance to run.\n\n**Repro** (main at 1fded91, `llamafactory 0.9.6.dev0`)\n\n```python\nimport io\nfrom PIL import Image, ImageDraw\nfrom llamafactory.data.mm_plugin import get_mm_plugin\n\ndef png(im, **kw):\n    buf = io.BytesIO(); im.save(buf, \"PNG\", **kw); return buf.getvalue()\n\n# black square outline on a transparent background\nbase = Image.new(\"RGBA\", (224, 224), (0, 0, 0, 0))\nImageDraw.Draw(base).rectangle([56, 56, 168, 168], outline=(0, 0, 0, 255), width=8)\npal = Image.new(\"P\", base.size, 0)\npal.putpalette([0, 0, 0, 0, 0, 0] + [0] * 762)  # colour 0 = transparent, colour 1 = black\npal.paste(1, mask=base.getchannel(\"A\"))\n\nplugin = get_mm_plugin(\"qwen2_vl\", image_token=\"<|image_pad|>\")\nfor name, data in {\"RGBA\": png(base), \"LA\": png(base.convert(\"LA\")), \"P\": png(pal, transparency=0)}.items():\n    out = plugin._regularize_images([data], image_max_pixels=768 * 768, image_min_pixels=32 * 32)[\"images\"][0].convert(\"L\")\n    print(f\"{name:4s} background={out.getpixel((10, 10))} line={out.getpixel((112, 60))}\")\n```\n\nOutput (black on black in every case):\n\n```\nRGBA background=0 line=0\nLA   background=0 line=0\nP    background=0 line=0\n```\n\n**Why it matters**\n\nTransparent images are common in chart, diagram and math data. In lmms-eval the same bug turned some MathVista and MMMU test images fully black (EvolvingLMMs-Lab/lmms-eval#1572, ",
+    "author": "surgan12",
+    "state": "open",
+    "labels": [],
+    "url": "https://github.com/hiyouga/LlamaFactory/issues/10887",
+    "createdAt": "2026-10-12T21:31:34.000Z",
+    "updatedAt": "2026-10-12T21:31:34.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-10-13T06:58:17.007Z",
+    "contentHash": "sha256:82e529ead98798d9ace12a8f7800c45104e423c1eb2b9f13c62442de2a38145b",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  }
+]

@@ -1,5 +1,107 @@
 [
   {
+    "id": "vllm-pr-48653",
+    "nodeId": "PR_kwDOI7xefs7xuaFU",
+    "repository": "vllm-project/vllm",
+    "number": 48653,
+    "type": "pr",
+    "title": "fix: Add FP8 type dispatch to per_token_group_quant_8bit for transformers backend",
+    "bodyExcerpt": "## Description\n\nWhen using `--model-impl transformers` with FP8-quantized MoE models (e.g., GLM-5.2-FP8), the engine crashes during initialization because `per_token_group_quant_8bit` doesn't dispatch `Float8_e4m3fn` input types.\n\n## Root Cause\n\n`VLLM_STABLE_DISPATCH_FLOATING_TYPES` at line 274 of `per_token_group_quant.cu` only handles `float`, `half`, `bfloat16`. When the transformers backend passes FP8-quantized tensors through vLLM's quantization fusion ops, the dispatch has no code path for FP8 input.\n\nThe kernel template already handles arbitrary types via `static_cast<float>(src)`. Only the dispatch macro was missing FP8 cases.\n\n## Fix\n\n- Added `VLLM_STABLE_DISPATCH_FLOATING_AND_FP8_TYPES` macro to `dispatch_utils.h` that dispatches FP8 types with `scalar_t` alias (not `fp8_t`) so kernel code referencing `scalar_t` works for both floating and FP8 types\n- Changed the main kernel dispatch (line 274) to use the new macro\n- Left the packed register kernel (line 598) as `HALF_TYPES` — its `static_assert(GROUP_SIZE==128)` only works for 2-byte types (half/bfloat16). FP8 (1 byte) changes the vectorization width and breaks the constraint.\n\n## Testing\n\n- Built vLLM 0.25.1 from source with this patch on 8×B200\n- Model: GLM-5.2-FP8 (finegrained FP8 MoE, 78 layers, 754B params, GlmMoeDsaForCausalLM)\n- Before patch: `RuntimeError: \"per_token_group_quant_8bit\" not implemented for 'Float8_e4m3fn'`\n- After patch: Model loads successfully (103 sec, all 141 shards)\n\nNote: A separate issue (#48652) blocks the transformers backend from completing the profile run on GLM MoE models. This PR fixes the FP8 dispatch issue only.\n\n## AI Assistance Disclosure\n\nThis PR was developed with AI assistance (Hermes Agent by Nous Research). The submitting human (Chris Fontes) has reviewed every changed line and verified the build succeeds with the patch applied.\n\n## Related Issues\n\nFixes #48651\n",
+    "author": "fattchris",
+    "state": "open",
+    "labels": [
+      "ready",
+      "needs-rebase",
+      "quantization"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/48653",
+    "createdAt": "2026-07-14T20:04:37.000Z",
+    "updatedAt": "2026-10-12T21:44:02.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-10-13T06:58:17.007Z",
+    "contentHash": "sha256:78359c5f54a9634c44775c4fd1a4ef79e22be421cc23da60b1162710f6d27bf5",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-48558",
+    "nodeId": "PR_kwDOI7xefs7xYlsv",
+    "repository": "vllm-project/vllm",
+    "number": 48558,
+    "type": "pr",
+    "title": "[Kernel] MXFP4 indexer cache for GLM-5.2 / DSA (glm_moe_dsa)",
+    "bodyExcerpt": "# [Kernel] MXFP4 indexer cache for GLM-5.2 / DSA (glm_moe_dsa)\n\n## What\n\nAdds **MXFP4 (4-bit) support for the DSA lightning-indexer K-cache** and wires it into\nGLM-5.2 (`GlmMoeDsaForCausalLM`, `deepseek_v2` `Indexer`). Gated by the existing\n`--attention-config '{\"use_fp4_indexer_cache\": true}'` (default off, behavior unchanged).\n\nUpstream shipped the FP4 indexer **read** path (mqa_logits) for DeepSeek-V4 in #40860, but\nthe **insert** path is still blocked — `assert not use_fp4_cache, \"Unfused FP4 Insert is not\nsupported yet\"` — and `indexer_k_quant_and_cache` is FP8-only. This PR fills that gap.\n\n## Changes (3 files, +122 / −3)\n\n- **`csrc/.../cache_kernels.cu`** (new kernel): `indexer_k_quant_and_cache_mxfp4_kernel`\n  writes the indexer K-cache as MXFP4 (E2M1 values + UE8M0 block-32 scales, software E2M1\n  encode for sm_100a). Dispatched from `indexer_k_quant_and_cache` when `scale_fmt==\"mxfp4\"`.\n- **`sparse_attn_indexer.py`**: drop the \"not supported yet\" assert; pass `\"mxfp4\"` scale_fmt.\n- **`deepseek_v2.py`** (`Indexer`): allocate the fp4-shaped K-cache, MXFP4-quantize the\n  indexer query, disable the fused FP8 indexer-q path.\n\n## Benefit\n\nIndexer K-cache: **132 → 68 B/token/head (~1.94×)**. Measured on 4×B200 (GLM-5.2-NVFP4, TP4):\n\n| metric | FP8 indexer | MXFP4 indexer | Δ |\n|---|---|---|---|\n| GPU KV cache size | 1,143,808 tok | 1,184,192 tok | **+3.5%** |\n| max concurrency @131K | 8.73× | 9.03× | **+3.4%** |\n| TTFT / TPOT (conc1 prefill 8K–122K; conc16 grid; conc48–64 long-ctx) | — | — | neutral |\n\nIt's a **memory-efficiency** feature (more KV headroom at long context), not a latency win —\nthe indexer is a small fraction of prefill vs MLA attention.\n\n## Accuracy\n\npasskey 8K / 32K / 64K = 3/3 · 3/3 · 3/3, identical to FP8. No regression.\n\n## Testing\n\n- Kernel + wiring validated end-to-end on 4×B200 (SM100) serving GLM-5.2-NVFP4: fp4 indexer\n  cache active (KV size 1.18M tok), coherent generation, passkey 3/3.\n- The `use_fp4_indexer_cache=true` flag was exercis",
+    "author": "nsd9696",
+    "state": "open",
+    "labels": [
+      "needs-rebase",
+      "deepseek",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/48558",
+    "createdAt": "2026-07-14T04:53:21.000Z",
+    "updatedAt": "2026-10-12T20:37:31.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:ca2686ff0a59e8c2c9bfa6713790e2600c46ea42be47d656e1510d7bdec83560",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.2 增加 MXFP4 索引器缓存",
+      "summaryZh": "新增 MXFP4（4-bit）DSA lightning-indexer K-cache 支持，接入 GlmMoeDsaForCausalLM 与 deepseek_v2 Indexer；新增 MXFP4 量化写入内核，分配 FP4 形状 K-cache 并量化索引器查询，同时移除未融合 FP4 插入路径限制；通过 use_fp4_indexer_cache=true 启用，K-cache 从 132 降至 68 B/token/head；在 4×B200 上 GPU KV cache 容量提升 3.5%、最大并发提升 3.4%，延迟基本中性，准确率测试无回归",
+      "models": [
+        "GLM-5.2",
+        "GlmMoeDsaForCausalLM"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "MEDIUM",
+      "impactScopeZh": "面向使用 DSA 索引器和 MXFP4/NVFP4 的 GLM-5.2 推理场景，默认关闭以保持原行为。",
+      "attention": "WATCH",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】MXFP4 indexer cache for GLM-5.2 / DSA (glm_moe_dsa)",
+        "【正文】Adds MXFP4 (4-bit) support for the DSA lightning-indexer K-cache and wires it into GLM-5.2"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-pr-49539",
+    "nodeId": "PR_kwDOI7xefs71PG3V",
+    "repository": "vllm-project/vllm",
+    "number": 49539,
+    "type": "pr",
+    "title": "[Bugfix][Quantization] Keep unquantized routed experts unquantized under AutoGPTQ",
+    "bodyExcerpt": "# Issue #49141 — Fused_moe dimension mismatch for Qwen MXFP4 model on ROCm\n\n## 1. Root cause\n\nThe issue has two reports. Both are the same underlying defect: **a MoE layer whose\nexpert weights are stored *unquantized* in the checkpoint is still given a\n*quantized* MoE method**, so the allocated parameters do not match the checkpoint\ntensors.\n\nThe trigger in both cases is the MTP (speculative-decoding drafter) layer. AMD's\nQuark and community GPTQ quantizations of `Qwen3.5-35B-A3B` quantize the 40\ntransformer layers but leave the MTP layer's experts in bf16. The main model\nloads fine; only the drafter fails.\n\n* **Original MXFP4/Quark report** (`RuntimeError: The size of tensor a (256) must\n  match the size of tensor b (512) at non-singleton dimension 1`, in\n  `routed_experts.py::_load_w2`).\n  `hidden_size=2048`, `moe_intermediate_size=512`. Quark MXFP4 allocates\n  `w2_weight` as `(E, hidden, intermediate // 2)` = `(E, 2048, 256)` (fp4 packs\n  two values per byte), while the checkpoint's MTP `down_proj.weight` is the\n  unquantized `(2048, 512)`. `amd/Qwen3.5-35B-A3B-MXFP4`'s\n  `quantization_config.exclude` lists `mtp.layers.0.mlp.experts.<i>.{gate,up,down}_proj`\n  for all 256 experts, but `should_ignore_layer()` only compared the *parent*\n  layer name `mtp.layers.0.mlp.experts` against those *child* entries.\n  **This half is already fixed on main** by the `check_children` argument added\n  to `quark/utils.py::should_ignore_layer` (the amd/GLM-5.2-MXFP4 fix), which is\n  why a commenter on the issue could not reproduce it on main. No change needed.\n\n* **Still-broken GPTQ report** (issue comments:\n  `AttributeError: 'RoutedExperts' object has no attribute 'w2_weight'. Did you\n  mean: 'w2_qweight'?`, same drafter-loading path).\n  `AutoGPTQConfig` tracks which modules the checkpoint actually quantized in\n  `modules_in_block_to_quantize` — auto-derived in `maybe_update_config()` from\n  the safetensors dtypes, so it contains only the quantized layers' per-expert\n  module name",
+    "author": "pjdurden",
+    "state": "open",
+    "labels": [
+      "bug",
+      "rocm",
+      "qwen",
+      "quantization"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/49539",
+    "createdAt": "2026-07-23T06:59:04.000Z",
+    "updatedAt": "2026-10-12T20:23:52.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-02T04:54:35.079Z",
+    "contentHash": "sha256:a787b4d9c84cac7bf960a7637718827374a0864843d7135e2dc3ae88b1d5d15a",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-49544",
     "nodeId": "PR_kwDOI7xefs71Pkc_",
     "repository": "vllm-project/vllm",
@@ -388,33 +490,6 @@
     "firstSeenAt": "2026-10-09T06:29:16.754Z",
     "contentHash": "sha256:40af880d13eba6f1fa438b147f80403e333d93df89d3c6439dc9259b44386967",
     "category": "DOCS",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-pr-49539",
-    "nodeId": "PR_kwDOI7xefs71PG3V",
-    "repository": "vllm-project/vllm",
-    "number": 49539,
-    "type": "pr",
-    "title": "[Bugfix][Quantization] Keep unquantized routed experts unquantized under AutoGPTQ",
-    "bodyExcerpt": "# Issue #49141 — Fused_moe dimension mismatch for Qwen MXFP4 model on ROCm\n\n## 1. Root cause\n\nThe issue has two reports. Both are the same underlying defect: **a MoE layer whose\nexpert weights are stored *unquantized* in the checkpoint is still given a\n*quantized* MoE method**, so the allocated parameters do not match the checkpoint\ntensors.\n\nThe trigger in both cases is the MTP (speculative-decoding drafter) layer. AMD's\nQuark and community GPTQ quantizations of `Qwen3.5-35B-A3B` quantize the 40\ntransformer layers but leave the MTP layer's experts in bf16. The main model\nloads fine; only the drafter fails.\n\n* **Original MXFP4/Quark report** (`RuntimeError: The size of tensor a (256) must\n  match the size of tensor b (512) at non-singleton dimension 1`, in\n  `routed_experts.py::_load_w2`).\n  `hidden_size=2048`, `moe_intermediate_size=512`. Quark MXFP4 allocates\n  `w2_weight` as `(E, hidden, intermediate // 2)` = `(E, 2048, 256)` (fp4 packs\n  two values per byte), while the checkpoint's MTP `down_proj.weight` is the\n  unquantized `(2048, 512)`. `amd/Qwen3.5-35B-A3B-MXFP4`'s\n  `quantization_config.exclude` lists `mtp.layers.0.mlp.experts.<i>.{gate,up,down}_proj`\n  for all 256 experts, but `should_ignore_layer()` only compared the *parent*\n  layer name `mtp.layers.0.mlp.experts` against those *child* entries.\n  **This half is already fixed on main** by the `check_children` argument added\n  to `quark/utils.py::should_ignore_layer` (the amd/GLM-5.2-MXFP4 fix), which is\n  why a commenter on the issue could not reproduce it on main. No change needed.\n\n* **Still-broken GPTQ report** (issue comments:\n  `AttributeError: 'RoutedExperts' object has no attribute 'w2_weight'. Did you\n  mean: 'w2_qweight'?`, same drafter-loading path).\n  `AutoGPTQConfig` tracks which modules the checkpoint actually quantized in\n  `modules_in_block_to_quantize` — auto-derived in `maybe_update_config()` from\n  the safetensors dtypes, so it contains only the quantized layers' per-expert\n  module name",
-    "author": "pjdurden",
-    "state": "open",
-    "labels": [
-      "bug",
-      "rocm",
-      "needs-rebase",
-      "qwen",
-      "quantization"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/49539",
-    "createdAt": "2026-07-23T06:59:04.000Z",
-    "updatedAt": "2026-10-08T07:56:50.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-02T04:54:35.079Z",
-    "contentHash": "sha256:f16554f01391f39ff403b12c8bb503b6e48f99d60b25c619398068c2e887e31a",
-    "category": "FIX",
     "categorySource": "rules",
     "summary": null
   },
@@ -2134,56 +2209,6 @@
       "model": "gpt-5.6-luna",
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T10:27:08.865Z"
-    }
-  },
-  {
-    "id": "vllm-pr-48558",
-    "nodeId": "PR_kwDOI7xefs7xYlsv",
-    "repository": "vllm-project/vllm",
-    "number": 48558,
-    "type": "pr",
-    "title": "[Kernel] MXFP4 indexer cache for GLM-5.2 / DSA (glm_moe_dsa)",
-    "bodyExcerpt": "# [Kernel] MXFP4 indexer cache for GLM-5.2 / DSA (glm_moe_dsa)\n\n## What\n\nAdds **MXFP4 (4-bit) support for the DSA lightning-indexer K-cache** and wires it into\nGLM-5.2 (`GlmMoeDsaForCausalLM`, `deepseek_v2` `Indexer`). Gated by the existing\n`--attention-config '{\"use_fp4_indexer_cache\": true}'` (default off, behavior unchanged).\n\nUpstream shipped the FP4 indexer **read** path (mqa_logits) for DeepSeek-V4 in #40860, but\nthe **insert** path is still blocked — `assert not use_fp4_cache, \"Unfused FP4 Insert is not\nsupported yet\"` — and `indexer_k_quant_and_cache` is FP8-only. This PR fills that gap.\n\n## Changes (3 files, +122 / −3)\n\n- **`csrc/.../cache_kernels.cu`** (new kernel): `indexer_k_quant_and_cache_mxfp4_kernel`\n  writes the indexer K-cache as MXFP4 (E2M1 values + UE8M0 block-32 scales, software E2M1\n  encode for sm_100a). Dispatched from `indexer_k_quant_and_cache` when `scale_fmt==\"mxfp4\"`.\n- **`sparse_attn_indexer.py`**: drop the \"not supported yet\" assert; pass `\"mxfp4\"` scale_fmt.\n- **`deepseek_v2.py`** (`Indexer`): allocate the fp4-shaped K-cache, MXFP4-quantize the\n  indexer query, disable the fused FP8 indexer-q path.\n\n## Benefit\n\nIndexer K-cache: **132 → 68 B/token/head (~1.94×)**. Measured on 4×B200 (GLM-5.2-NVFP4, TP4):\n\n| metric | FP8 indexer | MXFP4 indexer | Δ |\n|---|---|---|---|\n| GPU KV cache size | 1,143,808 tok | 1,184,192 tok | **+3.5%** |\n| max concurrency @131K | 8.73× | 9.03× | **+3.4%** |\n| TTFT / TPOT (conc1 prefill 8K–122K; conc16 grid; conc48–64 long-ctx) | — | — | neutral |\n\nIt's a **memory-efficiency** feature (more KV headroom at long context), not a latency win —\nthe indexer is a small fraction of prefill vs MLA attention.\n\n## Accuracy\n\npasskey 8K / 32K / 64K = 3/3 · 3/3 · 3/3, identical to FP8. No regression.\n\n## Testing\n\n- Kernel + wiring validated end-to-end on 4×B200 (SM100) serving GLM-5.2-NVFP4: fp4 indexer\n  cache active (KV size 1.18M tok), coherent generation, passkey 3/3.\n- The `use_fp4_indexer_cache=true` flag was exercis",
-    "author": "nsd9696",
-    "state": "open",
-    "labels": [
-      "deepseek",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/48558",
-    "createdAt": "2026-07-14T04:53:21.000Z",
-    "updatedAt": "2026-08-20T01:13:02.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:ecb48dcadf396eb96b415f2b20c11d48337298f88b70e92c14abcafa10540f60",
-    "category": "NEW_SUPPORT",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5.2 增加 MXFP4 索引器缓存",
-      "summaryZh": "新增 MXFP4（4-bit）DSA lightning-indexer K-cache 支持，接入 GlmMoeDsaForCausalLM 与 deepseek_v2 Indexer；新增 MXFP4 量化写入内核，分配 FP4 形状 K-cache 并量化索引器查询，同时移除未融合 FP4 插入路径限制；通过 use_fp4_indexer_cache=true 启用，K-cache 从 132 降至 68 B/token/head；在 4×B200 上 GPU KV cache 容量提升 3.5%、最大并发提升 3.4%，延迟基本中性，准确率测试无回归",
-      "models": [
-        "GLM-5.2",
-        "GlmMoeDsaForCausalLM"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "NEW_SUPPORT",
-      "severity": "MEDIUM",
-      "impactScopeZh": "面向使用 DSA 索引器和 MXFP4/NVFP4 的 GLM-5.2 推理场景，默认关闭以保持原行为。",
-      "attention": "WATCH",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】MXFP4 indexer cache for GLM-5.2 / DSA (glm_moe_dsa)",
-        "【正文】Adds MXFP4 (4-bit) support for the DSA lightning-indexer K-cache and wires it into GLM-5.2"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
     }
   },
   {
