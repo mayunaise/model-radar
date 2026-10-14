@@ -1,5 +1,148 @@
 [
   {
+    "id": "vllm-issue-48689",
+    "nodeId": "I_kwDOI7xefs8AAAABI2yXww",
+    "repository": "vllm-project/vllm",
+    "number": 48689,
+    "type": "issue",
+    "title": "[Bug]: GLM-5.2 nvpf4 quantization not loading with TP",
+    "bodyExcerpt": "### Your current environment\n\nSetup:\n```\nvllm version: 0.25.0\nconfig:\n-- kv-cache-dtype fp8_e4m3\n-- tensor-parallel-size 8\nGPUs: Bxx\nCUDA: 13.0\n```\n\n### 🐛 Describe the bug\n\nIssue during startup:\n\n`torch.AcceleratorError: CUDA error: an illegal memory access was encountered`\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "Satgoy152",
+    "state": "open",
+    "labels": [
+      "bug",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/48689",
+    "createdAt": "2026-07-15T04:28:07.000Z",
+    "updatedAt": "2026-10-14T01:49:08.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-21T03:17:31.073Z",
+    "contentHash": "sha256:ed5e292afd89e918e6542c9ef264c4c070bc3539fde88c6d60c6f2a70d062376",
+    "category": "BUG",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "GLM-5.2 nvpf4 TP 加载触发 CUDA 错误",
+      "summaryZh": "vLLM 中 GLM-5.2 的 nvpf4 量化与张量并行加载：使用 vLLM 0.25.0、kv-cache-dtype 为 fp8_e4m3、tensor-parallel-size 为 8 时，启动加载 GLM-5.2 nvpf4 量化配置触发 CUDA 非法内存访问错误；问题发生在启动阶段，涉及 Bxx GPU 和 CUDA 13.0 环境",
+      "models": [
+        "GLM-5.2"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "BUG",
+      "severity": "HIGH",
+      "impactScopeZh": "影响 GLM-5.2 nvpf4 量化模型在张量并行配置下的启动加载。",
+      "attention": "WATCH",
+      "capabilityCandidate": false,
+      "evidence": [
+        "【标题】GLM-5.2 nvpf4 quantization not loading with TP",
+        "【正文】torch.AcceleratorError: CUDA error: an illegal memory access was encountered"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-48747",
+    "nodeId": "I_kwDOI7xefs8AAAABI7Dj-g",
+    "repository": "vllm-project/vllm",
+    "number": 48747,
+    "type": "issue",
+    "title": "[Feature]: Can we add base PCP support for hybrid attention?",
+    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\npcp and dcp seem to share similar technical approaches. Both of them are part of the context parallelism  share single cp world. Could we add relevant support for pcp as well through a similar technical approach like #40996 ? It may helpful for dsv4/glm5.2/qwen3.6 and other new model's  pcp support\n\n### Alternatives\n\n_No response_\n\n### Additional context\n\n_No response_\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
+    "author": "zhcn000000",
+    "state": "open",
+    "labels": [
+      "feature request",
+      "stale"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/48747",
+    "createdAt": "2026-07-15T15:07:37.000Z",
+    "updatedAt": "2026-10-14T01:49:04.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-10-14T05:12:09.444Z",
+    "contentHash": "sha256:9ff8bcedfd1b5934a0ff8f74a970b420658369c446b36b4a4f21f4bdbcc3f051",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-48974",
+    "nodeId": "I_kwDOI7xefs8AAAABJObCNA",
+    "repository": "vllm-project/vllm",
+    "number": 48974,
+    "type": "issue",
+    "title": "[Bug]: LoRA on MLA kv_b_proj is silently never applied — decode bypasses it via absorption, prefill via a stale pre-wrap reference",
+    "bodyExcerpt": "### Your current environment\n\nvLLM 0.25.1 (V1), reproduced conceptually on current `main` (file refs below are `main`). Applies to any MLA model (DeepSeek V2/V3/R1/V3.2, GLM MoE DSA, Kimi K2) with an adapter targeting `kv_b_proj`.\n\n### 🐛 Describe the bug\n\nAn adapter containing `kv_b_proj` LoRA tensors loads without error and is applied **nowhere**. The LoRA manager wraps the layer, but the wrapper's `forward()` is never invoked on any path:\n\n- **Decode (absorbed/MQA):** attention consumes `W_UK`/`W_UV`, split from the raw `kv_b_proj` weight at load time, via BMMs (`vllm/model_executor/layers/attention/mla_attention.py:822`, `:1075`). No LoRA indirection exists in this path.\n- **Prefill (MHA):** the up-projection calls `self.kv_b_proj(kv_c_normed)` on the attention *impl* (`mla_attention.py:2182`, `:2335`, `:2400`), which captured the raw `ColumnParallelLinear` at construction (`:2074`) — before LoRA wrapping. The impl is not an `nn.Module` (`vllm/v1/attention/backend.py:778`), so the LoRA manager's module-tree walk (`vllm/lora/model_manager.py:402`) rewires `MLAAttention.kv_b_proj` but never the impl's reference.\n\nNo warning, no error; all outputs and logprobs silently exclude the trained delta.\n\n**Impact measured:** online-RL (trainer + vLLM sampler with per-step LoRA weight sync), rank-32 adapter on a 745B MLA MoE: trainer↔sampler KL grows from ~0.003 (numerics floor) to **0.035 within six optimizer steps**; module-group bisection at a frozen adapter attributes ~90% to `kv_b_proj` (symmetric removal: 0.035 → 0.0054). Likely the undiagnosed root cause of #17155.\n\n**Repro:** serve any MLA model with an adapter whose `kv_b_proj` B is non-trivial; compare per-token logprobs against a merged-weights baseline — they diverge everywhere.\n\n### Fix directions\n\n1. **Decode:** apply the low-rank correction in absorbed mode — the delta factors onto the query and output sides (`q' += (q @ B_K) @ A`, `out += (attn @ A^T) @ B_V^T`), i.e. two shrink/expand pairs inside the MLA la",
+    "author": "pstefa1707",
+    "state": "open",
+    "labels": [],
+    "url": "https://github.com/vllm-project/vllm/issues/48974",
+    "createdAt": "2026-07-17T19:04:04.000Z",
+    "updatedAt": "2026-10-13T21:18:40.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-10-14T05:12:09.444Z",
+    "contentHash": "sha256:63225268b069b533b6e6d40b5576e3746306ccc987770b0bee5f50464e83288c",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-48706",
+    "nodeId": "PR_kwDOI7xefs7x5olW",
+    "repository": "vllm-project/vllm",
+    "number": 48706,
+    "type": "pr",
+    "title": "[Bugfix][Parser] Fix streaming tool-call args truncated by schema coercion",
+    "bodyExcerpt": "Fixes #48702\r\n\r\n## Purpose\r\n\r\n`_safe_arg_prefix` included completed middle-field values in `streamed_json` even for non-string-typed keys (integer/boolean/null/number). When `_fix_arg_types` coerced those values at flush time (e.g. `\"42\"` → `42`, `\"true\"` → `true`, `\"null\"` → `null`), the already-sent prefix no longer matched the final JSON, causing `_flush_arg_converter` to silently return `None` and drop the closing brace and any remaining content. Clients received truncated, invalid JSON with no error or log line indicating anything had gone wrong.\r\n\r\n**Fix:** during the character scan in `_safe_arg_prefix`, record the position of the first non-string-typed key's value start (`non_string_clip`). After the scan, clip the safe prefix there instead of including it. This ensures the value arrives entirely as a single flush delta after coercion, preserving the `startswith` invariant so the client always accumulates valid, complete JSON.\r\n\r\nAffects all parsers using `stream_arg_deltas=True` with an `arg_converter` that cannot parse partial JSON (Qwen3, DeepSeek V4/V32, GLM47, MiniMax, Gemma4, Kimi K2). Parsers that resolve types during streaming itself (e.g. DeepSeek DSML) are structurally unaffected. String-typed fields, already-native-typed values (e.g. unquoted integers), and schemas without a type annotation are unaffected.\r\n\r\nThis slots in cleanly on top of #46351 (merged). #46351 already protects trailing non-string fields via a dedicated branch in _safe_arg_prefix (the scan's last_key is always the trailing key, so that branch fully covers it) — non_string_clip is never consulted for trailing fields and only fires for middle (comma-terminated) non-string values, which #46351 didn't address. Verified empirically: a trailing non-string field already passes on main; middle non-string fields do not, and pass only with this patch.\r\n\r\n**Not a duplicate of:**\r\n- #46351 (merged) — related, complementary; covers trailing values only, not middle fields.\r\n- #48343 — differ",
+    "author": "mahadrehmann",
+    "state": "open",
+    "labels": [
+      "bug",
+      "needs-rebase",
+      "tool-calling"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/48706",
+    "createdAt": "2026-07-15T06:57:31.000Z",
+    "updatedAt": "2026-10-13T20:32:02.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-10-14T05:12:09.444Z",
+    "contentHash": "sha256:a1bd30e2ae968cfd81f3596d2dd0e08ea91f51cffc62053474025bfc3600df89",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-issue-49349",
+    "nodeId": "I_kwDOI7xefs8AAAABJn8gYg",
+    "repository": "vllm-project/vllm",
+    "number": 49349,
+    "type": "issue",
+    "title": "Zero JIT compilation during runtime",
+    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\n## Summary\n\nThis issue tracks adoption and follow-up work for the shared JIT warmup infrastructure proposed in #47456.\n\n## Foundation (blockers)\n\n- [x] #47451\n- [x] #49315\n- [x] #50174\n\n## Model-level de-JITification\n\n### DeepSeek V4\n- [ ] #49627\n    - [x] #50175\n    - [x] https://github.com/vllm-project/vllm/pull/53564\n    - [x] https://github.com/vllm-project/vllm/pull/53565\n    - [x] #50176\n    - [x] https://github.com/vllm-project/vllm/pull/53566\n    - [x] ~https://github.com/vllm-project/vllm/pull/56323~ (reverted)\n    - [ ] #50177\n    - [ ] https://github.com/vllm-project/vllm/pull/53567\n    - [x] #50178\n    - [ ] https://github.com/vllm-project/vllm/pull/55967\n    - [ ] https://github.com/vllm-project/vllm/pull/56494\n    - [ ] https://github.com/vllm-project/vllm/pull/56693\n\n### Gemma 4\n- [x] https://github.com/vllm-project/vllm/pull/55768\n    - [ ] Enable `--jit-monitor-mode error` on CI for Gemma 4: https://github.com/vllm-project/vllm/pull/50109\n\n### gpt-oss\n- [ ] https://github.com/vllm-project/vllm/pull/55769\n    - [ ] Enable `--jit-monitor-mode error` on CI for gpt-oss: https://github.com/vllm-project/vllm/pull/50109\n\n### GLM-5.2/5.3\n- [ ] https://github.com/vllm-project/vllm/pull/55348\n    - [ ] Enable `--jit-monitor-mode error` on CI for GLM-5.2/5.3: https://github.com/vllm-project/vllm/pull/50109\n    \n### Kimi-K3\n- [ ] https://github.com/vllm-project/vllm/pull/54784\n    - [ ] Enable `--jit-monitor-mode error` on CI for Kimi-K3: https://github.com/vllm-project/vllm/pull/50109\n\nComplete model de-JITification is achieved when the model can run seamlessly with `--jit-monitor-mode error,` introduced in [#46167](https://github.com/vllm-project/vllm/pull/46167). Enabling this mode in CI will detect any untracked kernels that still compile at runtime and therefore require additional warmup coverage.\n\n## Supporting work. Related backend/kernel coverage\n\n### CuTeDSL\n\n- [ ] #48156\n- [ ] https://github.com/vllm-project/v",
+    "author": "LopezCastroRoberto",
+    "state": "open",
+    "labels": [
+      "feature request",
+      "warmup"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/49349",
+    "createdAt": "2026-07-21T16:09:37.000Z",
+    "updatedAt": "2026-10-13T13:01:32.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-09-05T04:48:46.974Z",
+    "contentHash": "sha256:714ff2b6178d7dfe7a89f56fd6d1746304c919f2ab4966010fb732b12f26ea6f",
+    "category": "NEW_SUPPORT",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-48653",
     "nodeId": "PR_kwDOI7xefs7xuaFU",
     "repository": "vllm-project/vllm",
@@ -246,30 +389,6 @@
       "promptVersion": "activity-v4-complete-brief",
       "generatedAt": "2026-08-24T11:17:54.490Z"
     }
-  },
-  {
-    "id": "vllm-issue-49349",
-    "nodeId": "I_kwDOI7xefs8AAAABJn8gYg",
-    "repository": "vllm-project/vllm",
-    "number": 49349,
-    "type": "issue",
-    "title": "Zero JIT compilation during runtime",
-    "bodyExcerpt": "### 🚀 The feature, motivation and pitch\n\n## Summary\n\nThis issue tracks adoption and follow-up work for the shared JIT warmup infrastructure proposed in #47456.\n\n## Foundation (blockers)\n\n- [x] #47451\n- [x] #49315\n- [x] #50174\n\n## Model-level de-JITification\n\n### DeepSeek V4\n- [ ] #49627\n    - [x] #50175\n    - [x] https://github.com/vllm-project/vllm/pull/53564\n    - [x] https://github.com/vllm-project/vllm/pull/53565\n    - [x] #50176\n    - [x] https://github.com/vllm-project/vllm/pull/53566\n    - [x] ~https://github.com/vllm-project/vllm/pull/56323~ (reverted)\n    - [ ] #50177\n    - [ ] https://github.com/vllm-project/vllm/pull/53567\n    - [x] #50178\n    - [ ] https://github.com/vllm-project/vllm/pull/55967\n    - [ ] https://github.com/vllm-project/vllm/pull/56494\n    - [ ] https://github.com/vllm-project/vllm/pull/56693\n\n### Gemma 4\n- [x] https://github.com/vllm-project/vllm/pull/55768\n    - [ ] Enable `--jit-monitor-mode error` on CI for Gemma 4: https://github.com/vllm-project/vllm/pull/50109\n\n### gpt-oss\n- [ ] https://github.com/vllm-project/vllm/pull/55769\n    - [ ] Enable `--jit-monitor-mode error` on CI for gpt-oss: https://github.com/vllm-project/vllm/pull/50109\n\n### GLM-5.2/5.3\n- [ ] https://github.com/vllm-project/vllm/pull/55348\n    - [ ] Enable `--jit-monitor-mode error` on CI for GLM-5.2/5.3: https://github.com/vllm-project/vllm/pull/50109\n    \n### Kimi-K3\n- [ ] https://github.com/vllm-project/vllm/pull/54784\n    - [ ] Enable `--jit-monitor-mode error` on CI for Kimi-K3: https://github.com/vllm-project/vllm/pull/50109\n\nComplete model de-JITification is achieved when the model can run seamlessly with `--jit-monitor-mode error,` introduced in [#46167](https://github.com/vllm-project/vllm/pull/46167). Enabling this mode in CI will detect any untracked kernels that still compile at runtime and therefore require additional warmup coverage.\n\n## Supporting work. Related backend/kernel coverage\n\n### CuTeDSL\n\n- [ ] #48156\n- [ ] https://github.com/vllm-project/v",
-    "author": "LopezCastroRoberto",
-    "state": "open",
-    "labels": [
-      "feature request",
-      "kimi"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/49349",
-    "createdAt": "2026-07-21T16:09:37.000Z",
-    "updatedAt": "2026-10-10T01:55:27.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-09-05T04:48:46.974Z",
-    "contentHash": "sha256:c8c8cecc380461f4159d784dbbaeff667053cfe260883d36b5c159acbddc882b",
-    "category": "NEW_SUPPORT",
-    "categorySource": "rules",
-    "summary": null
   },
   {
     "id": "vllm-issue-48285",
@@ -3779,54 +3898,6 @@
       "capabilityCandidate": false,
       "evidence": [
         "【标题】all_gather_interleave() bypasses vLLM's collective API and crashes with \"No backend type associated with device type\" on"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
-  },
-  {
-    "id": "vllm-issue-48689",
-    "nodeId": "I_kwDOI7xefs8AAAABI2yXww",
-    "repository": "vllm-project/vllm",
-    "number": 48689,
-    "type": "issue",
-    "title": "[Bug]: GLM-5.2 nvpf4 quantization not loading with TP",
-    "bodyExcerpt": "### Your current environment\n\nSetup:\n```\nvllm version: 0.25.0\nconfig:\n-- kv-cache-dtype fp8_e4m3\n-- tensor-parallel-size 8\nGPUs: Bxx\nCUDA: 13.0\n```\n\n### 🐛 Describe the bug\n\nIssue during startup:\n\n`torch.AcceleratorError: CUDA error: an illegal memory access was encountered`\n\n### Before submitting a new issue...\n\n- [x] Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.",
-    "author": "Satgoy152",
-    "state": "open",
-    "labels": [
-      "bug"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/48689",
-    "createdAt": "2026-07-15T04:28:07.000Z",
-    "updatedAt": "2026-07-15T04:28:07.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-21T03:17:31.073Z",
-    "contentHash": "sha256:92c0647057a1a73a1c22389f0aa32fc498e3b4d32e17d919fc57490c4d9df258",
-    "category": "BUG",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "GLM-5.2 nvpf4 TP 加载触发 CUDA 错误",
-      "summaryZh": "vLLM 中 GLM-5.2 的 nvpf4 量化与张量并行加载：使用 vLLM 0.25.0、kv-cache-dtype 为 fp8_e4m3、tensor-parallel-size 为 8 时，启动加载 GLM-5.2 nvpf4 量化配置触发 CUDA 非法内存访问错误；问题发生在启动阶段，涉及 Bxx GPU 和 CUDA 13.0 环境",
-      "models": [
-        "GLM-5.2"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "BUG",
-      "severity": "HIGH",
-      "impactScopeZh": "影响 GLM-5.2 nvpf4 量化模型在张量并行配置下的启动加载。",
-      "attention": "WATCH",
-      "capabilityCandidate": false,
-      "evidence": [
-        "【标题】GLM-5.2 nvpf4 quantization not loading with TP",
-        "【正文】torch.AcceleratorError: CUDA error: an illegal memory access was encountered"
       ],
       "truncated": false,
       "model": "gpt-5.6-luna",

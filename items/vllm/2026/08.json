@@ -1,5 +1,110 @@
 [
   {
+    "id": "vllm-pr-53422",
+    "nodeId": "PR_kwDOI7xefs8AAAABArfkAA",
+    "repository": "vllm-project/vllm",
+    "number": 53422,
+    "type": "pr",
+    "title": "[Feature] Add PCP O-Proj tensor parallelism",
+    "bodyExcerpt": "This PR adds an opt-in `--enable-pcp-o-proj-tp` path that shards the resident MLA O-Proj parameter across the combined PCP-by-TP rank grid while preserving the existing TP reduction semantics.\n\n## Summary\n\nThe feature further partitions each TP-local O-Proj input shard across the PCP group, reducing the resident O-Proj parameter on each rank to `1 / PCP` of its standard TP layout. Execution requires `decode_context_parallel_size=1` and eager mode.\n\nSupported architectures are DeepSeek V2, V3, and V3.2, plus GLM-4 MoE Lite and the GLM-5 family MLA architecture. Supported O-Proj representations are `UnquantizedLinearMethod` and ModelOpt W4A4 NVFP4 with a CUTLASS-compatible post-load layout. The NVFP4 adapter is an implementation example for quantized methods; its packed weight and swizzled block scale are handled explicitly. Other post-load layouts fail during post-load processing.\n\n## Runtime behavior\n\nThe model runner records the logical, pre-partition batch type and propagates it consistently to every PCP rank. This keeps the collective decision identical even when PCP token partitioning gives different local batch shapes to different ranks.\n\n- For prefill or mixed batches, generic MLA starts an asynchronous O-Proj weight all-gather after Q/KV normalization and before the remaining Q projection, RoPE, indexer, and main attention work. O-Proj waits for the gather only when the full TP shard is needed, then runs the normal TP-local O-Proj computation.\n- For decode-only batches, each rank slices the TP attention output to its local PCP feature shard, computes a partial O-Proj result with the resident weight, and all-reduces that result over PCP.\n- The existing TP reduction behavior remains unchanged, including paths where TP reduction is handled outside O-Proj.\n\n## Implementation\n\n- Adds a reusable `TPWeightSwitchMixin` with opt-in tensor/method specifications, asynchronous gather and wait handling, local/full tensor alias switching, and representation-specific prepar",
+    "author": "pisceskkk",
+    "state": "open",
+    "labels": [
+      "documentation",
+      "needs-rebase",
+      "deepseek",
+      "quantization",
+      "mrv2"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/53422",
+    "createdAt": "2026-08-23T02:21:09.000Z",
+    "updatedAt": "2026-10-13T17:05:59.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-24T10:27:08.865Z",
+    "contentHash": "sha256:aef9e45b0e531612d350162c1532075da34d3a8e2e5721b8d3fef7cc60e137bc",
+    "category": "NEW_SUPPORT",
+    "categorySource": "ai",
+    "summary": {
+      "headlineZh": "新增 PCP O-Proj 张量并行",
+      "summaryZh": "新增可选的 `--enable-pcp-o-proj-tp` 路径，将 MLA O-Proj 参数跨 PCP-TP rank 网格分片，使每个 rank 的常驻参数降至标准 TP 布局的 1/PCP；支持 decode_context_parallel_size=1 和 eager 执行，以及未量化与 ModelOpt W4A4 NVFP4 表示。Prefill 或混合批次异步执行 O-Proj 权重 all-gather，纯 decode 批次执行 PCP all-reduce，同时保持既有 TP reduction 语义；降低每个 rank 的 O-Proj 常驻参数规模；MVP 仅限 decode_context_parallel_size=1 和 eager 执行",
+      "models": [
+        "DeepSeek V2",
+        "DeepSeek V3",
+        "DeepSeek V3.2",
+        "GLM-4 MoE Lite"
+      ],
+      "hardware": [
+        "GPU"
+      ],
+      "scenarios": [
+        "INFERENCE"
+      ],
+      "category": "NEW_SUPPORT",
+      "severity": "INFO",
+      "impactScopeZh": "推理阶段的 MLA O-Proj PCP 张量并行路径，覆盖指定架构和 O-Proj 表示。",
+      "attention": "ROUTINE",
+      "capabilityCandidate": true,
+      "evidence": [
+        "【标题】[Feature] Add PCP O-Proj tensor parallelism",
+        "【正文】This PR adds an opt-in `--enable-pcp-o-proj-tp` path that shards the resident MLA O-Proj parameter across the combined P"
+      ],
+      "truncated": false,
+      "model": "gpt-5.6-luna",
+      "promptVersion": "activity-v4-complete-brief",
+      "generatedAt": "2026-08-24T11:17:54.490Z"
+    }
+  },
+  {
+    "id": "vllm-issue-54359",
+    "nodeId": "I_kwDOI7xefs8AAAABOyYc2g",
+    "repository": "vllm-project/vllm",
+    "number": 54359,
+    "type": "issue",
+    "title": "[Bug][ROCm] GLM-5.3-Flash kpool indexer overwrites its own KV cache: backend advertises a kernel block size the kernels do not use",
+    "bodyExcerpt": "### Summary\n\nOn ROCm, the GLM-5.3-Flash kpool sparse indexer **silently overwrites its own KV cache**. 4096 pool entries are written into 864 distinct slots, so ~79 % of the indexer's keys are wrong. The model still produces fluent text, so nothing crashes — long-context recall just degrades, and `temperature=0` stops being reproducible because the damage depends on which physical blocks the allocator hands out.\n\nThis is **ROCm-only** and distinct from #40018 (whose fix, #43781, is present in the tree I tested).\n\n### Root cause\n\n`DeepseekV32IndexerBackend.get_supported_kernel_block_sizes()` (`vllm/v1/attention/backends/mla/indexer.py`):\n\n```python\nreturn [1, MultipleOf(16)] if current_platform.is_rocm() else [64]\n```\n\nOn CUDA the backend declares exactly `[64]`, so vLLM sets `kernel_block_size = 64`, `BlockTable.use_hybrid_blocks = True`, and builds a kernel-granular block table. On ROCm it declares \"any multiple of 16\", so the hybrid aligner's choice (640 tokens here) is taken as natively supported: `blocks_per_kv_block == 1`, **no kernel-granular block table**.\n\nBut the kernels do not read 640-token blocks. DeepGEMM/AITER paged-MQA reads pool pages of 32 states; with `tokens_per_state == index_kpool == 4` that is 128 tokens. So the storage block (640 tok = 160 states) is five pages, and both `slot_mapping` and `cp_gather_indexer_k_quant_cache_triton` address it with the **page** size (32) while the block table holds **spec-block** ids — a 5x over-subscription.\n\nThe intended split is even documented in `vllm/models/glm5next/nvidia/attention.py` as `storage_kernel_block_size`, but that identifier appears nowhere else in the tree — it was never implemented.\n\n### Evidence (8x MI350X, gfx950, TP8, ROCm 7.2.3, `index_kpool=4`, `block_size=640`)\n\nInstrumented at the indexer, two identical requests, prefix caching off:\n\n| | before | after fix |\n|---|---|---|\n| distinct cache slots written (of 4096 pools) | **864** | **4096** |\n| `max_slot` | 863 (= 26x32+31) | 4159 (= 26x",
+    "author": "stefanskiasan",
+    "state": "closed",
+    "labels": [
+      "rocm",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/issues/54359",
+    "createdAt": "2026-08-29T15:15:15.000Z",
+    "updatedAt": "2026-10-13T13:27:54.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-30T05:39:24.275Z",
+    "contentHash": "sha256:53544276a3c3e7fd83b50438b309f2c103fcf8ae16dbfdf5c8f104ff54d895d4",
+    "category": "BUG",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
+    "id": "vllm-pr-54396",
+    "nodeId": "PR_kwDOI7xefs8AAAABBfDjCA",
+    "repository": "vllm-project/vllm",
+    "number": 54396,
+    "type": "pr",
+    "title": "[Bugfix][Multimodal] Guard GLMGA video sampling against zero source fps",
+    "bodyExcerpt": "## Motivation\n\n`GLMGAVideoBackend.compute_frames_index_to_sample` divides by `source.original_fps` in two places — the duration fallback (`round(max_frame_idx / original_fps) + 1`) and `duration_per_frame = 1 / original_fps` — without validating it. vLLM reports `original_fps == 0` for clips with an unknown or variable frame rate (VFR, malformed containers, failed webcam captures), so those inputs crash with a bare `ZeroDivisionError: float division by zero`.\n\nEvery other fps-driven backend in `vllm/multimodal/video.py` already guards this (`Qwen2VLVideoBackend`, `Qwen3VLVideoBackend`, `GLM46VVideoBackend`, and `Molmo2VideoBackend` in fps mode); GLMGA is the remaining one without the check.\n\n## Modifications\n\n- Added the same `original_fps <= 0` guard to `GLMGAVideoBackend`, raising a descriptive `ValueError` that names the backend and the cause, mirroring the existing Qwen2-VL / Qwen3-VL behavior.\n- Added a regression test covering both crash paths (duration reported vs. duration missing).\n\n## Verification\n\n- `pytest tests/multimodal/test_video.py::test_glmga_video_backend_rejects_unknown_source_fps` -> 1 passed.\n- On unpatched `main`, the same test fails with `ZeroDivisionError: float division by zero` for both `duration=5.0` (at `duration_per_frame = 1 / original_fps`) and `duration=0.0` (at the duration fallback).\n- Neighbor sampling tests `pytest tests/multimodal/test_video.py -k glm46v`: 12 passed; the single failure (`test_video_processor_from_model_repo[glm46v]`) is an unrelated missing `av` module in my local environment and fails identically on unpatched `main`.\n\n## Duplicate check\n\nSearched open PRs and issues for `glmga`, `glmga fps`, and `video original_fps`: nothing covers the GLMGA backend. #53844 fixes the same bug class for `Qwen3VLVideoBackend` only and does not touch GLMGA; this PR is scoped to GLMGA so the two can land independently.\n\n## AI assistance\n\nThis change was developed with AI assistance (bug identification, patch, and regression test). ",
+    "author": "blueOf",
+    "state": "open",
+    "labels": [
+      "bug",
+      "needs-rebase",
+      "multi-modality",
+      "glm"
+    ],
+    "url": "https://github.com/vllm-project/vllm/pull/54396",
+    "createdAt": "2026-08-30T05:40:44.000Z",
+    "updatedAt": "2026-10-13T07:25:34.000Z",
+    "mergedAt": null,
+    "firstSeenAt": "2026-08-31T05:54:38.982Z",
+    "contentHash": "sha256:17c978d97b3e7884f248d77e4304312dc2e635416aab6aa6e4489f059f86b683",
+    "category": "FIX",
+    "categorySource": "rules",
+    "summary": null
+  },
+  {
     "id": "vllm-pr-51314",
     "nodeId": "PR_kwDOI7xefs77xdSz",
     "repository": "vllm-project/vllm",
@@ -253,32 +358,6 @@
     "summary": null
   },
   {
-    "id": "vllm-pr-54396",
-    "nodeId": "PR_kwDOI7xefs8AAAABBfDjCA",
-    "repository": "vllm-project/vllm",
-    "number": 54396,
-    "type": "pr",
-    "title": "[Bugfix][Multimodal] Guard GLMGA video sampling against zero source fps",
-    "bodyExcerpt": "## Motivation\n\n`GLMGAVideoBackend.compute_frames_index_to_sample` divides by `source.original_fps` in two places — the duration fallback (`round(max_frame_idx / original_fps) + 1`) and `duration_per_frame = 1 / original_fps` — without validating it. vLLM reports `original_fps == 0` for clips with an unknown or variable frame rate (VFR, malformed containers, failed webcam captures), so those inputs crash with a bare `ZeroDivisionError: float division by zero`.\n\nEvery other fps-driven backend in `vllm/multimodal/video.py` already guards this (`Qwen2VLVideoBackend`, `Qwen3VLVideoBackend`, `GLM46VVideoBackend`, and `Molmo2VideoBackend` in fps mode); GLMGA is the remaining one without the check.\n\n## Modifications\n\n- Added the same `original_fps <= 0` guard to `GLMGAVideoBackend`, raising a descriptive `ValueError` that names the backend and the cause, mirroring the existing Qwen2-VL / Qwen3-VL behavior.\n- Added a regression test covering both crash paths (duration reported vs. duration missing).\n\n## Verification\n\n- `pytest tests/multimodal/test_video.py::test_glmga_video_backend_rejects_unknown_source_fps` -> 1 passed.\n- On unpatched `main`, the same test fails with `ZeroDivisionError: float division by zero` for both `duration=5.0` (at `duration_per_frame = 1 / original_fps`) and `duration=0.0` (at the duration fallback).\n- Neighbor sampling tests `pytest tests/multimodal/test_video.py -k glm46v`: 12 passed; the single failure (`test_video_processor_from_model_repo[glm46v]`) is an unrelated missing `av` module in my local environment and fails identically on unpatched `main`.\n\n## Duplicate check\n\nSearched open PRs and issues for `glmga`, `glmga fps`, and `video original_fps`: nothing covers the GLMGA backend. #53844 fixes the same bug class for `Qwen3VLVideoBackend` only and does not touch GLMGA; this PR is scoped to GLMGA so the two can land independently.\n\n## AI assistance\n\nThis change was developed with AI assistance (bug identification, patch, and regression test). ",
-    "author": "blueOf",
-    "state": "open",
-    "labels": [
-      "bug",
-      "needs-rebase",
-      "multi-modality",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/54396",
-    "createdAt": "2026-08-30T05:40:44.000Z",
-    "updatedAt": "2026-10-12T14:38:59.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-31T05:54:38.982Z",
-    "contentHash": "sha256:faab96ffaaaee438fa63571b44bec6decedd8e8c5a5274a46c24bab9f3cd584e",
-    "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
     "id": "vllm-pr-54029",
     "nodeId": "PR_kwDOI7xefs8AAAABBL7N_g",
     "repository": "vllm-project/vllm",
@@ -325,60 +404,6 @@
     "category": "BUG",
     "categorySource": "rules",
     "summary": null
-  },
-  {
-    "id": "vllm-pr-53422",
-    "nodeId": "PR_kwDOI7xefs8AAAABArfkAA",
-    "repository": "vllm-project/vllm",
-    "number": 53422,
-    "type": "pr",
-    "title": "[Feature] Add PCP O-Proj tensor parallelism",
-    "bodyExcerpt": "This PR adds an opt-in `--enable-pcp-o-proj-tp` path that shards the resident MLA O-Proj parameter across the combined PCP-by-TP rank grid while preserving the existing TP reduction semantics.\n\n## Summary\n\nThe feature further partitions each TP-local O-Proj input shard across the PCP group, reducing the resident O-Proj parameter on each rank to `1 / PCP` of its standard TP layout. Execution requires `decode_context_parallel_size=1` and eager mode.\n\nSupported architectures are DeepSeek V2, V3, and V3.2, plus GLM-4 MoE Lite and the GLM-5 family MLA architecture. Supported O-Proj representations are `UnquantizedLinearMethod` and ModelOpt W4A4 NVFP4 with a CUTLASS-compatible post-load layout. The NVFP4 adapter is an implementation example for quantized methods; its packed weight and swizzled block scale are handled explicitly. Other post-load layouts fail during post-load processing.\n\n## Runtime behavior\n\nThe model runner records the logical, pre-partition batch type and propagates it consistently to every PCP rank. This keeps the collective decision identical even when PCP token partitioning gives different local batch shapes to different ranks.\n\n- For prefill or mixed batches, generic MLA starts an asynchronous O-Proj weight all-gather after Q/KV normalization and before the remaining Q projection, RoPE, indexer, and main attention work. O-Proj waits for the gather only when the full TP shard is needed, then runs the normal TP-local O-Proj computation.\n- For decode-only batches, each rank slices the TP attention output to its local PCP feature shard, computes a partial O-Proj result with the resident weight, and all-reduces that result over PCP.\n- The existing TP reduction behavior remains unchanged, including paths where TP reduction is handled outside O-Proj.\n\n## Implementation\n\n- Adds a reusable `TPWeightSwitchMixin` with opt-in tensor/method specifications, asynchronous gather and wait handling, local/full tensor alias switching, and representation-specific prepar",
-    "author": "pisceskkk",
-    "state": "open",
-    "labels": [
-      "documentation",
-      "deepseek",
-      "quantization",
-      "mrv2"
-    ],
-    "url": "https://github.com/vllm-project/vllm/pull/53422",
-    "createdAt": "2026-08-23T02:21:09.000Z",
-    "updatedAt": "2026-10-12T05:35:28.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-24T10:27:08.865Z",
-    "contentHash": "sha256:2d7aa186919eface4e37b2deb84a4ee257f3084da537f75560e9d9f85d7c90bf",
-    "category": "NEW_SUPPORT",
-    "categorySource": "ai",
-    "summary": {
-      "headlineZh": "新增 PCP O-Proj 张量并行",
-      "summaryZh": "新增可选的 `--enable-pcp-o-proj-tp` 路径，将 MLA O-Proj 参数跨 PCP-TP rank 网格分片，使每个 rank 的常驻参数降至标准 TP 布局的 1/PCP；支持 decode_context_parallel_size=1 和 eager 执行，以及未量化与 ModelOpt W4A4 NVFP4 表示。Prefill 或混合批次异步执行 O-Proj 权重 all-gather，纯 decode 批次执行 PCP all-reduce，同时保持既有 TP reduction 语义；降低每个 rank 的 O-Proj 常驻参数规模；MVP 仅限 decode_context_parallel_size=1 和 eager 执行",
-      "models": [
-        "DeepSeek V2",
-        "DeepSeek V3",
-        "DeepSeek V3.2",
-        "GLM-4 MoE Lite"
-      ],
-      "hardware": [
-        "GPU"
-      ],
-      "scenarios": [
-        "INFERENCE"
-      ],
-      "category": "NEW_SUPPORT",
-      "severity": "INFO",
-      "impactScopeZh": "推理阶段的 MLA O-Proj PCP 张量并行路径，覆盖指定架构和 O-Proj 表示。",
-      "attention": "ROUTINE",
-      "capabilityCandidate": true,
-      "evidence": [
-        "【标题】[Feature] Add PCP O-Proj tensor parallelism",
-        "【正文】This PR adds an opt-in `--enable-pcp-o-proj-tp` path that shards the resident MLA O-Proj parameter across the combined P"
-      ],
-      "truncated": false,
-      "model": "gpt-5.6-luna",
-      "promptVersion": "activity-v4-complete-brief",
-      "generatedAt": "2026-08-24T11:17:54.490Z"
-    }
   },
   {
     "id": "vllm-pr-50933",
@@ -757,30 +782,6 @@
     "firstSeenAt": "2026-08-26T02:09:14.386Z",
     "contentHash": "sha256:baf0e0dfa0b735dfe29bd4b7966eef5f2af448e8aee5888d9e822b5b17e6537d",
     "category": "FIX",
-    "categorySource": "rules",
-    "summary": null
-  },
-  {
-    "id": "vllm-issue-54359",
-    "nodeId": "I_kwDOI7xefs8AAAABOyYc2g",
-    "repository": "vllm-project/vllm",
-    "number": 54359,
-    "type": "issue",
-    "title": "[Bug][ROCm] GLM-5.3-Flash kpool indexer overwrites its own KV cache: backend advertises a kernel block size the kernels do not use",
-    "bodyExcerpt": "### Summary\n\nOn ROCm, the GLM-5.3-Flash kpool sparse indexer **silently overwrites its own KV cache**. 4096 pool entries are written into 864 distinct slots, so ~79 % of the indexer's keys are wrong. The model still produces fluent text, so nothing crashes — long-context recall just degrades, and `temperature=0` stops being reproducible because the damage depends on which physical blocks the allocator hands out.\n\nThis is **ROCm-only** and distinct from #40018 (whose fix, #43781, is present in the tree I tested).\n\n### Root cause\n\n`DeepseekV32IndexerBackend.get_supported_kernel_block_sizes()` (`vllm/v1/attention/backends/mla/indexer.py`):\n\n```python\nreturn [1, MultipleOf(16)] if current_platform.is_rocm() else [64]\n```\n\nOn CUDA the backend declares exactly `[64]`, so vLLM sets `kernel_block_size = 64`, `BlockTable.use_hybrid_blocks = True`, and builds a kernel-granular block table. On ROCm it declares \"any multiple of 16\", so the hybrid aligner's choice (640 tokens here) is taken as natively supported: `blocks_per_kv_block == 1`, **no kernel-granular block table**.\n\nBut the kernels do not read 640-token blocks. DeepGEMM/AITER paged-MQA reads pool pages of 32 states; with `tokens_per_state == index_kpool == 4` that is 128 tokens. So the storage block (640 tok = 160 states) is five pages, and both `slot_mapping` and `cp_gather_indexer_k_quant_cache_triton` address it with the **page** size (32) while the block table holds **spec-block** ids — a 5x over-subscription.\n\nThe intended split is even documented in `vllm/models/glm5next/nvidia/attention.py` as `storage_kernel_block_size`, but that identifier appears nowhere else in the tree — it was never implemented.\n\n### Evidence (8x MI350X, gfx950, TP8, ROCm 7.2.3, `index_kpool=4`, `block_size=640`)\n\nInstrumented at the indexer, two identical requests, prefix caching off:\n\n| | before | after fix |\n|---|---|---|\n| distinct cache slots written (of 4096 pools) | **864** | **4096** |\n| `max_slot` | 863 (= 26x32+31) | 4159 (= 26x",
-    "author": "stefanskiasan",
-    "state": "open",
-    "labels": [
-      "rocm",
-      "glm"
-    ],
-    "url": "https://github.com/vllm-project/vllm/issues/54359",
-    "createdAt": "2026-08-29T15:15:15.000Z",
-    "updatedAt": "2026-10-02T10:57:19.000Z",
-    "mergedAt": null,
-    "firstSeenAt": "2026-08-30T05:39:24.275Z",
-    "contentHash": "sha256:b8b54913191d9ad0bd03ab93438c58c518e304b0becac782b1cfeb75983e6bf3",
-    "category": "BUG",
     "categorySource": "rules",
     "summary": null
   },
